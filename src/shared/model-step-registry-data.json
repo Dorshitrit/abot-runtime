@@ -170,6 +170,15 @@
       "outputContract": "context_compaction",
       "attachmentPolicy": "none"
     },
+    "EXECUTION_FILE_PAYLOAD_RAW": {
+      "id": "execution.file_payload.raw",
+      "owner": "runtime-core",
+      "role": "utility",
+      "lane": "main",
+      "defaultFormat": "raw",
+      "outputContract": "execution_file_payload_text",
+      "attachmentPolicy": "none"
+    },
     "TOOL_PAYLOAD_RAW": {
       "id": "tool_payload.raw",
       "owner": "runtime-core",

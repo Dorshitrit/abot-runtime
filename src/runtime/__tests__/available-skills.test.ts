@@ -1,5 +1,6 @@
 import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type WebSocket from "ws";
 import {
   projectAvailableSkills,
 } from "../knowledge-skills/available-skills.js";
@@ -64,8 +65,6 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       const system = scheduledModelMessages(decisions[0]![0])
         .filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
       if (policy === "execution-agent-v1") {
-        const discovery = buildAvailableSkillsText({ skills: [metadata], budgetTokens: 512 })!;
-        expect(system.startsWith(discovery + "\n")).toBe(true);
         expect(system).toContain(document.name + " [" + document.skillId + "]: " + document.description);
       } else {
         const catalog = JSON.parse(system.split("\n").find((line) => line.startsWith('{"kind":"runtime_supervisor_skill_candidates_v1"'))!);
@@ -113,7 +112,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
 );
 
 test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
-  "%s enforces its catalog budget without loading document bodies",
+  "%s rejects a catalog beyond its context budget without loading document bodies",
   async (policy) => {
     const documents = Array.from({ length: 1000 }, (_, index) => ({
       ...document, skillId: "entry-" + index,
@@ -123,22 +122,26 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const store = { list: source.list, read: vi.fn(source.read) };
     const fixture = await createSchedulerRuntimeFixture(policy, undefined, undefined, store);
     try {
-      await fixture.runOrdinaryRequest("Hello.");
       if (policy === "supervisor-worker-v1") {
+        await fixture.runOrdinaryRequest("Hello.");
         expect(fixture.invoke).toHaveBeenCalled();
         expect(fixture.invoke.mock.calls.some(([input]) => supervisorFormatName(input) === "supervisor_skill_selection")).toBe(false);
         expect(store.read).not.toHaveBeenCalled();
         return;
       }
-      const rootStep = policy === "execution-agent-v1" ? "execution.decision" : "supervisor.decision";
-      const root = fixture.invoke.mock.calls.find(([input]) => input.modelStep === rootStep)![0];
-      const text = scheduledModelMessages(root).map(({ content }) => content).join("\\n");
-      expect(text).toContain("[entry-0]");
-      expect(text).toContain("Partial catalog");
-      expect(text).not.toContain("[entry-999]");
-      expect(text).toContain("DISPLAY_NAME");
-      expect(text).not.toContain(documents[0]!.name);
-      expect(text).not.toContain(document.content);
+      const events: Record<string, unknown>[] = [];
+      await fixture.application.requests.handle({
+        send(value: string) { events.push(JSON.parse(value)); },
+      } as unknown as WebSocket, {
+        type: "run_request", requestId: "oversized-discovery", sessionId: "without-history",
+        text: "Hello.", agentMode: "reasoning",
+        modelPreference: { profileId: "scheduled-model", scope: "all" }, toolPermissionMode: "ask",
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "failed", error: "context_compaction_sources_empty",
+      }));
+      expect(fixture.invoke).not.toHaveBeenCalled();
+      expect(fixture.invokeRaw).not.toHaveBeenCalled();
       expect(store.read).not.toHaveBeenCalled();
     } finally { await fixture.dispose(); }
   },

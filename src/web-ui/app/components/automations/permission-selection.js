@@ -6,6 +6,13 @@ export function requiresFullPlus(operation) {
   return operation?.permissionMode === "full_plus" || operation?.approval === "always";
 }
 
+/** Request-bound operations remain grantable to Agents, but cannot be standalone Tool steps. */
+export function standaloneAutomationOperations(catalog) {
+  const operations = Array.isArray(catalog?.grantableOperations)
+    ? catalog.grantableOperations : catalog?.operations || [];
+  return operations.filter((operation) => operation.requiresRequestBinding !== true);
+}
+
 export function selectedAutomationOperations(definition, catalog) {
   const requested = new Map();
   function visit(node) {

@@ -9,10 +9,7 @@ import type {
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { isCapabilityBriefMessage } from "../../context/capability-brief.js";
 import { isScheduledExecutionContextMessage } from "../../context/scheduled-execution-context.js";
-import {
-  normalizeRoleCallWorkingDirectory,
-  ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH,
-} from "../../orchestration/role-calls/index.js";
+import { ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH } from "../../orchestration/role-calls/index.js";
 import {
   SUPERVISOR_DECISION_MODEL_STEP,
   type SupervisorDecision,
@@ -28,6 +25,7 @@ import {
   traceSupervisorWorkingDirectoryOutputRejected,
 } from "./diagnostics.js";
 import { buildSupervisorWorkingDirectoryInstructions } from "./prompt.js";
+import { resolveSupervisorWorkingDirectory } from "./resolve-working-directory.js";
 
 export const SUPERVISOR_FROZEN_INVOCATION_KIND =
   "runtime_supervisor_frozen_invocation_v1" as const;
@@ -133,6 +131,7 @@ export function parseSupervisorWorkingDirectoryOutput(
   text: string,
   options: Readonly<{
     diagnostic?: SupervisorDecisionDiagnosticContext;
+    filesystemScope?: RuntimeFilesystemScope;
   }> = {},
 ): SupervisorWorkingDirectoryParseResult {
   let decoded: unknown;
@@ -185,8 +184,9 @@ export function parseSupervisorWorkingDirectoryOutput(
     });
   }
 
-  const workingDirectory = normalizeRoleCallWorkingDirectory(
+  const workingDirectory = resolveSupervisorWorkingDirectory(
     record.workingDirectory,
+    options.filesystemScope,
   );
   if (!workingDirectory) {
     return rejectWorkingDirectoryOutput({
@@ -197,7 +197,7 @@ export function parseSupervisorWorkingDirectoryOutput(
         issue(
           "supervisor_working_directory_invalid",
           "workingDirectory",
-          "workingDirectory must be a bounded project directory relative to the configured agent work root.",
+          "Use a directory relative to the configured agent work root, or '.' for that root. A missing selection, parent traversal or out-of-root directory cannot be used.",
         ),
       ],
     });

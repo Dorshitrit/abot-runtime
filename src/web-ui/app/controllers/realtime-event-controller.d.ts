@@ -19,6 +19,7 @@ export interface RealtimeEventControllerOptions {
   selectedEnvironmentId(): string;
   handleSteerAcknowledgement(message: RealtimeEventRecord): boolean;
   shouldAcceptMessage(message: RealtimeEventRecord): boolean;
+  observeRunEvent?(message: RealtimeEventRecord): void;
   applySessionReadState(sessionId: unknown, readState: unknown): void;
   activeAssistantForRequest(requestId: string): ConversationSessionMessage;
   addOrMergeMessage(message: ConversationSessionMessage): void;

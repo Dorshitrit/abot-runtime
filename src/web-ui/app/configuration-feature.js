@@ -192,6 +192,8 @@ export function createConfigurationFeature({
     },
     loadDashboard: () =>
       runtimeClient.loadConfigDashboard(selectedEnvironmentId()),
+    previewParameters: (candidate) =>
+      runtimeClient.previewModelParameters(candidate, selectedEnvironmentId()),
     loadModelPlugins: () =>
       runtimeClient.getRuntimePlugins(selectedEnvironmentId()),
     saveFile: async ({ kind, id, config, expectedRevision }) => {

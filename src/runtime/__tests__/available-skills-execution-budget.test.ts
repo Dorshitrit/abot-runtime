@@ -68,11 +68,12 @@ test("SUPER discovery depends on core read availability, not Worker or tool slot
 });
 
 
-test("EA exposes every small-catalog identity without changing the active request or other context lanes", async () => {
+test("EA exposes complete applicability beyond brief discovery limits without changing other context lanes", async () => {
   const f = await fixture();
   const catalog = Array.from({ length: 8 }, (_, index) => ({
     skillId: `skill-${index}`, name: `Skill ${index}`,
-    description: (index < 6 ? "English guidance " : "הנחיות בעברית ").repeat(12),
+    description: (index < 6 ? "English guidance " : "הנחיות בעברית ").repeat(24)
+      + `Only for the explicitly requested workflow ${index}.`,
   }));
   const build = () => buildExecutionAgentInput(f.request, {
     head: f.ledger.current(), call: activeEvidenceCall(f.ledger.current()),
@@ -83,8 +84,13 @@ test("EA exposes every small-catalog identity without changing the active reques
   const withoutDiscovery = build();
   f.getAvailableSkills.mockReturnValue(catalog);
   const projected = build();
-  for (const entry of catalog) expect(projected.messages[0]!.content).toContain(`[${entry.skillId}]`);
+  for (const entry of catalog) {
+    expect(projected.messages[0]!.content).toContain(`[${entry.skillId}]`);
+    expect(projected.messages[0]!.content).toContain(entry.description);
+  }
   expect(projected.messages[0]!.content).not.toContain("Partial catalog");
+  expect(projected.context.budget.parts.instructionInputTokens
+    - withoutDiscovery.context.budget.parts.instructionInputTokens).toBeGreaterThan(512);
   expect(projected.messages.map(({ role }) => role)).toEqual(withoutDiscovery.messages.map(({ role }) => role));
   expect(projected.messages.slice(1)).toEqual(withoutDiscovery.messages.slice(1));
   expect(projected.capabilities).toEqual(withoutDiscovery.capabilities);

@@ -82,8 +82,12 @@ export function commandRunSummary(record) {
     return name === "compact"
       ? "Compacting conversation history…"
       : `/${name} is running…`;
-  if (record.message?.outcome === "no_change")
+  if (record.message?.outcome === "no_change") {
+    const limit = record.message.protectedTurnLimit;
+    if (name === "compact" && Number.isSafeInteger(limit) && limit > 0)
+      return `SUPER keeps the latest ${limit} completed turns in full. There are no older turns left to compact.`;
     return "No saved history is eligible for compaction.";
+  }
   return name === "compact"
     ? "Conversation history compacted."
     : `/${name} completed.`;

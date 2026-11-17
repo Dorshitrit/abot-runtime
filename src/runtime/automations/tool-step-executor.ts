@@ -80,6 +80,8 @@ export async function executeAutomationToolStep(input: {
     input.capturedGrant, input.environmentId, input.automationId,
     requested, input.capturedGrant.mode,
   )) return { kind: "rejected", code: "automation_operation_unavailable", message: "This operation is not granted to the automation." };
+  if (input.registry.getDefinition(requested.toolName)?.requiresRequestBinding)
+    return { kind: "rejected", code: "automation_operation_unavailable", message: "This operation requires an Agent request." };
   const preparedRegistry = await input.registry.prepareRequest?.() ?? input.registry;
   const available = restrictToolRegistryToRequestMode(preparedRegistry, input.capturedGrant.mode);
   const registered = selectedRegistration(available.listNormalInvocations?.() ?? [], requested);

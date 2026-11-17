@@ -33,6 +33,7 @@ export interface ComposerSubmissionLifecycle {
   submit<Settings = unknown, Result = unknown>(options: ComposerSubmissionOptions<Settings, Result> & { draft: ComposerDraft }): Promise<ComposerSubmissionResult<Settings, Result>>;
   submitCaptured<Settings = unknown, Result = unknown>(options: ComposerSubmissionOptions<Settings, Result> & { payload: ComposerDraftSnapshot }): Promise<ComposerSubmissionResult<Settings, Result>>;
   hasPendingScope(scope: ComposerScope): boolean;
+  ownedScopes(): Iterable<ComposerScope>;
   restoreForManualReview(id: number, authorize: (attempt: ComposerSubmissionAttempt) => ComposerReviewAuthorization | Promise<ComposerReviewAuthorization>): Promise<boolean>;
   paused(scope: ComposerScope): ComposerSubmissionAttempt[];
   ownsAttachment(attachment: ComposerAttachment): boolean;

@@ -12,6 +12,7 @@ export type CompiledPluginCapability = Readonly<{
   execute: ToolImplementation;
   adapter?: ToolCallAdapter;
   prepareRequest?: ToolModuleRequestPreparation;
+  discoverCapabilities?: import("../../capabilities/tool-request-discovery.js").ToolCapabilityDiscovery;
 }>;
 
 export type CompiledRuntimePlugin = Readonly<{

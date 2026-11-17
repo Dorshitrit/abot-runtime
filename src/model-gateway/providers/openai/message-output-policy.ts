@@ -5,7 +5,7 @@ export function requiresSingleMessageOutput(
   request: ModelGatewayRequest,
   payload: Record<string, unknown>,
 ): boolean {
-  if (request.modelStep === "tool_payload.raw") return true;
+  if (request.modelStep === "tool_payload.raw" || request.modelStep === "execution.file_payload.raw") return true;
   return hasStructuredTextFormat(payload);
 }
 

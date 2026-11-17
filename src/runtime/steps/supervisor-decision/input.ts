@@ -210,7 +210,7 @@ export function buildSupervisorDecisionInput(
       workerCapabilityAffordances,
       availableWorkerCapabilityCatalog,
     }),
-    ...buildSupervisorMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+    ...buildSupervisorMemoryAvailabilityInstructions(request.longTermMemory),
     ...buildSparkConversationInstructions(request.sessionKind),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(

@@ -4,6 +4,7 @@ import {
   selectMalformedConfigForRepair,
 } from "./raw-config-repair.js";
 import { textOf } from "../../lib/text-format.js";
+import { modelParameterInputDraftEntries } from "./model-parameter-input-drafts.js";
 import {
   cloneConfig,
   formattedConfig,
@@ -113,7 +114,7 @@ export function createConfigWorkspaceMutations({
   function configDraftFingerprint() {
     return JSON.stringify(configFileEntries().map((file) => {
       const key = configFileKey(file);
-      return [key, file.config, state.rawDraftsByKey.get(key), state.baselinesByKey.get(key), state.appliedJsonRepairKeys.has(key)];
+      return [key, file.config, state.rawDraftsByKey.get(key), state.baselinesByKey.get(key), state.appliedJsonRepairKeys.has(key), modelParameterInputDraftEntries(file.config)];
     }));
   }
 

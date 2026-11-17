@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 // @ts-expect-error Browser-only view.
 import { createConversationView } from "../../web-ui/app/components/conversation-view.js";
 // @ts-expect-error Browser-only presentation.
-import { sparkConversationMessages, sparkWorkingStatus } from "../../web-ui/app/lib/spark-chat-presentation.js";
+import { sparkConversationMessages } from "../../web-ui/app/lib/spark-chat-presentation.js";
 // @ts-expect-error Browser-only presentation.
 import { createSparkChatResults } from "../../web-ui/app/components/spark-chat/results.js";
 import { createToolApprovalCard } from "../../web-ui/app/components/tool-approval-card.js";
@@ -32,20 +32,21 @@ function fixture(outside = true) {
     createActivityView: outside ? createSparkChatResults : () => ({ createNode: () => null, reset() {} }),
     copyText: vi.fn(), notify: vi.fn(), scrollBehavior: { afterRender() {} },
     showContextWindow: false,
-    ...(outside ? { statusPlacement: "outside", statusPresentation: sparkWorkingStatus } : {}),
+    ...(outside ? { statusPlacement: "outside" } : {}),
   });
   const render = () => { view.render(); return dom.messagesList.querySelector(".message-row")!; };
   return { dom, state, messages, view, render, approval, onDecision };
 }
 
 describe("SPARK working status placement", () => {
-  test("hides technical status and empty streaming placeholders while preserving updates and final text", () => {
+  test("shows working shimmer outside empty streaming bubbles while preserving updates and final text", () => {
     const f = fixture();
     let row = f.render();
     const status = row.querySelector(".conversation-status")!;
     expect(status.parentElement).toBe(row);
-    expect(status.hidden).toBe(true);
-    expect(status.textContent).toBe("");
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe("Working");
+    expect(status.classList.contains("is-animated")).toBe(true);
     expect(row.querySelector(".message-bubble")!.hidden).toBe(true);
 
     f.messages.push({
@@ -62,17 +63,17 @@ describe("SPARK working status placement", () => {
     expect(row.querySelector(".message-bubble")!.hidden).toBe(false);
     expect(row.textContent).toContain("Here is the first part.");
     expect(row.querySelector(".conversation-status")!.parentElement).toBe(row);
-    expect(row.querySelector(".conversation-status")!.hidden).toBe(true);
+    expect(row.querySelector(".conversation-status")!.hidden).toBe(false);
     f.messages[0]!.streaming = false;
     row = f.render();
     expect(row.querySelector(".conversation-status")).toBeNull();
     expect(row.querySelector(".message-bubble")!.hidden).toBe(false);
   });
 
-  test("hides file and technical connection events while keeping actionable approval separate", () => {
+  test("pauses shimmer for reconnect and approval then resumes without changing the separate approval controls", () => {
     const f = fixture(); f.state.approval = true;
     f.state.events.push({
-      requestId: "r", name: "tool.completed", executionId: "e", tool: "write_file", ok: true,
+      requestId: "r", name: "tool.completed", executionId: "completed-file", tool: "write_file", ok: true,
       meta: { fileOutput: { version: 1, location: "agent_work", rootId: `sha256:${"a".repeat(64)}`, relativePath: "notes.txt", logicalPath: "notes.txt", operation: "created" } },
     });
     f.messages.push({
@@ -85,15 +86,24 @@ describe("SPARK working status placement", () => {
     expect(f.dom.messagesList.querySelector(".message-approval-presentation")).toBeNull();
     expect(f.dom.messagesList.querySelector(".approval-message-row")).toBe(f.approval);
     f.state.connected = false; f.view.renderActivityStatus();
-    expect(row.querySelector(".conversation-status")!.hidden).toBe(true);
-    expect(row.querySelector(".conversation-status")!.textContent).toBe("");
+    const status = row.querySelector(".conversation-status")!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe("Reconnecting");
+    expect(status.classList.contains("is-animated")).toBe(false);
     f.state.connected = true;
     f.state.events.push({ requestId: "r", name: "tool.approval.required", executionId: "e", tool: "write_file", eventSequence: 1 });
     f.view.renderActivityStatus();
-    expect(row.querySelector(".conversation-status")!.hidden).toBe(true);
-    expect(row.querySelector(".conversation-status")!.textContent).toBe("");
+    expect(row.querySelector(".conversation-status")).toBe(status);
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe("Waiting for approval");
+    expect(status.classList.contains("is-animated")).toBe(false);
     f.approval.querySelector(".approve")!.dispatch("click");
     expect(f.onDecision).toHaveBeenCalledExactlyOnceWith("approval-1", true);
+    f.state.events.push({ requestId: "r", name: "tool.started", executionId: "e", tool: "write_file", eventSequence: 2 });
+    f.view.renderActivityStatus();
+    expect(row.querySelector(".conversation-status")).toBe(status);
+    expect(status.textContent).toBe("Running tool");
+    expect(status.classList.contains("is-animated")).toBe(true);
   });
 
   test("ordinary conversations retain their in-bubble status and empty streaming bubble", () => {

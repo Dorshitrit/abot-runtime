@@ -26,7 +26,7 @@ export function resolveKnownFailurePhrasing(error: unknown): DegradedFinalizatio
   if (hasWorkingDirectoryFailure) {
     return {
       failureNotice: "ABot could not use the working directory selected by the model.",
-      nextStep: "Select an available project folder, or add the folder in Projects, then try again.",
+      nextStep: "Try again. If you specify a folder, use a path relative to the current work folder.",
     };
   }
   return {

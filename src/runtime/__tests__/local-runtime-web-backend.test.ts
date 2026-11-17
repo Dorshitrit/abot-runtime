@@ -503,7 +503,7 @@ describe("local runtime web backend", () => {
     },
   );
 
-  test("surfaces malformed and invalid existing runtime configs as errors", async () => {
+  test("offers file recovery for malformed JSON while retaining schema errors", async () => {
     const backend = new LocalRuntimeWebBackend({
       rootDir,
       defaultEnvironmentId: "prod",
@@ -538,10 +538,10 @@ describe("local runtime web backend", () => {
       unknown
     >;
 
-    expect(malformedResponse.status).toBe(500);
+    expect(malformedResponse.status).toBe(200);
     expect(malformedPayload).toMatchObject({
-      ok: false,
-      error: "local_runtime_backend_error",
+      ok: true, defaultProfileId: "", profiles: [],
+      availability: { status: "setup_required", code: "runtime_configuration_required", recovery: "configuration_file" },
     });
     expect(invalidResponse.status).toBe(500);
     expect(invalidPayload).toMatchObject({
@@ -549,11 +549,11 @@ describe("local runtime web backend", () => {
       error: "local_runtime_backend_error",
       message: expect.stringContaining("models must be an object"),
     });
-    expect(malformedPayload).not.toHaveProperty("availability");
+    expect(malformedPayload).toHaveProperty("availability.message", expect.stringContaining("runtime.config.json: Invalid JSON syntax"));
     expect(invalidPayload).not.toHaveProperty("availability");
   });
 
-  test("onboards an empty config object but rejects empty config bytes", async () => {
+  test("onboards an empty config object but offers file recovery for empty bytes", async () => {
     const backend = new LocalRuntimeWebBackend({
       rootDir,
       defaultEnvironmentId: "prod",
@@ -584,16 +584,16 @@ describe("local runtime web backend", () => {
 
     expect(emptyObjectResponse.status).toBe(200);
     expect(emptyObjectPayload).toMatchObject({
-      ok: true,
-      profiles: [],
+      ok: true, profiles: [],
       availability: { status: "setup_required" },
     });
-    expect(emptyBytesResponse.status).toBe(500);
+    expect(emptyObjectPayload).not.toHaveProperty("availability.recovery");
+    expect(emptyBytesResponse.status).toBe(200);
     expect(emptyBytesPayload).toMatchObject({
-      ok: false,
-      error: "local_runtime_backend_error",
+      ok: true, defaultProfileId: "", profiles: [],
+      availability: { status: "setup_required", code: "runtime_configuration_required", recovery: "configuration_file" },
     });
-    expect(emptyBytesPayload).not.toHaveProperty("availability");
+    expect(emptyBytesPayload).toHaveProperty("availability.message", expect.stringContaining("runtime.config.json: Unexpected end of JSON input"));
   });
 
   test("reports image support using the effective chat model policy", async () => {

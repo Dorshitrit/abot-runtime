@@ -3,17 +3,9 @@ import {
   type RuntimeModelPluginConfig,
 } from "./model-plugin-config.js";
 import { isRecord } from "./utils.js";
-
-export const REQUEST_EXECUTION_POLICY_IDS = [
-  "supervisor-worker-v1",
-  "execution-agent-v1",
-] as const;
-
-export type RequestExecutionPolicyId =
-  (typeof REQUEST_EXECUTION_POLICY_IDS)[number];
-
-export const DEFAULT_REQUEST_EXECUTION_POLICY_ID: RequestExecutionPolicyId =
-  "supervisor-worker-v1";
+import { isRequestExecutionPolicyId, type RequestExecutionPolicyId } from "../../shared/request-execution-policy.js";
+export { REQUEST_EXECUTION_POLICY_IDS, DEFAULT_REQUEST_EXECUTION_POLICY_ID,
+  isRequestExecutionPolicyId, type RequestExecutionPolicyId } from "../../shared/request-execution-policy.js";
 
 export type RuntimeModelExecutionPolicy = Readonly<{
   policy?: RequestExecutionPolicyId;
@@ -30,12 +22,6 @@ export type RequestExecutionPolicySelection = Readonly<{
   plugins?: RuntimeModelPluginConfig;
   source: "model_profile" | "default";
 }>;
-
-export function isRequestExecutionPolicyId(
-  value: unknown,
-): value is RequestExecutionPolicyId {
-  return REQUEST_EXECUTION_POLICY_IDS.some((policyId) => policyId === value);
-}
 
 export function buildRuntimeModelExecutionPolicy(
   source: Record<string, unknown>,

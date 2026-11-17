@@ -24,6 +24,7 @@ import { createWorkspaceChangeNotifier } from "./workspace-notifications.js";
 import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
 import { attachApprovalRequest } from "./approval-request-attachment.js";
 import { RequestAdmissionResponse } from "./request-admission-response.js";
+import { RequestActivity } from "./request-activity.js";
 import {
   publicSparkChatAdmissionFailure,
   resolveSparkChatRequest,
@@ -41,6 +42,7 @@ function createRequestId(): string {
 
 export class LocalRequestExecution {
   private readonly activeRequests = new Map<string, ActiveRequest>();
+  private readonly activity = new RequestActivity();
   readonly toolApprovals: PendingToolApprovals;
 
   constructor(private readonly realtime: RealtimeClientHub) {
@@ -91,10 +93,12 @@ export class LocalRequestExecution {
         ? { ...payload, requestOrigin: "schedule" }
         : payload;
     if (payload.sessionDeleted !== true) this.publish(outbound);
+    else this.activity.observe(outbound, this.activeRequests.get(getString(payload.requestId)));
     if (isTerminal) {
       const requestId = getString(payload.requestId);
       const active = this.activeRequests.get(requestId);
       const removed = this.activeRequests.delete(requestId);
+      this.activity.release(active);
       traceWebProjection(
         "projection.removed",
         requestId,
@@ -202,6 +206,7 @@ export class LocalRequestExecution {
       .finally(() => {
         const active = this.activeRequests.get(requestId);
         const removed = this.activeRequests.delete(requestId);
+        this.activity.release(active);
         traceWebProjection(
           "projection.removed",
           requestId,
@@ -252,6 +257,10 @@ export class LocalRequestExecution {
       lastEventName: request.lastEventName,
       idleMs: Date.now() - request.lastEventAt,
     }));
+  }
+
+  activityDetails(): JsonObject[] {
+    return this.activity.details(this.healthDetails());
   }
 
   async handleSteer(
@@ -337,6 +346,7 @@ export class LocalRequestExecution {
     events: readonly JsonObject[],
   ): Promise<void> {
     return attachApprovalRequest({
+      onRelease: (request) => this.activity.release(request),
       environmentId,
       environment,
       pending,
@@ -393,6 +403,7 @@ export class LocalRequestExecution {
   private publish(payload: JsonObject): void {
     const requestId = getString(payload.requestId);
     const active = requestId ? this.activeRequests.get(requestId) : undefined;
+    this.activity.observe(payload, active);
     if (active) {
       active.lastEventAt = Date.now();
       active.lastEventName =

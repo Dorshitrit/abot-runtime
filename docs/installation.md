@@ -40,7 +40,7 @@ the command and Ollama share a host/network namespace. If the runtime reaches
 Ollama at another origin, pass it during initialization:
 
 ```bash
-npm run init -- --provider ollama --model <model-id> --base-url http://<ollama-host>:11434
+npx abot init --provider ollama --model <model-id> --base-url http://<ollama-host>:11434
 ```
 
 The origin is written to `models.providers.ollama.baseUrl` in the generated
@@ -83,8 +83,8 @@ Continue through the optional **Embedding** step to configure semantic memory,
 or choose to set it up later. **Plugins** starts with all tools selected for a
 fresh installation; turn off any plugin or individual tool you do not want.
 Choose **Finish setup** to apply the selections. Successful activation opens Home
-automatically. If **Start chatting** remains visible, use it to check model
-availability again.
+automatically. If **Start chatting** remains visible, use it to reload the
+configured model profiles.
 Complete initial setup on Home before opening other workspaces. Spark appears
 when setup is ready; Computer access remains available throughout setup.
 Saving chat connection details does not make a paid model request. Explicitly

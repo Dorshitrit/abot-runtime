@@ -15,8 +15,12 @@ export type ToolRequestState = Readonly<{
   ): void;
 }>;
 export type ToolRequestPreparationContext = Readonly<{
+  /** Immutable owner of request-local references, including approval resume. */
+  requestId?: string;
   /** Frozen request owner, shared by the root and every delegated call. */
   rootContractId?: string;
+  /** Frozen model-selected route; absent for consumers without an EA/SUPER request. */
+  executionPolicy?: string;
   /** Same immutable request roots used by execution, including approval resume. */
   runtimePathResolver?: RuntimeToolPathResolver;
   requestState?: ToolRequestState;

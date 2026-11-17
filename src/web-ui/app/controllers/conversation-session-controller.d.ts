@@ -89,6 +89,8 @@ export interface ConversationSessionControllerOptions {
   selectedEnvironmentId(): string;
   applyConversationChrome(): void;
   applyModelSelection(): void;
+  onSessionSnapshot?(payload: Record<string, unknown>, scope: ConversationSessionScope & { viewVersion: number }): void;
+  onResetRunSelection?(): void;
   renderSessions(): void;
   renderMessages(): void;
   updateComposerSendState(): void;

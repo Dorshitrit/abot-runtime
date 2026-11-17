@@ -15,7 +15,7 @@ export function createComposerFeature({
   composerActions, selectedModelSupportsImageInput, isComposerAvailable,
   getSubmissionBlock, onSubmissionBlocked, isVisible = () => true,
   renderSessions, renderMessages, applyConversationChrome, setMessageStatus, recordControlEvent,
-  drafts = createComposerDrafts(), onChange = () => {},
+  drafts = createComposerDrafts(), onChange = () => {}, onSubmissionAccepted = () => {},
   confirmReview = confirmDialog,
 }) {
   const surfaces = [];
@@ -33,7 +33,16 @@ export function createComposerFeature({
     for (const surface of surfaces) surface.render();
     onChange();
   }
-  const lifecycle = createComposerSubmissionLifecycle({ drafts, onChange: changed });
+  const lifecycle = createComposerSubmissionLifecycle({ drafts, onChange: (attempt) => {
+    if (attempt?.phase === "accepted") {
+      try { onSubmissionAccepted(attempt); }
+      catch {
+        recordControlEvent({ type: "control", name: "Composer update failed", tone: "failed",
+          summary: "The message was accepted, but its composer settings could not be updated." });
+      }
+    }
+    changed();
+  } });
   Object.defineProperty(state, "composerSending", { configurable: true, get: () => lifecycle.hasPendingScope(getDraft().scope) });
   Object.defineProperty(state, "pendingAttachments", { configurable: true, get: () => getDraft().attachments });
   const requests = createChatRequestController({ client, conversationView, conversationSession,
@@ -87,9 +96,11 @@ export function createComposerFeature({
       draft.text = surfaceDom.composerInput.value.trim();
       const configured = getSettings();
       const settings = { ...configured, ...(configured.reasoningPreference ? { reasoningPreference: { ...configured.reasoningPreference } } : {}) };
+      const commandRequested = commands.handles(draft.text);
+      if (!commandRequested) attachments.assertCompatibleForSubmission();
       if (!draft.scope.sessionId) { ensureBoundSession(); draft = currentDraft(); }
       const activeRequestId = allowsActiveRequest ? state.activeRequestId : "";
-      if (commands.handles(draft.text)) return commands.submit({ draft, settings, activeRequestId, prepareSend });
+      if (commandRequested) return commands.submit({ draft, settings, activeRequestId, prepareSend });
       return lifecycle.submit({ draft, action, settings,
         prepare: async (attempt) => {
           if (attempt.payload.release && activeRequestId)

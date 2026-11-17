@@ -31,6 +31,8 @@ export type RegisteredToolNormalInvocationHandle = Readonly<{
 }>;
 
 export type RegisteredToolNormalInvocationProjection = Readonly<{
+  preparePayload?: (controls: Readonly<Record<string, unknown>>) =>
+    Promise<import("../../../../capabilities/tool-payload-preparation.js").ToolPreparedPayload>;
   handle: RegisteredToolNormalInvocationHandle;
   operation: ToolNormalInvocationOperation;
   runtimePathBindings?: readonly Readonly<{

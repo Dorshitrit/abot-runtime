@@ -2,6 +2,7 @@ import type { RuntimeMaintenanceClient } from "./runtime-web-client/runtime-main
 import type { ChatgptAccountRequests } from "./runtime-web-client/chatgpt-accounts.js";
 import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-embedding-connection-input.js";
 import type { StepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
+import type { ModelParameterRequests } from "./runtime-web-client/model-parameters.js";
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import type { SparkHomeRequests } from "./runtime-web-client/spark-home.js";
@@ -76,7 +77,7 @@ export type RuntimeAvailability =
       status: "setup_required";
       code: "runtime_configuration_required";
       message: string;
-      recovery?: "configuration";
+      recovery?: "configuration" | "configuration_file";
     };
 
 export type RuntimeModelCatalogResponse = Record<string, unknown> & {
@@ -132,6 +133,7 @@ export declare function createRuntimeWebClient(options: {
   loadProjectChangeDiff: ProjectChangesClient["loadProjectChangeDiff"];
   supportsProjects: ProjectRequests["supportsProjects"];
   inspectStepTimeout: StepTimeoutRequests["inspectStepTimeout"];
+  previewModelParameters: ModelParameterRequests["previewModelParameters"];
   increaseStepTimeout: StepTimeoutRequests["increaseStepTimeout"];
   listProjects: ProjectRequests["listProjects"];
   browseProjectFolders: ProjectRequests["browseProjectFolders"];

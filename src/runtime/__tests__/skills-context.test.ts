@@ -20,13 +20,19 @@ const catalog: RuntimeSkillCatalog = {
 describe("plugin skills context", () => {
   test("loads full content only from the selected action mapping", async () => {
     const provider = createSkillsContextProvider(catalog);
+    const before = structuredClone(catalog);
+    const context = await provider.getActionContext("lookup_capability");
 
-    await expect(
-      provider.getActionContext("lookup_capability"),
-    ).resolves.toContain("Use the selected lookup capability.");
-    await expect(
-      provider.getActionContext("lookup_capability"),
-    ).resolves.not.toContain("Use the selected mutation capability.");
+    expect(context).toContain(catalog.skills.lookup_guidance);
+    expect(context).toContain(catalog.skills.shared_guidance);
+    expect(context.indexOf(catalog.skills.lookup_guidance!)).toBeLessThan(
+      context.indexOf(catalog.skills.shared_guidance!),
+    );
+    expect(context).not.toContain(catalog.skills.mutation_guidance);
+    for (const internalId of Object.keys(catalog.skills)) {
+      expect(context).not.toContain(internalId);
+    }
+    expect(catalog).toEqual(before);
     await expect(provider.getActionContext("unknown_capability")).resolves.toBe(
       "",
     );
@@ -41,7 +47,22 @@ describe("plugin skills context", () => {
     });
 
     const context = await provider.getActionContext("lookup_capability");
-    expect(context.match(/### SKILL: shared_guidance/g)).toHaveLength(1);
+    expect(context.split(catalog.skills.shared_guidance!)).toHaveLength(2);
+    expect(context).not.toContain("shared_guidance");
+  });
+
+  test("preserves instruction bytes and skips only missing or empty documents", async () => {
+    const body = "# Tool instructions\n\nKeep  internal spacing.\n\n- Use `name: value` literally.\n";
+    const provider = createSkillsContextProvider({
+      skills: { internal_document: body, empty_document: " \n\t" },
+      actionSkills: {
+        selected: ["missing_document", "internal_document", "empty_document"],
+        empty: ["missing_document", "empty_document"],
+      },
+    });
+
+    expect(await provider.getActionContext("selected")).toContain(body.trim());
+    expect(await provider.getActionContext("empty")).toBe("");
   });
 
   test("defaults to an empty plugin catalog", async () => {

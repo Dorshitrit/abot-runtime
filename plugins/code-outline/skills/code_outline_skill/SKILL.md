@@ -1,4 +1,4 @@
-# Code Outline Skill
+# Code Outline Tool Instructions
 
 Use `inspect_code_outline` when an unfamiliar source file's structure must be
 understood before a focused read or edit. Prefer it over repeatedly reading a

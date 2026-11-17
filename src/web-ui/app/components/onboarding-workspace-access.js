@@ -1,3 +1,5 @@
+import { requiresConfigurationRecovery } from "./runtime-setup/configuration-recovery.js";
+
 const navigation = Object.freeze({
   home: "homeWorkspaceButton", chat: "chatWorkspaceButton", learning: "learningWorkspaceButton",
   resources: "resourcesWorkspaceButton",
@@ -7,7 +9,7 @@ const navigation = Object.freeze({
 
 function requiresInitialSetup(availability, previous, observed) {
   if (!availability) return false;
-  if (availability.recovery === "configuration") return false;
+  if (requiresConfigurationRecovery(availability)) return false;
   if (availability.status === "ready") return false;
   if (["loading", "setup_required"].includes(availability.status)) return true;
   // A refresh or network failure does not turn an already configured app into onboarding.

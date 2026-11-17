@@ -12,6 +12,7 @@ import type { SystemHostConnection } from "../host-dispatch.js";
 import { createComputerHandlers, COMPUTER_TOOLS } from "./handlers.js";
 import { RequestComputers } from "./request-computers.js";
 import { supportsRuntimeDesktopTools, unboundComputerFailure } from "./runtime-platform.js";
+import { computerActionGuidance } from "./action-guidance.js";
 
 /** Load-time placeholders cannot allocate a desktop outside request ownership. */
 export function unboundComputerHandlers(): Record<string, ToolImplementation> {
@@ -53,6 +54,7 @@ export function prepareComputerModules(
       ...module.normalInvocation,
       operations: module.normalInvocation.operations.map((operation) => ({
         ...operation,
+        summary: operation.summary + computerActionGuidance(operation.operationId, routes),
         input: {
           ...operation.input,
           properties: {

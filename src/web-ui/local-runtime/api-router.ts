@@ -1,4 +1,5 @@
 import { InformationBasketRoutes } from "./information-basket-routes.js";
+import { handleModelParameterPreviewRoute } from "./model-parameter-routes.js";
 import { handleChatCommandCatalog } from "./chat-command-catalog.js";
 import { PersonalSkillManagementRoutes } from "./skill-management-routes.js";
 import { StepTimeoutRoutes } from "./step-timeout-routes.js";
@@ -214,6 +215,7 @@ export class LocalRuntimeApiRouter {
         rootDir: options.rootDir ?? process.cwd(),
         providerAdapters: options.providerAdapters,
         configPath: options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+        backup: false,
       }),
     );
     this.informationBasket = new InformationBasketRoutes(
@@ -266,6 +268,10 @@ export class LocalRuntimeApiRouter {
     if (await this.stepTimeouts.handle({ method, route, request: req, response: res, url })) return;
     if (await this.conversationFiles.handle(route, req, res)) return;
     if (await this.projectChanges.handle(route, req, res)) return;
+    if (await handleModelParameterPreviewRoute({ method, route, request: req, response: res,
+      rootDir: this.options.rootDir ?? process.cwd(),
+      configPath: this.options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+    })) return;
 
     if (
       await this.modelSetup.handle({

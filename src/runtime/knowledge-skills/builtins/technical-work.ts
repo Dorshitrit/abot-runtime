@@ -4,7 +4,7 @@ export const TECHNICAL_WORK_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "technical-work",
   name: "Coding and Development",
   description:
-    "Build, modify, debug and verify software, scripts and configuration.",
+    "Use for building, modifying, debugging or verifying software, scripts or configuration. Reading, summarizing or saving ordinary content alone does not qualify.",
   content: `# Coding and Development
 
 Use this guidance for building, changing, debugging or verifying software, scripts and configuration. Apply only what the current request or assigned task needs. It adds no work, permissions or tool availability.

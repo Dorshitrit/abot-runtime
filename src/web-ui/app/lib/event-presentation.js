@@ -324,6 +324,7 @@ export function isLowValueActivityEvent(message) {
     name === "request_progress" ||
     name === "session.title.updated" ||
     name === "request.lifecycle.changed" ||
+    name === "request.model.selected" ||
     name === "planning.started" ||
     name === "thinking.started" ||
     name === "thinking.delta" ||

@@ -1,4 +1,4 @@
-# Local Search Skill
+# Local Search Tool Instructions
 
 Use `local_search` when the relevant file or exact content location is not yet
 known. Prefer this bounded search over broad directory walks or repeated file

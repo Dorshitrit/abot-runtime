@@ -30,7 +30,7 @@ describe("llama.cpp CLI setup", () => {
       .toEqual({ type: "llamacpp", baseUrl: "http://model-host:8080", apiKeyEnv: "MY_LLAMA_KEY" });
     expect(await json("local/models/default.config.json")).toMatchObject({
       provider: "llamacpp", model: "gemma", supportsThinking: true, contextWindowTokens: 32768,
-      generation: { temperature: 0, reasoningBudget: { mode: "tokens", tokens } },
+      generation: { reasoningBudget: { mode: "tokens", tokens } },
       capabilities: { inputModalities: ["text"] },
     });
   });
@@ -46,7 +46,7 @@ describe("llama.cpp CLI setup", () => {
     expect(config.models.profiles.default).toBeDefined();
     expect(await json("local/request-runner.config.json")).toEqual(before);
     expect((await json("local/models/gemma.config.json")).generation).toMatchObject({
-      temperature: 0, reasoningBudget: { mode: "server-default" },
+      reasoningBudget: { mode: "server-default" },
     });
     await expect(run("add-runtime-model.ts", [
       "--provider", "llamacpp", "--model", "gemma", "--profile", "conflict",

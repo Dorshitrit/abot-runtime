@@ -4,14 +4,15 @@ import {
 } from "../../model-gateway/invocation-policy.js";
 import type { ModelGatewayPolicyConfig } from "../../model-gateway/types.js";
 import { MODEL_STEPS, type ModelStep } from "../../shared/model-steps.js";
-import { loadRequestRunnerConfig } from "../config/runner/loader.js";
-import { createRequestModelPolicy } from "../config/runner/model-policy.js";
+import { supportsRequestExecutionPolicy } from "../../shared/request-execution-policy.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import { resolveConfiguredStepInstructionMetadata } from "../config/runner/step-instructions.js";
-import { resolveModelSelection } from "../model/model-selection.js";
 import { resolveModelStepTimeout } from "../model/model-step-timeout-policy.js";
 import type { RuntimeConfig } from "../ports.js";
-import type { AgentNode } from "./definition-contracts.js";
+import type { AgentNode, OperationRef } from "./definition-contracts.js";
+import type { AutomationCatalogOperation } from "./catalog.js";
+import { createAutomationAgentModelSelection } from "./agent-model-selection.js";
+import { sameOperation } from "./permission-grants.js";
 import type { RequestExecutionPolicyId } from "../config/model-execution-policy.js";
 
 // Root and delegated contracts in request/role-executor-composition.ts own these paths.
@@ -28,7 +29,8 @@ function reachableModelSteps(policy: RequestExecutionPolicyId, hasTools: boolean
   // Both policies can compact or finalize a failed request. Tool helpers need an allowed operation.
   // Passive learning is a separate background request, never part of an automation agent attempt.
   return [...POLICY_MODEL_STEPS[policy], MODEL_STEPS.CONTEXT_COMPACTION, MODEL_STEPS.DEGRADED_FINALIZATION,
-    ...(hasTools ? [MODEL_STEPS.CAPABILITY_CONTROLS, MODEL_STEPS.TOOL_PAYLOAD_RAW] : [])];
+    ...(hasTools ? [MODEL_STEPS.CAPABILITY_CONTROLS, MODEL_STEPS.TOOL_PAYLOAD_RAW] : []),
+    ...(hasTools && policy === "execution-agent-v1" ? [MODEL_STEPS.EXECUTION_FILE_PAYLOAD_RAW] : [])];
 }
 
 function configuredInstructionDependency(runnerConfig: RequestRunnerConfig | undefined, modelStep: ModelStep) {
@@ -66,34 +68,47 @@ function invocationDependency(input: {
   }
 }
 
+function projectUnavailableAgentOperations(
+  references: readonly OperationRef[], operations: readonly AutomationCatalogOperation[],
+  policy: RequestExecutionPolicyId,
+): readonly string[] {
+  const unavailable = new Set<string>();
+  for (const reference of references) {
+    const operation = operations.find((candidate) => sameOperation(candidate, reference));
+    // Missing contracts already invalidate the operation dependency itself.
+    if (!operation) continue;
+    if (supportsRequestExecutionPolicy(operation.executionPolicies, policy)) continue;
+    unavailable.add(JSON.stringify([reference.toolName, reference.operationId, reference.contractVersion]));
+  }
+  return [...unavailable].sort();
+}
+
 /** Projects canonical routing outcomes, never an unrelated model catalog. */
-export function projectAutomationModelDependencies(config: RuntimeConfig, nodes: readonly AgentNode[]) {
+export function projectAutomationModelDependencies(config: RuntimeConfig, nodes: readonly AgentNode[],
+  operations: readonly AutomationCatalogOperation[] = []) {
   if (nodes.length === 0) return undefined;
-  const configPath = config.requestRunner?.configPath;
-  const runner = configPath ? loadRequestRunnerConfig({ configPath }) : undefined;
-  const modelPolicy = runner
-    ? createRequestModelPolicy({ platformPolicy: config.models, runnerConfig: runner })
-    : config.models;
-  const selected = new Map<string, { node: AgentNode; hasTools: boolean }>();
+  const models = createAutomationAgentModelSelection(config);
+  const { runnerConfig: runner, modelPolicy } = models;
+  const selected = new Map<string, { node: AgentNode; tools: OperationRef[] }>();
   for (const node of nodes) {
     const key = JSON.stringify(node.reasoningPreference ? [node.modelProfileId, node.agentMode, node.reasoningPreference] : [node.modelProfileId, node.agentMode]);
-    const hasTools = node.tools.length > 0 || selected.get(key)?.hasTools === true;
-    selected.set(key, { node, hasTools });
+    const tools = [...(selected.get(key)?.tools ?? []), ...node.tools.map((tool) => tool.operation)];
+    selected.set(key, { node, tools });
   }
   return {
     modelGatewayUrl: config.modelGatewayUrl,
     // Every Agent invocation uses these canonical admission/compaction reserves.
     contextBudget: runner?.context,
-    agents: [...selected.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, { node, hasTools }]) => {
-      const request = { agentMode: node.agentMode,
-        modelPreference: { profileId: node.modelProfileId, scope: "all" },
-        modelExecutionPolicies: config.modelExecutionPolicies };
-      const execution = resolveModelSelection({ ...request, modelPolicy }).execution;
+    agents: [...selected.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, { node, tools }]) => {
+      const execution = models.execution(node).execution;
+      const unavailableOperations = projectUnavailableAgentOperations(tools, operations, execution.policy);
       return {
         key,
-        admission: resolveModelSelection({ ...request, modelPolicy: config.models }).execution,
+        admission: models.admission(node).execution,
         execution,
-        invocations: reachableModelSteps(execution.policy, hasTools).map((modelStep) => invocationDependency({
+        // Preserve existing publications when their effective tool availability is unchanged.
+        ...(unavailableOperations.length > 0 ? { unavailableOperations } : {}),
+        invocations: reachableModelSteps(execution.policy, tools.length > 0).map((modelStep) => invocationDependency({
           node, modelStep, modelPolicy, runnerConfig: runner,
         })),
       };

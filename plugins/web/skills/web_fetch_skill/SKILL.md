@@ -1,4 +1,4 @@
-# Web Fetch Skill
+# Web Fetch Tool Instructions
 
 - Read page content with `web_fetch` from exact public HTTP or HTTPS URLs
   supplied by the user or found in search results or retrieved content.

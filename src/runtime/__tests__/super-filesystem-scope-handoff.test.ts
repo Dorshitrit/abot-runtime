@@ -38,7 +38,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
     {
       step: "supervisor.decision",
       format: "supervisor_working_directory",
-      output: JSON.stringify({ workingDirectory: "LUNA" }),
+      output: JSON.stringify({ workingDirectory: join(root, "LUNA") }),
     },
     {
       step: "planner.decision",

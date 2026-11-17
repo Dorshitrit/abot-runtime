@@ -3,7 +3,7 @@ import type { KnowledgeSkillDocument } from "../store.js";
 export const WHAT_CAN_I_DO_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "what-can-i-do",
   name: "What Can I Do?",
-  description: "ABot abilities, tools and plugins overview; not requests to perform a task.",
+  description: "Use when the user asks what ABot can do or which tools and plugins it supports. A request to perform a specific task does not by itself qualify.",
   content: `# What Can I Do?
 
 Explain what ABot can help the user accomplish, in the user's language. Give a short, practical overview suited to their question. Include useful actions as well as conversational help; a generic description of a language model misses ABot's purpose.
@@ -14,7 +14,7 @@ ABot combines writing, explanation, translation, summarization and coding assist
 - Research public websites and recent news, compare sources and prepare a sourced summary.
 - Read, search, create and edit files within the configured workspace; save useful results as documents or project files.
 - Inspect code and configuration, develop scripts, and run supported commands or checks.
-- Work with connected desktop applications through Desktop GUI Interaction, with explicit approval for the target and task.
+- Work with connected desktop applications through Desktop GUI Interaction.
 - Schedule recurring tasks or build reusable automation drafts in ABot Studio.
 
 Choose a few relevant examples rather than reciting every area. Distinguish writing an explanation or draft from actually searching, saving, scheduling or operating an application.

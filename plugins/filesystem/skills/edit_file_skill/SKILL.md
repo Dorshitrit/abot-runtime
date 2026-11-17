@@ -1,4 +1,4 @@
-# Edit File Skill
+# Edit File Tool Instructions
 
 - Use `edit_file` for one coherent change to one existing file when the target path and requested result are known.
 - At capability selection, provide only the exact target in `selectionControls.path`; the runtime freezes it.

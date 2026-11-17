@@ -69,6 +69,20 @@ test("a verified session hint avoids unrelated transcripts and directory scans",
   expect(fs.readdir).not.toHaveBeenCalled();
 });
 
+test("replay past the terminal cursor retains only the published failure response alongside the diagnostic", async () => {
+  const saved = record("target");
+  const request = saved.requests![0]!;
+  request.status = "failed";
+  request.events[1]!.type = "failed";
+  request.events[1]!.payload = { error: "transport_code",
+    details: { stoppedResponse: "Check your connection.", internal: "private" } };
+  const { service } = await fixture([saved]);
+  const replay = await service.getRequestReplayById("request", 2, "target");
+  expect(replay?.events).toEqual([]);
+  expect(replay?.finalState).toEqual({ status: "failed", error: "transport_code",
+    completedAt: Date.parse(request.events[1]!.timestamp), details: { stoppedResponse: "Check your connection." } });
+});
+
 test("overlapping reads share raw I/O with independent cursors and returned payloads", async () => {
   const { directory, service } = await fixture();
   const path = join(directory, "target.json");

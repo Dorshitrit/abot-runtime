@@ -11,6 +11,8 @@ import { createConfigWorkspaceMutations } from "./config-workspace/workspace-mut
 import { createConfigWorkspacePersistence } from "./config-workspace/workspace-persistence.js";
 import { createConfigWorkspaceView } from "./config-workspace/workspace-view.js";
 import { configurationCategoryForWorkspace } from "../lib/configuration-pages.js";
+import { createModelParameterPreview } from "./config-workspace/model-parameter-preview.js";
+import { createModelParameterEdits } from "./config-workspace/model-parameter-edits.js";
 
 export {
   configValuesEqual,
@@ -24,6 +26,7 @@ export {
 export function createConfigWorkspace({
   dom,
   loadDashboard,
+  previewParameters,
   loadModelPlugins,
   saveFile,
   memorySetup,
@@ -142,7 +145,26 @@ export function createConfigWorkspace({
     syncDirtyPresentation: workspaceView.syncDirtyPresentation,
   });
 
+  const parameterPreview = createModelParameterPreview({
+    state, root: dom.configDashboard, previewParameters,
+    renderConfigDashboard: workspaceView.renderConfigDashboard,
+    reconcileDrafts: (modelId, presentation) => parameterEdits.reconcileDrafts(modelId, presentation),
+  });
+  const parameterEdits = createModelParameterEdits({
+    state,
+    findConfigFile: workspaceModel.findConfigFile,
+    mutateConfigFile: workspaceMutations.mutateConfigFile,
+    setConfigPathValue: workspaceModel.setConfigPathValue,
+    deleteConfigPathValue: workspaceModel.deleteConfigPathValue,
+    refreshPreview: parameterPreview.refresh,
+    invalidatePreview: parameterPreview.invalidate,
+    renderConfigDashboard: workspaceView.renderConfigDashboard,
+    setWorkspaceStatus: workspaceView.setWorkspaceStatus,
+    syncDirtyPresentation: workspaceView.syncDirtyPresentation,
+  });
+
   const workspacePersistence = createConfigWorkspacePersistence({
+    refreshParameterPreview: parameterPreview.refresh,
     state,
     dom,
     loadDashboard,
@@ -170,6 +192,9 @@ export function createConfigWorkspace({
   });
 
   const workspaceEvents = createConfigWorkspaceEvents({
+    parameterEdits,
+    invalidateParameterPreview: parameterPreview.invalidate,
+    refreshParameterPreview: parameterPreview.refresh,
     modelPluginViewState,
     onAddModel,
     onChatgptAccounts,

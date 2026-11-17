@@ -4,6 +4,64 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.4.0 - 2026-11-17
+
+ABot 2.4.0 adds dedicated Execution Agent file operations and model parameter
+profiles, restores conversation-specific model settings, and improves SYSTEM
+guidance, setup recovery and conversation feedback.
+
+### Added
+
+- Dedicated Execution Agent plain-text reads, file creation and edits bound to
+  an explicitly observed range, including UTF-8 byte windows and a default
+  120-line preview.
+- Model sampling and reasoning controls with explicit values, omission and
+  inheritance, capability-aware editing, optional recommendations and local
+  parameter profiles.
+- Conversation-list working indicators and Copy actions for user messages.
+- Optional executable-resolution metadata for discovered applications on
+  supported Windows, macOS and Linux execution hosts.
+
+### Changed
+
+- New model setup leaves unspecified sampling controls to the provider;
+  existing saved profiles retain their settings.
+- Increase EXEC command capacity from 8,192 to 24,576 characters, including
+  approval and activity presentation.
+- Clarify Skill applicability, preserve complete EA discovery descriptions,
+  and distinguish readable Skills from capability-provided instructions.
+- Provide SUPER with argument documentation for selected plugin invocations
+  and give SYSTEM capability-specific command, application and desktop guidance.
+
+### Fixed
+
+- Restore each conversation's recorded model and reasoning settings without
+  replacing explicit choices for the next message or the new-chat preference.
+- Preserve image attachments and drafts during passive model restoration,
+  and reject incompatible submissions with explicit feedback.
+- Recover existing configuration after setup errors, report malformed JSON
+  without exposing its contents, and distinguish verified Ollama embedding
+  models from unverified candidates.
+- Preserve valid project working directories through SUPER delegation.
+- Ground SUPER final-response guidance in current runtime state and settled
+  results when earlier recommendations conflict.
+- Improve resumed-approval activity, SPARK failure presentation, conversation
+  title fallbacks and feedback when no history is eligible for compaction.
+
+### Upgrade notes
+
+- Existing model settings remain readable and are not automatically migrated.
+  Recommendations require explicit inheritance or Apply recommended; applying
+  recommendations changes the editor draft until saved.
+- EA file-range references belong to their current request and file revision.
+  Read a fresh range after editing. Saved automations depending on the previous
+  EA read contract must be republished through the existing dependency check.
+- Request-bound EA capabilities can be granted to automation Agents but cannot
+  run as standalone automation Tool steps.
+- Optional application executable metadata requires an updated Companion on
+  Companion execution hosts. Existing compatible Companions continue without
+  that metadata; updating Runtime does not update the Windows Store package.
+
 ## 2.3.1 - 2026-11-14
 
 ### Added

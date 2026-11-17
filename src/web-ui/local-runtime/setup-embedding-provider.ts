@@ -121,8 +121,10 @@ export async function prepareSetupEmbeddingProvider(
   },
   input: SetupEmbeddingInput,
 ): Promise<{ providerId: string; savedProvider: SavedEmbeddingProvider }> {
-  const repository =
-    createFileLongTermMemoryOnboardingConfigRepository(options);
+  const repository = createFileLongTermMemoryOnboardingConfigRepository({
+    ...options,
+    backup: false,
+  });
   const snapshot = await repository.read();
   const providers = readProviderMap(snapshot.config.models);
   const llamaConnection =

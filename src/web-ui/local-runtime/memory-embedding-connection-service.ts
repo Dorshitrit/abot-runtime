@@ -33,6 +33,7 @@ export class MemoryEmbeddingConnectionService {
       const service = createLocalLongTermMemoryOnboardingService({
         ...options,
         providerAdapters: this.options.providerAdapters,
+        backup: false,
       });
       const current = await service.status();
       return await service.enable({

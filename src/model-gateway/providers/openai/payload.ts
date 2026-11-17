@@ -13,6 +13,7 @@ import {
 import { projectOpenAIFunctionOutput } from "./function-output.js";
 import type { ModelGatewayRequest } from "../../types.js";
 import { markOpenAIPromptCacheItem, normalizeOpenAIPromptCacheItem, resolveOpenAIPromptCacheBoundary } from "./prompt-cache.js";
+import { projectResolvedModelParameters } from "../parameter-projection.js";
 
 export type OpenAIPayloadBuildOptions = Readonly<{
   onFormatProjection?: (
@@ -141,12 +142,9 @@ export function buildOpenAIResponsesPayload(
   }
 
   const canUseSamplingControls =
-    !invocation.profile.supportsThinking ||
     reasoningEffort === undefined ||
     reasoningEffort === "none";
-  const shouldProjectOpenAIReasoning =
-    invocation.profile.supportsThinking &&
-    reasoningEffort !== undefined;
+  const shouldProjectOpenAIReasoning = reasoningEffort !== undefined;
 
   const projectedInput = resolveInputWithProviderInstructions(
     requestBody,
@@ -164,6 +162,11 @@ export function buildOpenAIResponsesPayload(
   }
   if (canUseSamplingControls && topP !== undefined) {
     payload.top_p = topP;
+  }
+  projectResolvedModelParameters(payload, invocation.profile.provider, invocation.parameters);
+  if (!invocation.parameters && !canUseSamplingControls) {
+    delete payload.temperature;
+    delete payload.top_p;
   }
   if (shouldProjectOpenAIReasoning) {
     payload.reasoning = { effort: reasoningEffort };
@@ -188,5 +191,6 @@ export function buildOpenAIInputTokenCountPayload(
   delete payload.temperature;
   delete payload.top_p;
   delete payload.prompt_cache_options;
+  delete payload.max_output_tokens;
   return payload;
 }

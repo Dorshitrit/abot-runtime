@@ -1,4 +1,4 @@
-# Project Orientation Skill
+# Project Orientation Tool Instructions
 
 Use `inspect_project` before changing an unfamiliar existing project when its
 structure, entrypoints, or package scripts are not yet known. Start with a flat

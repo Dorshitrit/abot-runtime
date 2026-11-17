@@ -13,6 +13,7 @@ import type {
 } from "./tool-permission-mode.js";
 
 import type { ModelStep } from "../shared/types.js";
+import type { RequestExecutionPolicyId } from "../shared/request-execution-policy.js";
 import type { RuntimeAttachmentKind } from "../shared/attachments.js";
 import type {
   ToolImageEvidence,
@@ -176,6 +177,10 @@ export type ToolRuntimePathBinding = Readonly<{
 
 export type ToolDefinition = {
   requiredPermissionMode?: ToolRequiredPermissionMode;
+  /** Manifest-declared request routes; omission supports every route. */
+  executionPolicies?: readonly RequestExecutionPolicyId[];
+  /** Execution requires a captured model request; discovery alone grants no authority. */
+  requiresRequestBinding?: true;
   name: string;
   /** Runtime-owned provenance used when presenting tools by plugin. */
   pluginName?: string;
@@ -336,6 +341,7 @@ export type ToolCallAdapterInput = {
 };
 
 export type ToolCallAdapter = {
+  preparePayload?: import("./tool-payload-preparation.js").ToolPayloadPreparation;
   normalizeCall?: (input: ToolCallAdapterInput) => ToolCall;
   validateCall?: (
     input: ToolCallAdapterInput,
@@ -364,6 +370,7 @@ export type ToolModuleDeclaration = ToolModuleDeclarationBase & {
   normalInvocation: ToolNormalInvocationContract;
   /** Shared callback identity groups already selected modules for one request. */
   prepareRequest?: ToolModuleRequestPreparation;
+  discoverCapabilities?: import("./tool-request-discovery.js").ToolCapabilityDiscovery;
 };
 
 export type ToolModuleRequestPreparation = (

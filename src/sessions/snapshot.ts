@@ -1,5 +1,7 @@
 import type { SessionRecord, SessionSnapshot, SessionSnapshotMessage, SessionRequestRecord } from "./types.js";
 import { clientVisibleMessages, filterMessagesAfter, createMessageRequestIdResolver, toEpochMs, toMessageIdForUi, toSnapshotMessage, toSnapshotRequest } from "./record/projection.js";
+import { projectSessionModelSelection } from "./model-selection.js";
+import { isCommandSessionRequest } from "./request-kind.js";
 
 export type SessionMessageIdentity = Pick<SessionSnapshotMessage, "id" | "role" | "createdAt" | "requestId" | "kind">;
 export type SessionSnapshotOptions = {
@@ -67,16 +69,14 @@ function isRequiredPageRequest(request: SessionRequestRecord, ids: Set<string | 
   return request.status === "awaiting_approval";
 }
 
-function hasCommandRequestEvents(request: SessionRequestRecord): boolean {
-  return request.events.some((event) => event.payload.requestKind === "command");
-}
-
 export function projectSessionSnapshot(session: SessionRecord, options: SessionSnapshotOptions = {}): SessionSnapshot {
   const visible = clientVisibleMessages(session.messages);
   const requests = session.requests ?? [];
   const resolveRequestId = createMessageRequestIdResolver(requests);
+  const modelSelection = options.identitiesOnly ? undefined : projectSessionModelSelection(session);
   const base = {
     sessionId: session.id, title: session.title,
+    ...(modelSelection ? { modelSelection } : {}),
     ...(session.kind ? { kind: session.kind } : {}),
     ...(session.project ? { project: session.project } : {}),
   };
@@ -97,7 +97,7 @@ export function projectSessionSnapshot(session: SessionRecord, options: SessionS
   const messages = page.selected.map((message) => toSnapshotMessage(session.id, message, requests, resolveRequestId));
   const ids = new Set(messages.map((message) => message.requestId));
   // Event-only runs have no message anchor; retain the latest command's feedback.
-  const latestCommandId = requests.filter(hasCommandRequestEvents).at(-1)?.requestId;
+  const latestCommandId = requests.filter(isCommandSessionRequest).at(-1)?.requestId;
   return {
     ...base, messages, messageIndex, nextCursor: page.nextCursor, newerCursor: page.newerCursor,
     requests: options.includeRequests === false ? [] : requests

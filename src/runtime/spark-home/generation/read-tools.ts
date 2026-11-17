@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { stripToolInputDocumentation } from "../../../capabilities/normal-invocation/input-documentation.js";
 import type { RegisteredToolNormalInvocation, ToolNormalInvocationOperation } from "../../../capabilities/tool-types.js";
 import type { ToolApprovalController, ToolPermissionMode, ToolRegistry } from "../../ports.js";
 import type { RuntimeModelPluginConfig } from "../../config/model-plugin-config.js";
@@ -61,7 +62,7 @@ export async function createSparkHomeReadTools(input: {
       const id = `${registration.toolName}:${operation.operationId}`;
       const entry = executor.operations[position++];
       bindings.set(id, { tool: registration.toolName, operation, handle: entry.handle });
-      descriptors.push({ id, tool: registration.toolName, summary: operation.summary, input: operation.input });
+      descriptors.push({ id, tool: registration.toolName, summary: operation.summary, input: stripToolInputDocumentation(operation.input) });
     }
     const seen = new Set<string>();
     const resourceBudget = createSparkHomeResourceReadBudget(bindings.get(SPARK_HOME_RESOURCE_READ_OPERATION)?.operation);

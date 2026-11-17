@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
   symlink,
@@ -105,11 +106,31 @@ test("even a formatting-only external edit invalidates an old browser revision",
     withConfigFileTransaction(configPath, (transaction) =>
       transaction.write(
         { replaced: true },
-        { expectedRevision: snapshot.revision },
+        { expectedRevision: snapshot.revision, backup: false },
       ),
     ),
   ).rejects.toBeInstanceOf(ConfigFileConflictError);
   expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual(
     snapshot.config,
   );
+  expect(await readdir(root)).toEqual(["runtime.config.json"]);
+});
+
+test("opted-out repeated saves retain revisions and permissions without backup files", async () => {
+  await chmod(configPath, 0o640);
+  let snapshot = await readConfigFileSnapshot(configPath);
+  for (let update = 1; update <= 3; update += 1) {
+    const saved = await withConfigFileTransaction(configPath, (transaction) =>
+      transaction.write(
+        { update },
+        { expectedRevision: snapshot.revision, backup: false },
+      ),
+    );
+    expect(saved).not.toHaveProperty("backupPath");
+    expect(saved.revision).not.toBe(snapshot.revision);
+    snapshot = await readConfigFileSnapshot(configPath);
+    expect(snapshot.config).toEqual({ update });
+  }
+  expect((await stat(configPath)).mode & 0o777).toBe(0o640);
+  expect(await readdir(root)).toEqual(["runtime.config.json"]);
 });

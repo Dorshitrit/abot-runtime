@@ -1,6 +1,6 @@
 import type { ToolEventMetadataProjection } from "./tool-types.js";
 
-export const TOOL_EVENT_INPUT_TEXT_MAX_LENGTH = 8_192;
+export const TOOL_EVENT_INPUT_TEXT_MAX_LENGTH = 24_576;
 
 /** Opt-in exact text stays display-only and never replaces the accepted input. */
 export function projectDeclaredInputText(

@@ -1,5 +1,7 @@
 import { parseOptionalToolOutputChannels } from "../../capabilities/normal-invocation/output-channels.js";
 import { parseRequiredToolPermissionMode } from "../../capabilities/tool-permission-mode.js";
+import { parseRequestExecutionPolicies } from "../../shared/request-execution-policy.js";
+import { parseRequestBindingRequirement } from "../../capabilities/tool-request-discovery.js";
 import { ABOT_PLUGIN_COMPATIBILITY_EXTENSION } from "../../plugin-contract/platform-compatibility.js";
 import { parsePluginPlatformDeclaration } from "./manifest-platform-compatibility.js";
 import type {
@@ -636,8 +638,9 @@ function parseRuntimeExtension(value: unknown): AbotRuntimePluginExtension {
   rejectUnknownKeys(
     extension,
     [
-      "version",
-      "entrypoint",
+      "version", "entrypoint",
+      "executionPolicies",
+      "requiresRequestBinding",
       "catalogGroups",
       "settings",
       "secrets",
@@ -658,13 +661,14 @@ function parseRuntimeExtension(value: unknown): AbotRuntimePluginExtension {
   }
   const settings = parseSettings(extension.settings, `${path}.settings`);
   const secrets = parseSecrets(extension.secrets, `${path}.secrets`);
-  const catalogGroups = parseToolCatalogGroups(
-    extension.catalogGroups,
-    `${path}.catalogGroups`,
-  );
+  const catalogGroups = parseToolCatalogGroups(extension.catalogGroups, `${path}.catalogGroups`);
+  const executionPolicies = parseRequestExecutionPolicies(extension.executionPolicies, `${path}.executionPolicies`);
+  const requiresRequestBinding = parseRequestBindingRequirement(extension.requiresRequestBinding, `${path}.requiresRequestBinding`);
   return {
     version: ABOT_RUNTIME_EXTENSION_VERSION,
     entrypoint: extension.entrypoint,
+    ...(executionPolicies ? { executionPolicies } : {}),
+    ...(requiresRequestBinding ? { requiresRequestBinding } : {}),
     ...(catalogGroups ? { catalogGroups } : {}),
     ...(settings ? { settings } : {}),
     ...(secrets ? { secrets } : {}),

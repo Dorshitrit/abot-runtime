@@ -558,8 +558,12 @@ function expectPersistedEvents(
   events: readonly PersistedEvent[],
   fixture: PolicyFixture,
 ): void {
+  expect(events).toContainEqual(expect.objectContaining({
+    sessionId: fixture.sessionId, requestId: fixture.requestId,
+    payload: expect.objectContaining({ name: "request.model.selected", primaryProfileId: fixture.profileId }),
+  }));
   const requestEvents = events.filter(
-    ({ requestId }) => requestId === fixture.requestId,
+    ({ requestId, payload }) => requestId === fixture.requestId && payload.name !== "request.model.selected",
   );
   expect(requestEvents).toHaveLength(6);
   expect(

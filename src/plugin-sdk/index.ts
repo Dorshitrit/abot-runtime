@@ -9,6 +9,7 @@ export * from "./context-text-result.js";
 export * from "../capabilities/tool-media.js";
 export * from "./tool-availability-brief.js";
 export * from "./tool-availability-overview.js";
+export type { ToolPayloadPreparation, ToolPreparedPayload, ToolPreparedPayloadContext } from "../capabilities/tool-payload-preparation.js";
 
 export * from "../plugin-contract/index.js";
 

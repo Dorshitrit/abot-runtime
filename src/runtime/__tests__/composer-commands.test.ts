@@ -164,9 +164,23 @@ test("SUPER keeps ten protected turns and reports no change without calling a mo
       type: "completed",
       outcome: "no_change",
       reason: "no_eligible_sources",
+      protectedTurnLimit: 10,
     }),
   ]);
 });
+
+test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
+  "an empty %s conversation has no protected-history explanation",
+  async (policy) => {
+    const f = await fixture(policy, 1);
+    await f.application.services.sessions.getOrCreateSession("empty");
+    await f.application.requests.handle(f.ws, { ...f.message, sessionId: "empty" });
+    expect(f.terminalEvents[0]).toMatchObject({ outcome: "no_change" });
+    expect(f.terminalEvents[0]).not.toHaveProperty("protectedTurnLimit");
+    expect(f.invoke).not.toHaveBeenCalled();
+    expect(f.invokeRaw).not.toHaveBeenCalled();
+  },
+);
 
 test("the standalone Bridge shares command execution and never enters the chat response path", async () => {
   const f = await fixture();

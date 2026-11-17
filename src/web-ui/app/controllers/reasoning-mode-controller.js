@@ -10,8 +10,8 @@ export function normalizeAgentMode(mode) {
     : "reasoning";
 }
 
-export function createReasoningModeController({ state, dom, client, selectedEnvironmentId, selectedModelProfile, reloadModels, recordControlEvent, preferences, getScope }) {
-  const budget = createReasoningBudgetController({ state, dom, preferences, getScope, getProfile: selectedModelProfile, recordControlEvent, onApplied: () => renderAgentMode(), isModeBusy: () => agentModeMutationInFlight });
+export function createReasoningModeController({ state, dom, client, selectedEnvironmentId, selectedModelProfile, reloadModels, recordControlEvent, preferences, getScope, getSelectedAgentMode = () => state.agentMode, getRunReasoningDisplay = () => null, getSelectedReasoningPreference = (preference) => preference, onAgentModeSelected = () => {}, onReasoningPreferenceSelected = () => {} }) {
+  const budget = createReasoningBudgetController({ state, dom, preferences, getScope, getProfile: selectedModelProfile, recordControlEvent, onApplied: () => renderAgentMode(), isModeBusy: () => agentModeMutationInFlight, getSelectedPreference: getSelectedReasoningPreference, getRunReasoningDisplay, onPreferenceSelected: onReasoningPreferenceSelected });
   let agentModeError = "";
   let modeErrorScope;
   let agentModeLoadRevision = 0;
@@ -27,11 +27,12 @@ export function createReasoningModeController({ state, dom, client, selectedEnvi
   function renderAgentMode() {
     budget.render();
     const allowed = canChooseReasoning(selectedModelProfile());
-    const meta = allowed ? agentModeMeta(state.agentMode) : { label: "Provider default", icon: "—" };
+    const observed = getRunReasoningDisplay();
+    const meta = observed || (allowed ? agentModeMeta(getSelectedAgentMode()) : { label: "Provider default", icon: "—" });
     dom.agentModeButton.setAttribute("aria-haspopup", allowed ? "menu" : "dialog");
     dom.agentModeMenu.classList.toggle("reasoning-override-menu", !allowed);
-    dom.agentModeButton.title = `Reasoning depth: ${meta.label}`;
-    dom.agentModeButton.setAttribute("aria-label", `Reasoning depth: ${meta.label}`);
+    dom.agentModeButton.title = observed?.title || `Reasoning depth: ${meta.label}`;
+    dom.agentModeButton.setAttribute("aria-label", dom.agentModeButton.title);
     dom.agentModeButton.disabled = agentModeMutationInFlight || budget.isSaving();
     dom.agentModeButton.innerHTML = `
       <span class="agent-mode-icon">${escapeHtml(meta.icon)}</span>
@@ -48,9 +49,9 @@ export function createReasoningModeController({ state, dom, client, selectedEnvi
     if (!allowed) { prompt.render(state.agentModeMenuOpen); return; }
     const restoreFocus = Boolean(dom.agentModeMenu.contains?.(dom.agentModeMenu.ownerDocument?.activeElement));
     prompt.reset();
-    const thinkingOff = preferences?.loadReasoningPreference?.(getScope(), selectedModelProfile()?.id || "")?.mode === "off";
+    const thinkingOff = getSelectedReasoningPreference(preferences?.loadReasoningPreference?.(getScope(), selectedModelProfile()?.id || ""))?.mode === "off";
     const modeError = modeErrorScope === JSON.stringify([getScope?.(), selectedModelProfile()?.id]) ? agentModeError : "";
-    dom.agentModeMenu.innerHTML = renderReasoningModeButtons(state.agentMode, state.supportedAgentModes, agentModeMutationInFlight || budget.isSaving())
+    dom.agentModeMenu.innerHTML = renderReasoningModeButtons(getSelectedAgentMode(), state.supportedAgentModes, agentModeMutationInFlight || budget.isSaving())
       + `<small class="reasoning-mode-default-note">${thinkingOff ? "Thinking is Off. Choosing a mode turns it back on. " : ""}Sets the default depth; model profile and calibration settings may override it. Token budgets are set separately.</small>
         <p role="alert" data-mode-error${modeError ? "" : " hidden"}>${escapeHtml(modeError)}</p>`;
     dom.agentModeMenu
@@ -106,7 +107,7 @@ export function createReasoningModeController({ state, dom, client, selectedEnvi
     agentModeError = "";
     const scope = getScope ? { ...getScope() } : undefined;
     const profileId = selectedModelProfile()?.id || "";
-    const manualOverride = scope && preferences?.loadReasoningPreference?.(scope, profileId);
+    const manualOverride = getSelectedReasoningPreference(scope && preferences?.loadReasoningPreference?.(scope, profileId));
     let modeSaved = false;
     const environmentId = selectedEnvironmentId();
     const isOriginatingSelection = () => environmentId === selectedEnvironmentId()
@@ -133,6 +134,10 @@ export function createReasoningModeController({ state, dom, client, selectedEnvi
       }
       agentModeLoadRevision += 1;
       state.agentMode = normalizeAgentMode(payload.mode);
+      if (isOriginatingSelection()) {
+        onAgentModeSelected(state.agentMode);
+        if (manualOverride?.mode === "off") onReasoningPreferenceSelected(undefined);
+      }
       renderAgentMode();
       return true;
     } catch (error) {

@@ -76,9 +76,9 @@ describe.skipIf(process.platform !== "win32")("native Windows EXEC", () => {
     40_000,
   );
 
-  test("keeps output intact and accepts the full 8192-character command", async () => {
+  test("keeps output intact and accepts the full 24576-character command", async () => {
     const { handlers } = await fixture(true);
-    const command = "[Console]::Write(('א🙂' * 30000))\n#".padEnd(8192, "x");
+    const command = "[Console]::Write(('א🙂' * 30000))\n#".padEnd(24576, "x");
     const result = await handlers.exec!({ command, cwd: "." });
     expect(result).toMatchObject({
       ok: true,

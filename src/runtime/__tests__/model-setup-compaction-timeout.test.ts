@@ -53,10 +53,5 @@ test("other adapters retain their configured compaction budget", () => {
   ).toEqual(calibration);
   expect(
     buildModelConfig({ calibration }, "ollama", "fixture-model").calibration,
-  ).toEqual({
-    "context.compact": {
-      ...calibration["context.compact"],
-      generation: { temperature: 0, reasoningEffort: "none" },
-    },
-  });
+  ).toEqual(calibration);
 });

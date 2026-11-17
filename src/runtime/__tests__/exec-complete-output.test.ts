@@ -33,12 +33,26 @@ describe("complete EXEC evidence for runtime compaction", () => {
     });
   });
 
-  test("accepts a complete command at the declared input limit", async () => {
+  test.each([8_192, 24_576])(
+    "accepts a complete command of %i characters",
+    async (length) => {
+      const { plugin } = await createExecCommandPathFixture();
+      const prefix = "printf complete #";
+      const command = prefix + "x".repeat(length - prefix.length);
+      const result = await plugin.handlers.exec!({ cwd: ".", command });
+      expect(result).toMatchObject({ ok: true, exitCode: 0, stdout: "complete" });
+    },
+  );
+
+  test("rejects a command one character above the declared input limit", async () => {
     const { plugin } = await createExecCommandPathFixture();
-    const prefix = "printf complete #";
-    const command = prefix + "x".repeat(8_192 - prefix.length);
+    const command = "printf should-not-run #".padEnd(24_577, "x");
     const result = await plugin.handlers.exec!({ cwd: ".", command });
-    expect(result).toMatchObject({ ok: true, exitCode: 0, stdout: "complete" });
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "plugin_parameter_invalid",
+    });
+    expect(result.stdout).toBeUndefined();
   });
 
   test("incremental snapshots preserve all new content and distinguish previously consumed output", () => {

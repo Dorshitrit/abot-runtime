@@ -7,6 +7,7 @@ import {
 } from "./embedding-provider-options.js";
 import { applySavedEmbeddingProviderReceipt } from "./embedding-provider-receipt.js";
 import { textOf } from "../../lib/text-format.js";
+import { describeEmbeddingModelDiscovery } from "../../lib/embedding-model-discovery.js";
 import { renderEmbeddingSetup } from "./embedding-rendering.js";
 import {
   DEFAULT_OLLAMA_BASE_URL,
@@ -181,13 +182,7 @@ export function createEmbeddingSetupStep({
     await run(
       () => discoverModels(state.provider),
       (payload) => {
-        state.models = Array.isArray(payload.catalog?.models)
-          ? payload.catalog.models
-          : [];
-        state.message =
-          payload.catalog?.supported === true
-            ? `${state.models.length} installed models found. Embedding support is not verified; choose a model that supports embeddings.`
-            : "This provider does not list models. Enter an embedding model ID.";
+        Object.assign(state, describeEmbeddingModelDiscovery(payload.catalog));
       },
       "Could not discover models. You can enter an embedding model ID manually.",
     );

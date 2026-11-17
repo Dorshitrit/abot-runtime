@@ -45,6 +45,7 @@
 .spark-companion .markdown-body { font-size: 13px; line-height: 1.65; }
 .spark-companion .markdown-body pre { max-width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: auto; }
 .spark-companion .message-actions { position: absolute; right: 0; top: 0; margin: 0; }
+.spark-companion .message-row.user .message-actions { position: static; justify-content: flex-end; margin-top: 8px; }
 .spark-companion .message-action-button { min-height: 22px; padding: 0 5px; border-color: transparent; background: transparent; color: var(--muted); font-size: 10px; line-height: 20px; }
 .spark-companion .chat-empty-state { margin: 0; padding: 28px 20px; min-height: 100%; text-align: center; align-items: center; justify-content: center; gap: 9px; }
 .spark-companion .mode-empty-title { color: var(--text); font-size: 16px; font-weight: 500; }

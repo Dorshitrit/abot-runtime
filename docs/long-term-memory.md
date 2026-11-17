@@ -238,8 +238,11 @@ or memory lifecycle event is added to the response path.
 
 ## Providers
 
-- Ollama uses its `/api/embed` contract and can discover locally installed
-  model ids through `/api/tags`.
+- Ollama lists installed models through `/api/tags` and checks their declared
+  capabilities through `/api/show`. The `models` list contains IDs that declare
+  embedding support. When metadata is unavailable, those IDs appear separately
+  in `unverifiedModels`. You can enter an ID manually. Enabling memory tests
+  the selected model through `/api/embed` before saving.
 - OpenAI uses `/embeddings`. Model discovery is not exposed by that provider,
   so the consumer supplies the embedding model id.
 - llama.cpp uses `/v1/embeddings` with a manually supplied embedding model id.

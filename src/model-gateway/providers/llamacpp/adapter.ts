@@ -1,6 +1,7 @@
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
 import { toolMediaSafeError, toolMediaSafeEvent, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 import type { ModelProviderAdapter } from "../contracts.js";
+import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
 import { emitLlamaCppStreamTermination } from "./diagnostics.js";
 import { embedWithLlamaCpp } from "./embeddings.js";
 import { countLlamaCppInputTokens } from "./input-token-count.js";
@@ -12,6 +13,7 @@ import { collectLlamaCppChatStream, forwardLlamaCppChatStream } from "./stream.j
 export function createLlamaCppProviderAdapter(renderFetch?: typeof fetch): ModelProviderAdapter {
   return Object.freeze({
     type: "llamacpp",
+    parameterCapabilities: getProviderParameterCapabilities("llamacpp"),
     supportsImageInput: false,
     embed: embedWithLlamaCpp,
     countInputTokens: countLlamaCppInputTokens,

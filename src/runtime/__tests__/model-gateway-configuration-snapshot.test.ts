@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
@@ -69,6 +69,21 @@ test("linked model edits change the snapshot at the same source path", async () 
     model: "changed-model",
   });
   expect(capture()).not.toBe(previous);
+});
+
+test("local parameter profile edits change the gateway configuration fingerprint", async () => {
+  const profile = await fixture.readModelProfile("default");
+  const directory = resolve(dirname(fixture.configPath), "model-parameter-profiles");
+  await mkdir(directory, { recursive: true });
+  const path = resolve(directory, "fingerprint-fixture.json");
+  const recommendation = { schemaVersion: 1, id: "fingerprint-fixture", priority: 10,
+    match: [{ kind: "exact", pattern: profile.model }], defaults: { temperature: 0.5 } };
+  await writeFile(path, JSON.stringify(recommendation));
+  const first = capture();
+  await writeFile(path, JSON.stringify({ ...recommendation, defaults: { temperature: 0.8 } }));
+  expect(capture()).not.toBe(first);
+  // The source file remains user data; capturing never materializes recommendations.
+  expect((await fixture.readModelProfile("default")).generation).toEqual(profile.generation);
 });
 
 test("provider connection changes enter the projection", async () => {

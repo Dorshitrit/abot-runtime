@@ -24,7 +24,7 @@ const input = { problem: { stage: "domain_parser", code: "invalid_supervisor_dec
 test("a verified directory rejection explains the project boundary without inferring an external cause", () => {
   const phrasing = resolveKnownFailurePhrasing(invalidDirectory());
   expect(phrasing?.failureNotice).toContain("working directory");
-  expect(phrasing?.nextStep).toContain("Projects");
+  expect(phrasing?.nextStep).toContain("relative to the current work folder");
   expect(JSON.stringify(phrasing)).not.toContain("PRIVATE_PATH");
   expect(JSON.stringify(phrasing)).not.toContain("domain_parser");
 });
@@ -43,7 +43,7 @@ test("both root policies return known failures without invoking the presentation
       ? (await request.superFailureFinalization.explain({ error, input, maxResponseChars: 1000 })).output
       : await runModelAuthoredDegradedFinalization({ request, error, input, maxResponseChars: 1000 });
     expect(output).toContain("working directory");
-    expect(output).toContain("Projects");
+    expect(output).not.toContain("Projects");
     expect(invoke).not.toHaveBeenCalled();
   }
 });
@@ -75,6 +75,6 @@ test("known SUPER failures require no model configuration or remaining model bud
     error: invalidDirectory(), input, maxResponseChars: 1000, steeringVersion: 0,
     readBudgets: () => ({ requestTimeoutMs: 1, requestRemainingMs: 0, inactivityTimeoutMs: 0, inactivityRemainingMs: 0 }),
   });
-  expect(result.output).toContain("Projects");
+  expect(result.output).toContain("relative to the current work folder");
   expect(invoke).not.toHaveBeenCalled();
 });

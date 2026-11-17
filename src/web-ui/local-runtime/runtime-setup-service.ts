@@ -23,7 +23,7 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { inspectRuntimeConfigFileWithMeta } from "../../runtime/config/loader.js";
 import { withFileLock } from "../../runtime/adapters/long-term-memory/file-lock.js";
-import { inspectRuntimeSetupRequirement } from "./runtime-availability.js";
+import { inspectRuntimeSetupRequirement, inspectSetupSource } from "./runtime-availability.js";
 import {
   assertRuntimeSetupCredentialFile,
   hasRuntimeSetupCredential,
@@ -61,7 +61,15 @@ export class RuntimeSetupService {
   }
 
   async status() {
-    const source = this.source();
+    const { source, requirement } = inspectSetupSource(() => this.source());
+    if (requirement) {
+      return {
+        status: "required" as const, configExists: true,
+        recovery: requirement.recovery, message: requirement.message,
+        defaultContextWindowTokens: await readDefaultContextWindowTokens(),
+        providers: [],
+      };
+    }
     const configRequirement = inspectRuntimeSetupRequirement(source);
     const existingModel = configRequirement
       ? undefined

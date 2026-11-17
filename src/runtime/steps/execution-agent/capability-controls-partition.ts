@@ -13,6 +13,11 @@ export function ownsExecutionObservationControls(
   return descriptor.requiresPayloadAuthoringObjective !== true;
 }
 
+/** EA owns optional source references; source-bound payloads need no Controls turn. */
+export function ownsExecutionDecisionControls(descriptor: CapabilityDescriptor): boolean {
+  return ownsExecutionObservationControls(descriptor) || descriptor.preparedPayloadSource === true;
+}
+
 /**
  * This is an EA model-facing projection, not a change to the shared descriptor.
  * Optional controls remain optional: a generated null is an intentional omission,
@@ -26,7 +31,7 @@ export function partitionExecutionCapabilityControls(
     descriptor.selectionControlIds,
   );
   if (!partition.ok) return partition;
-  if (!ownsExecutionObservationControls(descriptor)) return partition;
+  if (!ownsExecutionDecisionControls(descriptor)) return partition;
   const fullSchema = partition.value.fullSchema;
   return Object.freeze({
     ok: true as const,

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -206,7 +206,7 @@ test.each(usedSteps)("%s retains the reachable %s model and provider dependencie
   expect(fingerprint()).not.toBe(changedModel);
 });
 
-test.each(["capability.controls", "tool_payload.raw"])(
+test.each(["capability.controls", "tool_payload.raw", "execution.file_payload.raw"])(
   "retains %s if any same-profile agent can use tools, regardless of node order", async (step) => {
     config.models!.profiles!.selected!.calibration = { tools: { profileId: "other" } };
     await writeRunner({ [step]: "tools" });
@@ -273,7 +273,7 @@ test("instruction identity uses the canonical ordered projection without copying
   expect(fingerprint()).not.toBe(original);
 });
 
-test.each(["capability.controls", "tool_payload.raw"])(
+test.each(["capability.controls", "tool_payload.raw", "execution.file_payload.raw"])(
   "fingerprints %s instructions only when an agent can use tools", async (step) => {
     const node = definition.body.children[0]!;
     const withTools = { ...definition, body: { ...definition.body, children: [{ ...node, tools: [{
@@ -286,3 +286,46 @@ test.each(["capability.controls", "tool_payload.raw"])(
     expect(fingerprint()).toBe(withoutToolsBefore);
     expect(fingerprint(withTools)).not.toBe(withToolsBefore);
   });
+
+test.each([
+  { policy: "execution-agent-v1", hasTools: true, reachable: true },
+  { policy: "execution-agent-v1", hasTools: false, reachable: false },
+  { policy: "supervisor-worker-v1", hasTools: true, reachable: false },
+  { policy: "supervisor-worker-v1", hasTools: false, reachable: false },
+] as const)("$policy with tools=$hasTools pins only reachable file-author configuration", async ({ policy, hasTools, reachable }) => {
+  const step = "execution.file_payload.raw";
+  config.modelExecutionPolicies = { selected: { policy } };
+  const node = { ...definition.body.children[0]!, tools: hasTools ? [{
+    operation: { toolName: "create_text", operationId: "create_text", contractVersion: 1 }, usage: "available" as const,
+  }] : [] };
+  const value = { ...definition, body: { ...definition.body, children: [node] } };
+  const before = fingerprint(value);
+  const projected = () => projectAutomationModelDependencies(config, [node])!.agents[0]!.invocations
+    .find(({ modelStep }) => modelStep === step);
+  expect(projected() !== undefined).toBe(reachable);
+
+  await writeFile(join(root, "file-guidance.md"), "Preserve exact source bytes.");
+  await writeRunner({}, { [step]: ["file-guidance.md"] });
+  const configuredInstructions = fingerprint(value);
+  expect(configuredInstructions === before, "configured instructions").toBe(!reachable);
+  await writeFile(join(root, "file-guidance.md"), "Preserve exact source bytes and newline style.");
+  invalidateRequestRunnerConfig({ configPath: config.requestRunner.configPath });
+  expect(fingerprint(value) === configuredInstructions, "changed instruction content").toBe(!reachable);
+
+  await writeRunner();
+  const configPath = config.requestRunner.configPath;
+  const runner = JSON.parse(await readFile(configPath, "utf8"));
+  runner.steps[step] = { timeoutMs: 12000 };
+  await writeFile(configPath, JSON.stringify(runner));
+  invalidateRequestRunnerConfig({ configPath });
+  expect(fingerprint(value) === before, "effective runner timeout").toBe(!reachable);
+  if (reachable) expect(projected()).toMatchObject({ timeoutMs: 12000 });
+
+  config.models!.profiles!.selected!.calibration = { fileAuthor: { profileId: "other", timeoutMs: 24000 } };
+  await writeRunner({ [step]: "fileAuthor" });
+  const routed = fingerprint(value);
+  expect(routed === before, "effective model routing").toBe(!reachable);
+  if (reachable) expect(projected()).toMatchObject({ profile: { id: "other" }, timeoutMs: 24000 });
+  config.models!.profiles!.selected!.calibration!.fileAuthor!.timeoutMs = 48000;
+  expect(fingerprint(value) === routed, "effective calibration timeout").toBe(!reachable);
+});

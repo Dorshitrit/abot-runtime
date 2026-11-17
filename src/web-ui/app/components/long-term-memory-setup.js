@@ -7,6 +7,7 @@ import {
   selectedEmbeddingProfile,
 } from "./long-term-memory/saved-embedding-profiles.js";
 import { renderMemorySetup } from "./long-term-memory/setup-rendering.js";
+import { describeEmbeddingModelDiscovery } from "../lib/embedding-model-discovery.js";
 import { textOf } from "../lib/text-format.js";
 
 export function createLongTermMemorySetup({
@@ -31,7 +32,6 @@ export function createLongTermMemorySetup({
     removingProfileId: "",
     profileLabel: "",
     models: [],
-    discoverySupported: false,
     busy: "",
     message: "",
     error: "",
@@ -58,7 +58,6 @@ export function createLongTermMemorySetup({
       state.removingProfileId = "";
       state.profileLabel = "";
       state.models = [];
-      state.discoverySupported = false;
     }
     state.busy = "status";
     clearFeedback();
@@ -109,11 +108,7 @@ export function createLongTermMemorySetup({
       "discover",
       (environmentId) => discoverModels(providerId, environmentId),
       (payload) => {
-        state.models = Array.isArray(payload.catalog?.models)
-          ? payload.catalog.models
-          : [];
-        state.discoverySupported = payload.catalog?.supported === true;
-        state.message = discoveryMessage();
+        Object.assign(state, describeEmbeddingModelDiscovery(payload.catalog));
       },
     );
   }
@@ -369,15 +364,6 @@ export function createLongTermMemorySetup({
   function showError(message) {
     state.error = message;
     render();
-  }
-
-  function discoveryMessage() {
-    if (!state.discoverySupported) {
-      return "This provider does not expose model discovery. Enter its embedding model ID manually.";
-    }
-    return state.models.length
-      ? `Found ${state.models.length} installed model${state.models.length === 1 ? "" : "s"}. Embedding support is not verified.`
-      : "The provider returned no installed models.";
   }
 
   function recordResult(name, payload) {

@@ -1,5 +1,6 @@
 import { parseModelReasoningBudgetByMode } from "../../../shared/model-reasoning-modes.js";
 import { parseModelReasoningBudget } from "../../../shared/model-reasoning.js";
+import { parseModelParameterControls } from "../../../shared/model-parameter-validation.js";
 import { hasOwnValue } from "../utils.js";
 import {
   validateOptionalNonNegativeInteger,
@@ -137,6 +138,11 @@ export function validateModelGenerationConfig(
   generation: Record<string, unknown>,
   displayKey: string,
 ): void {
+  try {
+    parseModelParameterControls(generation.parameters);
+  } catch (error) {
+    issues.push(`${displayKey}.parameters: ${String(error)}`);
+  }
   try {
     parseModelReasoningBudget(generation.reasoningBudget);
   } catch (error) {

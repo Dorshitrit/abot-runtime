@@ -23,7 +23,7 @@ export type RuntimeSetupSnapshot = Readonly<{
   status: "required" | "ready";
   providers: readonly RuntimeSetupProvider[];
   configExists: boolean;
-  recovery?: "configuration";
+  recovery?: "configuration" | "configuration_file";
   message?: string;
   defaultContextWindowTokens: number;
   editableConnection?: { revision: string };

@@ -270,6 +270,20 @@ A normal-invocation contract accepts at most 32 operations. This bounds the
 registered operation catalog; it does not limit invocation frequency or the
 number of user-created scheduled Jobs.
 
+Top-level normal-invocation input properties may include optional `description`
+and `example` documentation; see [the plugin contract](plugins.md#manifest-contract)
+for limits and authoring rules. Registered adapters carry it separately from
+structural controls as optional `controlDocumentation`. Only selected remaining
+controls assignments under the SUPER policy project it to the model. Each invocation
+keeps its exact capability/slot binding; selection controls already frozen and
+staged payload fields are excluded.
+
+Documentation is derived from the bound descriptor for the current model call.
+It does not enter canonical evidence, execution parameters, prepared invocation
+snapshots, or action fingerprints. Existing approval restoration and compaction
+source identities are unchanged. Optional `null` retains its omission semantics;
+no argument defaults or execution authority are introduced by examples.
+
 Every plugin-handler return is normalized by `ToolRegistry` into one complete
 `ToolExecutionResult`, whether the operation succeeds or fails. The selected
 tool identity is Runtime-owned; plugins provide the operation result. The

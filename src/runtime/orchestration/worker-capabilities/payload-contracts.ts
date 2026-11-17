@@ -169,6 +169,7 @@ export type WorkerCapabilityPayloadValidationCode =
 export type WorkerCapabilityPayloadAuthor = Readonly<{
   author(
     input: Readonly<{
+      preparedPayload?: import("../../../capabilities/tool-payload-preparation.js").ToolPreparedPayloadContext;
       call: RoleCallFrame;
       assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
       executionId: string;

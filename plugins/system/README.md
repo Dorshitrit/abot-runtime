@@ -9,6 +9,45 @@ configuration. Ask and Full retain exact-action approvals; Full+ retains its nor
 approval policy. OS accessibility, screen-recording and portal permissions still
 apply. An available shell or connected companion does not prove desktop readiness.
 
+## Model guidance
+
+The manifest associates a short common policy with separate command, application
+and desktop action guides. The existing capability instruction projection selects
+only those referenced by the offered capabilities. These are plugin instructions,
+distinct from readable Knowledge Skills such as Desktop GUI Interaction. SYSTEM
+retains its Execution Agent route; no request-global computer context or new
+role-routing mechanism is added. Command guidance derives shell family and cwd
+rules from the captured request routes. It does not probe another host, expose
+internal shell paths or claim desktop readiness.
+
+## Application executable observations
+
+Application discovery enriches only query/limit-selected catalog entries with an
+optional `executableResolution`. Its `status` is `resolved`, `unresolved` or
+`ambiguous`; a resolved entry supplies its registered `source` and executable
+`path`, while other outcomes supply a reason. Windows uses exact AppsFolder IDs;
+macOS reads the selected bundle's executable metadata; Linux resolves only
+supported absolute executable forms in the selected desktop entry. Complex launch
+commands remain unresolved. Names, PATH guesses and conventional installation
+paths do not establish identity.
+
+Resolution is an observation of system metadata and a file, not a launch recipe,
+permission or proof of an application effect. Catalog `id` remains the identity
+accepted by `system_launch`, whose argument behavior is unchanged. Returned paths
+receive the same secret protection as other actionable identities. Existing tool
+results and older Companion responses without this optional field retain their
+meaning: missing resolution is unknown, not absence. Resolution metadata is optional
+within the existing result byte limit: oversized paths are withheld with
+`output_budget_exceeded`, or the optional field is omitted if needed to preserve
+the selected identities and coverage counts. Cancellation prevents new resolution
+work and propagates to running helper processes. No new persistence store,
+transport operation or replay is introduced.
+
+Guidance updates ship with the Runtime. Executable resolution runs on the selected
+execution host; Store-installed Companions need a newer Companion package to gain
+this metadata. Existing compatible Companions continue without it. Updating the
+Runtime does not replace the installed Windows Store package.
+
 ## Command working directory
 
 On native Windows, `system_command.cwd` accepts the same logical paths as
@@ -94,14 +133,21 @@ user's task outcome. Partial/image failures preserve the accepted input evidence
 ## Model operations
 
 - `computer_desktops`: discover request-bound desktops, windows and per-operation
-  readiness. Native and companion destinations remain distinct even on the same OS.
+  readiness. Discovery invalidates earlier observation/window references before
+  inspection, including when inspection fails. Native and companion destinations
+  remain distinct even on the same OS.
 - `computer_observe`: capture the visible desktop and bounded accessibility content,
   or a smaller region selected inside the preceding image. Returns a temporary image
-  and fresh observation/window references. Occluded content is not recovered.
+  and fresh observation/window references. Capture attempts invalidate the previous
+  references; failed capture requires a usable new observation before input. A
+  regional image establishes the coordinates for subsequent input. Occluded content
+  is not recovered.
 - `computer_act`: click, move, drag, scroll, type literal text, press an explicit key
   chord or focus an observed window. Each operation requires the current observation,
   consumes that reference and attempts a new observation after dispatch. Input
-  references expire after two minutes.
+  requires an observation no more than two minutes old. A successful post-action
+  capture is already the next observation; callers can use its references without
+  another capture.
 
 Coordinates are image coordinates; the adapter maps them to its native coordinate
 space (physical pixels or logical points). Window/accessibility bounds accompanying

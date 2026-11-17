@@ -62,9 +62,10 @@ function renderPluginRow(file, plugin, globalPlugin, viewState) {
       <summary id="${escapeAttribute(summaryId)}">
         <span class="model-plugin-name" title="${escapeAttribute(plugin.id)}">${escapeHtml(plugin.id)}</span>
         <span class="model-plugin-row-status">
+          <span class="model-plugin-availability" data-model-plugin-active="${plugin.active}">${plugin.active ? "Active" : `Inactive · ${escapeHtml(plugin.inactiveReason)}`}</span>
           ${isPluginPlatformUnavailable(plugin.compatibility) ? '<span class="model-plugin-platform-note">Unavailable on this host</span>' : ""}
           ${globallyRestricted ? '<span class="model-plugin-global-note">Global restrictions</span>' : ""}
-          <span class="plugin-selection-state" data-plugin-state="${escapeAttribute(plugin.state)}">${plugin.selectedCapabilityCount}/${count} tools</span>
+          <span class="plugin-selection-state" data-plugin-state="${escapeAttribute(plugin.active ? plugin.state : "disabled")}">${plugin.activeCapabilityCount}/${count} tools active</span>
         </span>
       </summary>
       ${renderPluginPlatformNotice(plugin.compatibility)}
@@ -111,8 +112,8 @@ export function renderModelPluginPermissions(file, catalog, viewState = {}) {
   const plugins = catalog.plugins.map((plugin) =>
     projectModelPluginSelection(file.config, plugin, catalog.plugins),
   );
-  const selectedCount = plugins.reduce(
-    (count, plugin) => count + plugin.selectedCapabilityCount,
+  const activeCount = plugins.reduce(
+    (count, plugin) => count + plugin.activeCapabilityCount,
     0,
   );
   const capabilityCount = plugins.reduce(
@@ -122,10 +123,10 @@ export function renderModelPluginPermissions(file, catalog, viewState = {}) {
   return `<details class="model-plugin-permissions" data-model-plugin-section="${escapeAttribute(file.id)}" aria-label="${escapeAttribute(`Plugin access for ${modelLabel(file)}`)}" ${open ? "open" : ""}>
     <summary id="${escapeAttribute(summaryId)}">
       <span>Plugin access</span>
-      <span class="model-plugin-summary-count">${plugins.length} plugins · ${selectedCount}/${capabilityCount} tools selected</span>
+      <span class="model-plugin-summary-count">${plugins.length} plugins · ${activeCount}/${capabilityCount} tools active</span>
     </summary>
     <div class="model-plugin-permissions-body">
-      <p class="model-plugin-help">Allow plugins and individual tools for <strong>${escapeHtml(modelLabel(file))}</strong>. Global restrictions still apply. Save this model, then apply changes.</p>
+      <p class="model-plugin-help">Allow plugins and individual tools for <strong>${escapeHtml(modelLabel(file))}</strong>. Availability follows its execution route; saved permissions are retained. Global restrictions still apply. Save this model, then apply changes.</p>
       ${catalog.error ? `<p class="error-text">Plugin list unavailable: ${escapeHtml(catalog.error)}. Refresh configuration to retry; saved restrictions are retained.</p>` : ""}
       <div class="model-plugin-list">
         ${plugins.map((plugin, index) => renderPluginRow(file, plugin, catalog.plugins[index], viewState)).join("")}

@@ -171,7 +171,7 @@ export function createConversationView({
     const scheduleNode = conversationSchedule.createNode(message);
     if (scheduleNode) return scheduleNode;
     if (isApprovalPresentation(message)) return createConversationApprovalPresentation({
-      message, activity: createActivityNode(message, updates), progress,
+      message, updates, activity: createActivityNode(message, updates), progress,
       thinking: showReasoning ? conversationReasoning.createNode(message, { allowEmpty: true }) : null,
       status: conversationStatus.createNode(message), statusPlacement, documentRoot,
     });
@@ -230,18 +230,19 @@ export function createConversationView({
     if (status && statusPlacement === "bubble") bubble.appendChild(status);
     const linkPreviews = messageLinkPreviews.createNode(message);
     if (linkPreviews) bubble.appendChild(linkPreviews);
-    if (message.role !== "user" && message.text && !message.streaming) {
+    if (message.text && !message.streaming) {
+      const isUserMessage = message.role === "user";
       const actions = documentRoot.createElement("div");
       actions.className = "message-actions";
       const copyButton = documentRoot.createElement("button");
       copyButton.type = "button";
       copyButton.className = "message-action-button";
       copyButton.textContent = "Copy";
-      copyButton.setAttribute("aria-label", "Copy response");
+      copyButton.setAttribute("aria-label", isUserMessage ? "Copy message" : "Copy response");
       copyButton.addEventListener("click", () => {
         void copyText(message.text)
-          .then(() => notify("Response copied"))
-          .catch(() => notify("Could not copy response", "failed"));
+          .then(() => notify(isUserMessage ? "Message copied" : "Response copied"))
+          .catch(() => notify(isUserMessage ? "Could not copy message" : "Could not copy response", "failed"));
       });
       actions.appendChild(copyButton);
       bubble.appendChild(actions);

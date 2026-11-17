@@ -1,9 +1,11 @@
+import type { ToolInputDocumentation } from "./input-documentation.js";
 import type { ToolNormalInvocationOutputChannels } from "./output-channels.js";
 export type { ToolNormalInvocationOutputChannels, ToolNormalInvocationOutputChannelRole } from "./output-channels.js";
 
 export const TOOL_NORMAL_INVOCATION_VERSION = 1 as const;
 export const TOOL_NORMAL_INVOCATION_IDENTIFIER_MAX_LENGTH = 64;
-export const TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH = 8_192;
+export const TOOL_NORMAL_INVOCATION_INPUT_MAX_PROPERTIES = 16;
+export const TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH = 24_576;
 export const TOOL_NORMAL_INVOCATION_PAYLOAD_MAX_BYTES = 16 * 1_024 * 1_024;
 
 export type ToolNormalInvocationEffect = "read_only" | "mutating" | "mixed";
@@ -52,9 +54,10 @@ export type ToolNormalInvocationArrayInput = Readonly<{
   maxItems: number;
 }>;
 
-export type ToolNormalInvocationPropertyInput =
+export type ToolNormalInvocationPropertyInput = (
   | ToolNormalInvocationScalarInput
-  | ToolNormalInvocationArrayInput;
+  | ToolNormalInvocationArrayInput
+) & ToolInputDocumentation;
 
 /**
  * Provider-safe v1 input subset. The object is deliberately exact and flat:

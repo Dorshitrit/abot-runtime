@@ -455,13 +455,239 @@
                 "type": "object",
                 "description": "Generation settings for a model profile.",
                 "properties": {
+                  "parameters": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Canonical controls: omit sends no field, inherit resolves lower layers, value applies an explicit value.",
+                    "properties": {
+                      "temperature": {
+                        "description": "Sampling randomness; omission lets the server choose.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "number", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "top_p": {
+                        "description": "Cumulative probability threshold.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "top_k": {
+                        "description": "Candidate token count; zero disables the filter where supported.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "min_p": {
+                        "description": "Minimum token probability relative to the most likely token.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "max_output_tokens": {
+                        "description": "Total generation allowance, including reasoning where the provider shares it.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer", "minimum": 1 }
+                            }
+                          }
+                        ]
+                      },
+                      "repeat_penalty": {
+                        "description": "Repetition penalty; one is neutral.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "number", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "reasoning_effort": {
+                        "description": "Model reasoning effort; supported levels depend on the model.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "enum": [
+                                  "none",
+                                  "minimal",
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "xhigh"
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "thinking_budget": {
+                        "description": "Reasoning-only token budget; distinct from total output and physical context.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "seed": {
+                        "description": "Provider sampling seed; reproducibility is not guaranteed.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer" }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
                   "temperature": {
                     "type": "number",
-                    "description": "Sampling temperature forwarded to the model provider."
+                    "description": "Legacy sampling temperature; canonical parameters.temperature takes precedence in the same layer."
                   },
                   "topP": {
                     "type": "number",
-                    "description": "Nucleus sampling value forwarded to the model provider."
+                    "description": "Legacy nucleus sampling value; canonical parameters.top_p takes precedence in the same layer."
                   },
                   "reasoningBudget": {
                     "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
@@ -519,7 +745,7 @@
                       "high",
                       "xhigh"
                     ],
-                    "description": "Default reasoning effort for providers/models that support it."
+                    "description": "Legacy reasoning effort; canonical parameters.reasoning_effort takes precedence in the same layer."
                   }
                 }
               },
@@ -613,13 +839,239 @@
                       "type": "object",
                       "description": "Generation settings for a model profile.",
                       "properties": {
+                        "parameters": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "description": "Canonical controls: omit sends no field, inherit resolves lower layers, value applies an explicit value.",
+                          "properties": {
+                            "temperature": {
+                              "description": "Sampling randomness; omission lets the server choose.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": { "type": "number", "minimum": 0 }
+                                  }
+                                }
+                              ]
+                            },
+                            "top_p": {
+                              "description": "Cumulative probability threshold.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 1
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "top_k": {
+                              "description": "Candidate token count; zero disables the filter where supported.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": { "type": "integer", "minimum": 0 }
+                                  }
+                                }
+                              ]
+                            },
+                            "min_p": {
+                              "description": "Minimum token probability relative to the most likely token.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 1
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "max_output_tokens": {
+                              "description": "Total generation allowance, including reasoning where the provider shares it.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": { "type": "integer", "minimum": 1 }
+                                  }
+                                }
+                              ]
+                            },
+                            "repeat_penalty": {
+                              "description": "Repetition penalty; one is neutral.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": { "type": "number", "minimum": 0 }
+                                  }
+                                }
+                              ]
+                            },
+                            "reasoning_effort": {
+                              "description": "Model reasoning effort; supported levels depend on the model.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": {
+                                      "enum": [
+                                        "none",
+                                        "minimal",
+                                        "low",
+                                        "medium",
+                                        "high",
+                                        "xhigh"
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "thinking_budget": {
+                              "description": "Reasoning-only token budget; distinct from total output and physical context.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 2147483647
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            "seed": {
+                              "description": "Provider sampling seed; reproducibility is not guaranteed.",
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode"],
+                                  "properties": {
+                                    "mode": { "enum": ["omit", "inherit"] }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["mode", "value"],
+                                  "properties": {
+                                    "mode": { "const": "value" },
+                                    "value": { "type": "integer" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
                         "temperature": {
                           "type": "number",
-                          "description": "Sampling temperature forwarded to the model provider."
+                          "description": "Legacy sampling temperature; canonical parameters.temperature takes precedence in the same layer."
                         },
                         "topP": {
                           "type": "number",
-                          "description": "Nucleus sampling value forwarded to the model provider."
+                          "description": "Legacy nucleus sampling value; canonical parameters.top_p takes precedence in the same layer."
                         },
                         "reasoningBudget": {
                           "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
@@ -679,7 +1131,7 @@
                             "high",
                             "xhigh"
                           ],
-                          "description": "Default reasoning effort for providers/models that support it."
+                          "description": "Legacy reasoning effort; canonical parameters.reasoning_effort takes precedence in the same layer."
                         }
                       }
                     },
@@ -776,13 +1228,239 @@
                 "type": "object",
                 "description": "Generation settings for a model profile.",
                 "properties": {
+                  "parameters": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Canonical controls: omit sends no field, inherit resolves lower layers, value applies an explicit value.",
+                    "properties": {
+                      "temperature": {
+                        "description": "Sampling randomness; omission lets the server choose.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "number", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "top_p": {
+                        "description": "Cumulative probability threshold.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "top_k": {
+                        "description": "Candidate token count; zero disables the filter where supported.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "min_p": {
+                        "description": "Minimum token probability relative to the most likely token.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "max_output_tokens": {
+                        "description": "Total generation allowance, including reasoning where the provider shares it.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer", "minimum": 1 }
+                            }
+                          }
+                        ]
+                      },
+                      "repeat_penalty": {
+                        "description": "Repetition penalty; one is neutral.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "number", "minimum": 0 }
+                            }
+                          }
+                        ]
+                      },
+                      "reasoning_effort": {
+                        "description": "Model reasoning effort; supported levels depend on the model.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "enum": [
+                                  "none",
+                                  "minimal",
+                                  "low",
+                                  "medium",
+                                  "high",
+                                  "xhigh"
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "thinking_budget": {
+                        "description": "Reasoning-only token budget; distinct from total output and physical context.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "seed": {
+                        "description": "Provider sampling seed; reproducibility is not guaranteed.",
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode"],
+                            "properties": {
+                              "mode": { "enum": ["omit", "inherit"] }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["mode", "value"],
+                            "properties": {
+                              "mode": { "const": "value" },
+                              "value": { "type": "integer" }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
                   "temperature": {
                     "type": "number",
-                    "description": "Sampling temperature forwarded to the model provider."
+                    "description": "Legacy sampling temperature; canonical parameters.temperature takes precedence in the same layer."
                   },
                   "topP": {
                     "type": "number",
-                    "description": "Nucleus sampling value forwarded to the model provider."
+                    "description": "Legacy nucleus sampling value; canonical parameters.top_p takes precedence in the same layer."
                   },
                   "reasoningBudget": {
                     "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
@@ -840,7 +1518,7 @@
                       "high",
                       "xhigh"
                     ],
-                    "description": "Default reasoning effort for providers/models that support it."
+                    "description": "Legacy reasoning effort; canonical parameters.reasoning_effort takes precedence in the same layer."
                   }
                 }
               },

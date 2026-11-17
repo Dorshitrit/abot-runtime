@@ -11,7 +11,7 @@ export class LocalRuntimeControlRoutes {
   constructor(private readonly requests: LocalRequestExecution) {}
 
   health(res: ServerResponse): void {
-    const details = this.requests.healthDetails();
+    const details = this.requests.activityDetails();
     sendJson(res, 200, {
       ok: true,
       source: "local-runtime",

@@ -7,6 +7,7 @@ import type { BoundRequestModelInvocationContext } from "../request/contracts.js
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import { createConfiguredToolRegistry } from "./configured-tool-registry.js";
 import { bindRequestToolRegistry } from "./request-bound-tool-registry.js";
+import { DEFAULT_REQUEST_EXECUTION_POLICY_ID } from "../../shared/request-execution-policy.js";
 
 /**
  * Binds the runtime's globally configured tools to one request. Exact
@@ -18,6 +19,7 @@ export function createRequestRuntimeToolRegistry(
     request: BoundRequestModelInvocationContext;
     toolPermissionMode?: ToolPermissionMode;
     modelPlugins?: RuntimeModelPluginConfig;
+    executionPolicy?: string;
     requestAttachments?: readonly ToolRequestAttachment[];
     runtimeConfig?: RuntimeConfig;
     requestWorkingDirectory?: string;
@@ -29,6 +31,7 @@ export function createRequestRuntimeToolRegistry(
       createConfiguredToolRegistry(params.runtimeConfig, []),
     params.toolPermissionMode ?? "ask",
     params.modelPlugins,
+    params.executionPolicy ?? DEFAULT_REQUEST_EXECUTION_POLICY_ID,
   );
   return bindRequestToolRegistry({
     registry,

@@ -21,11 +21,14 @@ import {
   resolveOllamaRawUserContent,
   toOllamaMessage,
 } from "./message-projection.js";
-import { resolveOllamaChatThinking } from "./structured-repair.js";
+import { resolveOllamaChatThinking, resolveOllamaRawThinking } from "./structured-repair.js";
+import type { ResolvedModelParameters } from "../../../shared/model-parameters.js";
+import { resolveOllamaComputedParameters } from "./computed-parameters.js";
 
 export { readOptionalPositiveIntEnv } from "./generation-options.js";
 
 export type OllamaPayloadBuildOptions = Readonly<{
+  onParameterResolution?: (parameters: ResolvedModelParameters) => void;
   onFormatProjection?: (
     diagnostics: readonly OllamaSchemaProjectionDiagnostic[],
   ) => void;
@@ -63,15 +66,21 @@ function applyFormatProjection(params: {
 function applyGenerationOptions(params: {
   payload: Record<string, unknown>;
   invocation: ResolvedModelInvocation;
+  requestBody: ModelGatewayRequest;
+  payloadOptions: OllamaPayloadBuildOptions;
 }): void {
+  const derivedNumPredict = deriveOllamaNumPredict({ payload: params.payload, invocation: params.invocation });
+  const parameters = resolveOllamaComputedParameters(params.requestBody, params.invocation, derivedNumPredict);
+  const effort = parameters?.fields.reasoning_effort;
+  // A late output allowance can invalidate an already projected thinking dependency.
+  if (effort?.omitted && effort.warnings.length > 0) delete params.payload.think;
+  if (parameters) params.payloadOptions.onParameterResolution?.(parameters);
   params.payload.options = buildOllamaOptions({
     baseOptions: params.invocation.profile.options,
     generation: params.invocation.profile.generation,
     contextWindowTokens: params.invocation.profile.contextWindowTokens,
-    derivedNumPredict: deriveOllamaNumPredict({
-      payload: params.payload,
-      invocation: params.invocation,
-    }),
+    derivedNumPredict,
+    parameters,
   });
 }
 
@@ -110,6 +119,7 @@ export function buildOllamaPayload(
     requestedThinking: invocation.think,
     structuredOutputRepair: requestBody.structuredOutputRepair,
     projectedFormat: formatProjection.format,
+    canDisableThinking: invocation.parameters?.canDisableThinking ?? (invocation.parameters?.controls.reasoning_effort ? false : undefined),
   });
   if (thinking !== undefined) {
     payload.think = thinking;
@@ -117,6 +127,8 @@ export function buildOllamaPayload(
   applyGenerationOptions({
     payload,
     invocation,
+    requestBody,
+    payloadOptions,
   });
   return payload;
 }
@@ -141,7 +153,7 @@ export function buildOllamaRawPayload(
     model: invocation.model,
     messages,
     stream: true,
-    think: false,
+    ...(resolveOllamaRawThinking(invocation) !== undefined ? { think: resolveOllamaRawThinking(invocation) } : {}),
     keep_alive: resolveOllamaKeepAlive(invocation),
   };
   applyFormatProjection({
@@ -152,6 +164,8 @@ export function buildOllamaRawPayload(
   applyGenerationOptions({
     payload,
     invocation,
+    requestBody,
+    payloadOptions,
   });
   return payload;
 }

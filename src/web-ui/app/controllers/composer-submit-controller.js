@@ -54,11 +54,13 @@ export function createComposerSubmitController({
     setMessageStatus(submissionStatus(action), true);
     // submit synchronously takes text and files before its first await.
     const submittedScope = getDraft().scope;
-    const operation = submit(action);
+    let operation;
+    try { operation = submit(action); }
+    catch (error) { operation = Promise.reject(error); }
     resize();
     updateSendState();
     return operation.catch((error) => {
-      setMessageStatus(error.message);
+      setMessageStatus(error instanceof Error ? error.message : String(error));
       return { status: "blocked", error };
     }).finally(() => {
       updateSendState();

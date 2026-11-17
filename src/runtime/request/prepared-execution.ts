@@ -1,6 +1,7 @@
 import { projectRolePresentationEvent } from "../events/role-presentation.js";
 import { hasExecutionHistoryAuthority } from "../context/execution-history-policy.js";
 import { captureRequestReasoningPreference } from "./reasoning-preference.js";
+import { projectRequestModelSelection } from "./model-selection-presentation.js";
 import { bindRequestWorkingDirectory } from "../capabilities/request-working-directory.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
@@ -220,6 +221,9 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     ),
     ...(memoryRecallLimit !== undefined ? { memoryRecallLimit } : {}),
   };
+  if (!resume) events.event("request.model.selected", {
+    sessionId, ...projectRequestModelSelection(baseSeed, executionPolicy.rootContract, Date.now()),
+  });
   const compactionConfiguration = projectSuperCompactionConfiguration(
     baseSeed,
     executionPolicy.authority,
@@ -288,7 +292,9 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     : preparedSeed;
   const toolRegistry = options.toolRegistry?.prepareRequest
     ? await options.toolRegistry.prepareRequest({
+        requestId,
         rootContractId: executionPolicy.rootContract.contractId,
+        executionPolicy: executionPolicy.authority.id,
         runtimePathResolver: createRuntimeToolPathResolver(
           bindRequestWorkingDirectory(
             options.toolRegistry.prepareSharedState?.() ?? {},

@@ -37,10 +37,16 @@
 }
 
 .model-plugin-summary-count,
+.model-plugin-availability,
 .model-plugin-platform-note,
 .model-plugin-global-note {
   color: var(--muted);
   font-size: var(--font-size-xs);
+}
+
+.model-plugin-availability[data-model-plugin-active="false"] {
+  color: var(--amber);
+  overflow-wrap: anywhere;
 }
 
 .model-plugin-summary-count {

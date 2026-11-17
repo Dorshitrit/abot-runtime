@@ -15,6 +15,22 @@ export type InspectedRuntimeConfigFile = LoadedRuntimeConfigFile & {
   exists: boolean;
 };
 
+/** A main-file parse failure. Native parser messages can quote private config values. */
+export class InvalidRuntimeConfigJsonError extends Error {
+  constructor(path: string, publicReason: string) {
+    super(`Invalid runtime config JSON at ${path}: ${publicReason}`);
+    this.name = "InvalidRuntimeConfigJsonError";
+  }
+}
+
+function describeJsonSyntaxError(error: unknown): string {
+  const message = error instanceof SyntaxError ? error.message : "";
+  const location = /\(line (\d+) column (\d+)\)$/u.exec(message);
+  const reason = message.startsWith("Unexpected end of JSON input")
+    ? "Unexpected end of JSON input" : "Invalid JSON syntax";
+  return location ? `${reason} (line ${location[1]} column ${location[2]})` : reason;
+}
+
 /** Reads and parses the config source without declaring it runnable. */
 export function inspectRuntimeConfigFileWithMeta(
   rootDir: string,
@@ -42,16 +58,11 @@ export function inspectRuntimeConfigFileWithMeta(
   try {
     parsed = JSON.parse(raw);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Invalid runtime config JSON at ${resolvedPath}: ${message}`,
-    );
+    throw new InvalidRuntimeConfigJsonError(resolvedPath, describeJsonSyntaxError(error));
   }
 
   if (!isRecord(parsed)) {
-    throw new Error(
-      `Invalid runtime config JSON at ${resolvedPath}: root must be an object`,
-    );
+    throw new InvalidRuntimeConfigJsonError(resolvedPath, "root must be an object");
   }
 
   return { config: parsed, path: resolvedPath, exists: true };

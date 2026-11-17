@@ -107,6 +107,7 @@ export type SessionRequestFinalState =
   | {
       status: "failed";
       error: unknown;
+      details?: { stoppedResponse: string };
       completedAt: number;
     };
 
@@ -168,6 +169,7 @@ export type SessionSnapshotRequest = {
 };
 
 export type SessionSnapshot = {
+  modelSelection?: import("./model-selection.js").SessionModelSelection;
   kind?: import("./spark-session.js").SessionKind;
   project?: SessionProject;
   sessionId: string;

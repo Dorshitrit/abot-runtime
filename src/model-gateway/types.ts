@@ -9,6 +9,7 @@ import type {
   ModelStep,
 } from "../shared/types.js";
 import type { RuntimeAttachmentReference } from "../shared/attachments.js";
+import type { ModelParameterControls, ModelParameterDiagnostic, ModelParameterProfileCatalog, ResolvedModelParameters } from "../shared/model-parameters.js";
 
 /** Stable adapter identifier. Built-ins currently register `ollama`, `openai`, and `llamacpp`. */
 export type ModelProvider = string;
@@ -131,6 +132,9 @@ export type ModelGatewayProviderConfig = {
 };
 
 export type ModelGenerationConfig = {
+  parameters?: ModelParameterControls;
+  /** Derived normalization diagnostics; never forwarded to provider payloads. */
+  parameterDiagnostics?: readonly ModelParameterDiagnostic[];
   temperature?: number;
   topP?: number;
   reasoningEffort?: ModelReasoningLevel;
@@ -179,6 +183,7 @@ export type ModelStepCalibrationConfig = {
 };
 
 export type ModelGatewayPolicyConfig = {
+  parameterProfiles?: ModelParameterProfileCatalog;
   providers?: Record<string, ModelGatewayProviderConfig>;
   profiles?: Record<string, ModelGatewayProfileConfig>;
   embeddingProfiles?: Record<string, ModelGatewayEmbeddingProfileConfig>;
@@ -290,6 +295,7 @@ export type ModelProfile = {
 };
 
 export type ResolvedModelInvocation = {
+  parameters?: ResolvedModelParameters;
   profile: ModelProfile;
   model: string;
   /** `none` is an explicit disable; only `undefined` permits adapter omission. */

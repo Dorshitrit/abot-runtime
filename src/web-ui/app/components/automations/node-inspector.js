@@ -4,7 +4,7 @@ import { escapeHtml } from "../../lib/text-format.js";
 import { readBindingFields, renderBindingFields } from "./binding-fields.js";
 import { hasConnectedAutomationResultInput } from "../../lib/automation-binding-producers.js";
 import { renderAutomationNodeDetails } from "./timeline.js";
-import { requiresFullPlus } from "./permission-selection.js";
+import { requiresFullPlus, standaloneAutomationOperations } from "./permission-selection.js";
 import { toolDisplayName } from "./tool-identity.js";
 
 function sameOperation(left, right) {
@@ -18,8 +18,7 @@ export function operationIdentity(item) {
 }
 
 function operationChoices(catalog) {
-  return Array.isArray(catalog?.grantableOperations)
-    ? catalog.grantableOperations : catalog?.operations || [];
+  return standaloneAutomationOperations(catalog);
 }
 
 function selectedOperation(node, catalog) {

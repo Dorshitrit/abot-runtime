@@ -1,4 +1,6 @@
 import { fetchOllamaProviderResponse, resolveOllamaHttpFailurePresentation, isOllamaProviderRequestFailure } from "./request-failures.js";
+import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
+import type { ResolvedModelParameters } from "../../../shared/model-parameters.js";
 import {
   toolMediaSafeError,
   toolMediaSafeMessage,
@@ -59,6 +61,7 @@ export function createOllamaProviderAdapter(options: {
 }): ModelProviderAdapter {
   return Object.freeze({
     type: "ollama",
+    parameterCapabilities: getProviderParameterCapabilities("ollama"),
     supportsImageInput: true,
     embed: (params) => embedWithOllama(params, options.fallbackUrl),
     listEmbeddingModels: (params) =>
@@ -66,7 +69,9 @@ export function createOllamaProviderAdapter(options: {
     async invoke(params) {
       const requestId = readRequestId(params);
       let removedConstraintCount = 0;
+      let parameterResolution: ResolvedModelParameters | undefined;
       const payloadOptions: OllamaPayloadBuildOptions = {
+        onParameterResolution(parameters) { parameterResolution = parameters; },
         onFormatProjection(
           diagnostics: readonly OllamaSchemaProjectionDiagnostic[],
         ) {
@@ -79,6 +84,7 @@ export function createOllamaProviderAdapter(options: {
         invocationParams: params,
         payload,
         removedConstraintCount,
+        parameterResolution,
       });
 
       const baseUrl = resolveOllamaBaseUrl(params.invocation, options.fallbackUrl);

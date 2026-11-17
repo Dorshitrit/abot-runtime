@@ -133,7 +133,7 @@ test("automatic Home navigation during an environment change preserves the desti
   expect(f.state.sessionModels).toEqual(originalSessions);
   expect(f.state.lastModelByEnvironment).toEqual(originalEnvironments);
   expect(f.saved).not.toHaveBeenCalled();
-  f.selection.rememberModelSelection();
+  f.selection.rememberModelSelection({ explicit: true });
   expect(f.saved).not.toHaveBeenCalled();
 
   pending.resolve(catalog);
@@ -142,7 +142,7 @@ test("automatic Home navigation during an environment change preserves the desti
   expect(f.state.lastModelByEnvironment.prod).toBe("model-b");
   expect(f.dom.modelSelect.options[1].dataset.executionPolicy).toBe("execution-agent-v1");
   f.dom.modelSelect.value = "model-a";
-  f.selection.rememberModelSelection();
+  f.selection.rememberModelSelection({ explicit: true });
   expect(f.saved).toHaveBeenCalledOnce();
   expect(f.state.lastModelByEnvironment).toEqual({ dev: "model-a", prod: "model-a" });
   expect(f.state.sessionModels).toEqual({ ...originalSessions, "home-prod": "model-a" });
@@ -155,7 +155,7 @@ test("a same-environment catalog refresh still allows saving a model selection",
   const refresh = f.selection.loadModels();
   expect(f.shell.activeWorkspace()).toBe("chat");
   f.dom.modelSelect.value = "model-b";
-  f.selection.rememberModelSelection();
+  f.selection.rememberModelSelection({ explicit: true });
   expect(f.saved).toHaveBeenCalledOnce();
   expect(f.state.sessionModels["dev-chat"]).toBe("model-b");
   expect(f.state.lastModelByEnvironment.dev).toBe("model-b");

@@ -3560,9 +3560,10 @@ function createFilesystemMutationCoordinator() {
     }
   });
 }
-var PROCESS_MUTATION_COORDINATOR = createFilesystemMutationCoordinator();
+var COORDINATOR_KEY = /* @__PURE__ */ Symbol.for("abot.filesystem.mutation-coordinator.v1");
+var processState = globalThis;
 function getProcessFilesystemMutationCoordinator() {
-  return PROCESS_MUTATION_COORDINATOR;
+  return processState[COORDINATOR_KEY] ??= createFilesystemMutationCoordinator();
 }
 
 // plugins/filesystem/source/path-service.ts

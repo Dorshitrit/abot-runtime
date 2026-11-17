@@ -7,13 +7,16 @@ import type {
 import type { ToolNormalInvocationOperation } from "../../capabilities/normal-invocation/contracts.js";
 import { validateToolModuleDeclarations } from "../../capabilities/tool-definition-validator.js";
 import { isNarrowedInputProperty } from "./request-property-narrowing.js";
+import { supportsRequestExecutionPolicy } from "../../shared/request-execution-policy.js";
 
 /** Config selection precedes observation. A plugin may narrow, never add authority. */
 export async function prepareRequestToolModules(
   modules: readonly ToolModuleDeclaration[],
   context?: ToolRequestPreparationContext,
 ): Promise<readonly ToolModuleDeclaration[]> {
-  const selectedModules = validateToolModuleDeclarations(modules);
+  const selectedModules = validateToolModuleDeclarations(modules).filter((module) =>
+    supportsRequestExecutionPolicy(module.definition.executionPolicies, context?.executionPolicy),
+  );
   const groups = new Map<
     ToolModuleRequestPreparation,
     ToolModuleDeclaration[]

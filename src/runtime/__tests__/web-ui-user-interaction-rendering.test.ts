@@ -78,6 +78,23 @@ function expectProgressOrder(row: ContextElement, expected: string[]) {
 }
 
 describe("grouped user interaction rendering", () => {
+  test("copies the exact user message without rendered markup or message metadata", async () => {
+    const text = "שלום **עולם**\n\nKeep this spacing.  \n";
+    const messages = [{ id: "user-message", role: "user", requestId: "request-1", text,
+      createdAt: "2026-11-16T18:00:00.000Z", streaming: false }];
+    const before = structuredClone(messages);
+    const f = fixture(messages);
+    f.view.render();
+    const copy = matchingNodes(f.messagesList, "button")
+      .find((node) => node.getAttribute("aria-label") === "Copy message")!;
+    expect(copy).toBeDefined();
+    copy.dispatch("click");
+    await Promise.resolve();
+    expect(f.copyText).toHaveBeenCalledExactlyOnceWith(text);
+    expect(f.notify).toHaveBeenCalledWith("Message copied");
+    expect(messages).toEqual(before);
+  });
+
   test("keeps live updates after activity and reasoning, then before the unchanged final answer", async () => {
     const messages = [response(), update("first", "First update")];
     const f = fixture(messages);

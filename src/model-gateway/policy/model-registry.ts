@@ -1,4 +1,5 @@
 import { applyProviderTokenEstimationDefaults } from "./provider-token-estimation.js";
+import { mergeModelGenerationConfig } from "./model-generation-merge.js";
 import type {
   ModelContextConfig,
   ModelGatewayProfileCapabilities,
@@ -48,7 +49,7 @@ function normalizeConfiguredProfile(
     providerConfig.type,
     mergeContextConfig(policy?.defaults?.context, config.context),
   );
-  const generation = mergeGenerationConfig(config.generation);
+  const generation = mergeModelGenerationConfig(config.generation);
   const capabilities = mergeProfileCapabilities(config.capabilities);
   return {
     id: profileId,
@@ -94,12 +95,6 @@ function mergeProfileCapabilities(
       TEXT_MODEL_CAPABILITIES.outputModalities,
     ),
   };
-}
-
-function mergeGenerationConfig(
-  ...configs: Array<ModelGenerationConfig | undefined>
-): ModelGenerationConfig {
-  return Object.assign({}, ...configs.filter(Boolean));
 }
 
 function mergeContextConfig(

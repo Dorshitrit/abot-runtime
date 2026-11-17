@@ -1,12 +1,12 @@
 import { canChooseReasoningBudget, readReasoningPreferenceField, reasoningPreferenceLabel, renderReasoningPreferenceField, syncReasoningPreferenceField } from "../lib/reasoning-preference.js";
 
-export function createReasoningBudgetController({ state, dom, preferences, getScope, getProfile, recordControlEvent, onApplied, isModeBusy = () => false }) {
+export function createReasoningBudgetController({ state, dom, preferences, getScope, getProfile, recordControlEvent, onApplied, isModeBusy = () => false, getSelectedPreference = (preference) => preference, getRunReasoningDisplay = () => null, onPreferenceSelected = () => {} }) {
   let renderedKey;
   let saving = false;
   const isCurrentScope = (scope, profileId) => JSON.stringify(scope) === JSON.stringify(getScope()) && profileId === getProfile()?.id;
   function selectedPreference() {
     const profile = getProfile();
-    const preference = preferences?.loadReasoningPreference?.(getScope(), profile?.id || "");
+    const preference = getSelectedPreference(preferences?.loadReasoningPreference?.(getScope(), profile?.id || ""));
     if (preference && !canChooseReasoningBudget(profile))
       throw new Error("The selected model no longer supports the saved thinking budget. Choose Profile default.");
     return preference;
@@ -27,14 +27,15 @@ export function createReasoningBudgetController({ state, dom, preferences, getSc
     const button = dom.reasoningBudgetButton, menu = dom.reasoningBudgetMenu;
     if (!button || !menu) return false;
     const profile = getProfile();
-    const preference = preferences?.loadReasoningPreference?.(getScope(), profile?.id || "");
-    const available = canChooseReasoningBudget(profile) || Boolean(preference);
+    const preference = getSelectedPreference(preferences?.loadReasoningPreference?.(getScope(), profile?.id || ""));
+    const observed = getRunReasoningDisplay();
+    const available = canChooseReasoningBudget(profile) || Boolean(preference) || Boolean(observed?.budgetLabel);
     if (dom.reasoningBudgetControl) dom.reasoningBudgetControl.hidden = !available;
     button.hidden = !available;
     if (!available) { renderedKey = undefined; state.reasoningBudgetMenuOpen = false; menu.hidden = true; return false; }
     const labels = { off: "Off", "server-default": "Server default" };
-    const label = preference?.mode === "budget" ? `${preference.budgetTokens} tokens` : labels[preference?.mode] || "Profile default";
-    button.title = `Thinking budget: ${reasoningPreferenceLabel(preference)}`;
+    const label = observed?.budgetLabel || (preference?.mode === "budget" ? `${preference.budgetTokens} tokens` : labels[preference?.mode] || "Profile default");
+    button.title = observed?.budgetTitle || `Thinking budget: ${reasoningPreferenceLabel(preference)}`;
     button.setAttribute("aria-label", button.title);
     button.setAttribute("aria-haspopup", "dialog");
     button.setAttribute("aria-expanded", String(Boolean(state.reasoningBudgetMenuOpen)));
@@ -60,6 +61,7 @@ export function createReasoningBudgetController({ state, dom, preferences, getSc
         saving = true; syncControls();
         await preferences.saveReasoningPreference(scope, profile.id, next);
         if (!isCurrentScope(scope, profile.id)) return;
+        onPreferenceSelected(next);
         state.reasoningBudgetMenuOpen = false;
         if (onApplied) onApplied(); else render();
         applied = true;

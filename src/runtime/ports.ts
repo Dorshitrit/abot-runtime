@@ -322,6 +322,8 @@ export type ToolApprovalController = {
 };
 
 export type ToolRegistry = {
+  /** Availability metadata for configuration/grants, without executable request binding. */
+  discoverOperations?: () => Promise<readonly RegisteredToolNormalInvocation[]>;
   /** Build an isolated availability/execution snapshot before model projection. */
   prepareRequest?: (
     context?: import("../capabilities/tool-request-resources.js").ToolRequestPreparationContext,

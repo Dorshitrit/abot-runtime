@@ -8,6 +8,9 @@ export function createRequestModelPolicy(params: {
   const platformDefaults = params.platformPolicy?.defaults;
 
   return {
+    ...(params.platformPolicy?.parameterProfiles
+      ? { parameterProfiles: params.platformPolicy.parameterProfiles }
+      : {}),
     ...(params.platformPolicy?.providers
       ? { providers: params.platformPolicy.providers }
       : {}),

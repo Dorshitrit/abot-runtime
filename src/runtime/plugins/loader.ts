@@ -63,6 +63,7 @@ function compiledCapabilityFromDeclaration(
   return {
     execute: tool.implementation,
     ...(tool.prepareRequest ? { prepareRequest: tool.prepareRequest } : {}),
+    ...(tool.discoverCapabilities ? { discoverCapabilities: tool.discoverCapabilities } : {}),
     ...(tool.adapter ? { adapter: tool.adapter } : {}),
     definition: tool.definition,
     normalInvocation: tool.normalInvocation,
@@ -121,6 +122,7 @@ function loadManifestRuntimePlugin(
   const entrypoint = validateManifestEntrypoint({
     pluginId: manifest.name,
     expectedCapabilityIds: capabilityIds,
+    requiresRequestBinding: extension.requiresRequestBinding,
     raw: rawEntrypoint,
   });
   const declarations: ToolModuleDeclaration[] = projection.capabilities.map(
@@ -131,6 +133,7 @@ function loadManifestRuntimePlugin(
       ...(entrypoint.prepareRequest
         ? { prepareRequest: entrypoint.prepareRequest }
         : {}),
+      ...(entrypoint.discoverCapabilities ? { discoverCapabilities: entrypoint.discoverCapabilities } : {}),
       ...(entrypoint.adapters?.[definition.name]
         ? { adapter: entrypoint.adapters[definition.name] }
         : {}),
@@ -329,6 +332,7 @@ function toolModuleDeclarationFromRuntimePlugin(
   return {
     implementation: tool.execute,
     ...(tool.prepareRequest ? { prepareRequest: tool.prepareRequest } : {}),
+    ...(tool.discoverCapabilities ? { discoverCapabilities: tool.discoverCapabilities } : {}),
     ...(tool.adapter ? { adapter: tool.adapter } : {}),
     definition: tool.definition,
     normalInvocation: tool.normalInvocation,

@@ -1,4 +1,5 @@
 import type { RuntimeConfigFile } from "../../config/types.js";
+import type { ModelProviderEmbeddingModelCatalog } from "../../../model-gateway/index.js";
 
 export type LongTermMemoryOnboardingProvider = Readonly<{
   id: string;
@@ -63,7 +64,7 @@ export type LongTermMemoryOnboardingService = Readonly<{
       providerId: string;
       abortSignal?: AbortSignal;
     }>,
-  ): Promise<Readonly<{ supported: boolean; models: readonly string[] }>>;
+  ): Promise<ModelProviderEmbeddingModelCatalog>;
   enable(
     input: Readonly<{
       providerId: string;

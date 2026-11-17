@@ -20,7 +20,8 @@ vi.mock("../model/model-catalog.js", () => ({
     return { defaultProfileId: ids[0], profiles: ids.map((id) => ({ id })) };
   },
 }));
-vi.mock("../../web-ui/local-runtime/runtime-availability.js", () => ({
+vi.mock("../../web-ui/local-runtime/runtime-availability.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../web-ui/local-runtime/runtime-availability.js")>()),
   inspectRuntimeSetupRequirement: () => null,
 }));
 vi.mock("../../web-ui/local-runtime/runtime-setup-provider.js", () => ({
@@ -122,6 +123,8 @@ async function fixture(
     { publish, requestOptions },
   );
   await registry.start(["prod", "dev"]);
+  expect(owners).toHaveLength(2);
+  for (const owner of owners) expect(owner.start).toHaveBeenCalledOnce();
   const previousOwners = [...owners];
   const desiredConfig = new Map([
     ["prod", configuration("desired-prod-model")],

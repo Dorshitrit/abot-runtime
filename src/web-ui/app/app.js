@@ -79,7 +79,7 @@ let stepTimeouts;
 const operationsController = createOperationsController({
   onSessionsReset: (result, environmentId) => reconcileRuntimeSessionReset({
     result, environmentId, getEnvironmentId: selectedEnvironmentId, state, preferences,
-    clearSessionDraft: (scope, deleted) => composerWorkspace.resetSessionDraft(scope, deleted),
+    clearSessionDraft: (scope, deleted) => { runtimeSelection.retireSessionSelection(scope); composerWorkspace.resetSessionDraft(scope, deleted); },
     preserveSessionDraft: (scope) => composerWorkspace.preserveResetDraft(scope),
     restoreSessionDraft: (sessionId) => composerWorkspace.restoreResetDraft(sessionId),
     refreshComposer: () => composerFeature.changed(),
@@ -129,6 +129,7 @@ const shell = createWorkspaceShell({
   },
   onWorkspaceChange: (workspace) => {
     runtimeSelection?.rememberModelSelection();
+    runtimeSelection?.pruneEmptyDraftSelections();
     homeComposer?.setWorkspace(workspace);
     conversationView?.setWorkspace(workspace);
     projectsFeature?.workspaceChanged(workspace);
@@ -256,6 +257,7 @@ const sessionActionsMenu = createSessionActionsMenu({
 const sessionController = createSessionController({
   state,
   dom,
+  realtime: realtimeTransport,
   onSidebarChange: renderSessions,
   sessionActionsMenu,
   renderGroups: (input) => projectsFeature?.renderSessionGroups(input) ?? false,
@@ -272,7 +274,7 @@ const sessionController = createSessionController({
     }
     conversationSession.clearSessionMessagesView();
   },
-  onSessionAttachmentsCleared: (scope) => composerWorkspace.drafts.clearAttachments(scope),
+  onSessionAttachmentsCleared: (scope) => { runtimeSelection.retireSessionSelection(scope); composerWorkspace.drafts.clearAttachments(scope); },
   onClearSessionMode: clearSessionMode,
   onSaveModelPreferences: saveModelPreferences,
   onReload: () => conversationSession.loadSessions(),
@@ -329,6 +331,8 @@ conversationSession = createConversationSessionController({
   onSessionListState: dashboardFeature.sessionsChanged,
   applyConversationChrome: applyConversationModeChrome,
   applyModelSelection: applyModelSelectionForCurrentSession,
+  onSessionSnapshot: (payload, scope) => runtimeSelection.applySessionSnapshot(payload, scope),
+  onResetRunSelection: () => runtimeSelection?.clearRunSelection(),
   renderSessions,
   renderMessages,
   updateComposerSendState,
@@ -351,15 +355,16 @@ composerFeature = createComposerFeature({
   state, dom: composerWorkspace.chatDom, shell, client: runtimeClient,
   sessionQueue: sessionComposerQueue, conversationSession, conversationView,
   drafts: composerWorkspace.drafts, getDraft: composerWorkspace.chatView.current,
+  onSubmissionAccepted: (attempt) => runtimeSelection.pruneEmptyDraftSelections(attempt.payload.scope),
   getEnvironmentId: selectedEnvironmentId,
   ensureSession: () => conversationSession.ensureSession(),
   getSettings: () => {
     rememberCurrentModelSelection();
-    return { agentMode: state.agentMode, toolPermissionMode: currentToolPermissionMode(), modelPreference: selectedModelPreference(), reasoningPreference: runtimeSelection.selectedReasoningPreference() };
+    return { agentMode: runtimeSelection.selectedAgentMode(), toolPermissionMode: currentToolPermissionMode(), modelPreference: selectedModelPreference(), reasoningPreference: runtimeSelection.selectedReasoningPreference() };
   },
   steer: steerController.steer, composerActions,
   selectedModelSupportsImageInput: () => runtimeSelection.selectedModelSupportsImageInput(
-    composerWorkspace.isChatVisible() ? dom.modelSelect.value : state.sessionModels[state.currentSessionId] || state.defaultModelProfileId),
+    composerWorkspace.isChatVisible() ? dom.modelSelect.value : runtimeSelection.modelProfileIdForSession(state.currentSessionId)),
   isComposerAvailable: runtimeOnboarding.isReady,
   getSubmissionBlock: runtimeOnboarding.submissionBlock,
   onSubmissionBlocked: runtimeOnboarding.presentSubmissionBlock,
@@ -391,6 +396,7 @@ realtimeEvents = createRealtimeEventController({
   selectedEnvironmentId,
   handleSteerAcknowledgement,
   shouldAcceptMessage: conversationSession.shouldAcceptRealtimeMessage,
+  observeRunEvent: (message) => runtimeSelection?.observeRunEvent(message),
   applySessionReadState: conversationSession.applySessionReadState,
   activeAssistantForRequest: conversationSession.activeAssistantForRequest,
   addOrMergeMessage: conversationSession.addOrMergeMessage,
@@ -436,12 +442,15 @@ runtimeSelection = createRuntimeSelectionController({
   onModelCatalogLoaded: runtimeOnboarding.applyCatalog,
   onModelCatalogUnavailable: runtimeOnboarding.catalogUnavailable,
   getComposerSessionId: composerWorkspace.composerSessionId,
+  getComposerIsHome: composerWorkspace.isHome,
+  hasUnsentDraft: composerWorkspace.drafts.hasUnsentDraft,
+  getSubmissionScopes: () => composerFeature.lifecycle.ownedScopes(),
 });
 homeComposer = createHomeComposerFeature({
   workspace: composerWorkspace,
   composer: composerFeature,
   selectedModelSupportsImageInput: () => runtimeSelection.selectedModelSupportsImageInput(
-    composerWorkspace.isHome() ? dom.modelSelect.value : state.sessionModels[composerWorkspace.ensureHomeSession()] || state.defaultModelProfileId),
+    composerWorkspace.isHome() ? dom.modelSelect.value : state.lastModelByEnvironment[selectedEnvironmentId()] || state.defaultModelProfileId),
   activateHomeSession: createHomeConversationActivation({
     state, shell, conversationSession, composerQueue: composerQueueController,
     preferences, selectedEnvironmentId, renderSessions, renderMessages,
@@ -465,6 +474,7 @@ const appEventBindings = createAppEventBindings({
     saveSessionId: saveSessionIdForEnvironment,
     selectedEnvironmentId,
     rememberModelSelection: rememberCurrentModelSelection,
+    applyModelSelection: applyModelSelectionForCurrentSession,
     invalidateSessionLoads: conversationSession.invalidateEnvironmentLoads,
     clearAttachments: clearPendingAttachments,
     resetLiveRequestView: conversationSession.resetLiveRequestView,
@@ -554,8 +564,8 @@ function applyModelSelectionForCurrentSession() {
   runtimeSelection.applyModelSelection();
 }
 
-function rememberCurrentModelSelection() {
-  runtimeSelection.rememberModelSelection();
+function rememberCurrentModelSelection(options) {
+  runtimeSelection.rememberModelSelection(options);
 }
 
 function currentToolPermissionMode() {

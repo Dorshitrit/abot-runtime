@@ -130,6 +130,7 @@
     "plugins/document-reader/",
     "plugins/exec/",
     "plugins/filesystem/",
+    "plugins/filesystem-ea/",
     "plugins/json-inspector/",
     "plugins/local-search/",
     "plugins/memory/",
@@ -191,5 +192,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "2.3.1"
+  "version": "2.4.0"
 }

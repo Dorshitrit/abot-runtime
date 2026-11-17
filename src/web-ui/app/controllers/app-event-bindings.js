@@ -74,14 +74,15 @@ export function createAppEventBindings({
     if (recovery() === false) return false;
     if (preparedWorkspaceActivation() === false) return false;
     state.currentSessionId = createWebSessionId();
+    state.messages = [];
+    actions.resetLiveRequestView();
+    actions.applyModelSelection?.();
     onSessionCreated(state.currentSessionId);
     actions.saveSessionId(
       actions.selectedEnvironmentId(),
       state.currentSessionId,
     );
     actions.rememberModelSelection();
-    state.messages = [];
-    actions.resetLiveRequestView();
     actions.setCurrentSessionTitle(state.currentSessionId);
     actions.applyConversationChrome();
     actions.subscribeSession(state.currentSessionId);
@@ -149,7 +150,7 @@ export function createAppEventBindings({
       handleMenuNavigation(event, dom.agentPickerMenu);
     });
     dom.modelSelect.addEventListener("change", () => {
-      actions.rememberModelSelection();
+      actions.rememberModelSelection({ explicit: true });
       actions.removeUnsupportedImages();
       actions.renderAttachments();
     });

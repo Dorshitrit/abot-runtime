@@ -1,0 +1,14 @@
+{
+  "provider": "ollama",
+  "nativeOptions": true,
+  "parameters": {
+    "temperature": { "path": ["options", "temperature"], "min": 0 },
+    "top_p": { "path": ["options", "top_p"], "min": 0, "max": 1 },
+    "top_k": { "path": ["options", "top_k"], "min": 0, "max": 2147483647 },
+    "min_p": { "path": ["options", "min_p"], "min": 0, "max": 1 },
+    "max_output_tokens": { "path": ["options", "num_predict"], "min": 1, "max": 2147483647, "nativeSentinels": [-1, -2], "environmentOverride": "OLLAMA_NUM_PREDICT", "computedDefault": "Calculated from the physical context remaining after the final input." },
+    "repeat_penalty": { "path": ["options", "repeat_penalty"], "min": 0 },
+    "reasoning_effort": { "path": ["think"] },
+    "seed": { "path": ["options", "seed"] }
+  }
+}

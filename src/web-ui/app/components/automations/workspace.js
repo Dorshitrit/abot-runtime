@@ -13,14 +13,13 @@ import { createAutomationTimelineCamera } from "./timeline-camera.js";
 import { createAutomationLiveView } from "./live-view.js";
 import { createAutomationConfirmations, createAutomationDestructiveCommands } from "./confirmation-actions.js";
 import { createAutomationWorkspaceNavigation } from "./workspace-navigation.js";
-import { matchesAutomationGrant, requiresFullPlus, selectedAutomationOperations } from "./permission-selection.js";
+import { matchesAutomationGrant, requiresFullPlus, selectedAutomationOperations, standaloneAutomationOperations } from "./permission-selection.js";
 
 const DRAG_TYPE = "application/x-abot-automation-step";
 
 export function paletteNode(target, catalog) {
   if (target.kind === "tool") {
-    const items = Array.isArray(catalog?.grantableOperations)
-      ? catalog.grantableOperations : catalog?.operations || [];
+    const items = standaloneAutomationOperations(catalog);
     const item = items.find((entry) => entry.toolName === target.id);
     if (!item) return null;
     return { kind: "tool", title: toolDisplayName(item.toolName), onFailure: "stop",

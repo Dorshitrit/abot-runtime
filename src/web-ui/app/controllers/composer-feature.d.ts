@@ -3,7 +3,7 @@ import type { ComposerAttachmentsClient, ComposerAttachmentsController, Composer
 import type { ChatRequestController, ComposerChatClient, ComposerChatSession } from "./chat-request-controller.js";
 import type { ComposerDraft, ComposerDraftSnapshot, ComposerDrafts, ComposerScope } from "./composer-drafts.js";
 import type { ComposerQueueController } from "./composer-queue-controller.js";
-import type { ComposerSubmissionLifecycle, ComposerSubmissionSettings } from "./composer-submission-lifecycle.js";
+import type { ComposerSubmissionAttempt, ComposerSubmissionLifecycle, ComposerSubmissionSettings } from "./composer-submission-lifecycle.js";
 import type { createRealtimeEventController } from "./realtime-event-controller.js";
 import type { ComposerSubmissionBlock, ComposerSubmitActions, ComposerSubmitController, ComposerSubmitDom, ComposerSubmitState } from "./composer-submit-controller.js";
 
@@ -52,6 +52,7 @@ export interface ComposerFeatureOptions {
   recordControlEvent: ReturnType<typeof createRealtimeEventController>["recordControlEvent"];
   drafts?: ComposerDrafts;
   onChange?(): void;
+  onSubmissionAccepted?(attempt: ComposerSubmissionAttempt): void;
   confirmReview?(message: string, options?: { title: string; confirmLabel: string }): boolean | Promise<boolean>;
 }
 export interface ComposerFeature extends ComposerSurface {

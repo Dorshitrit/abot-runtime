@@ -349,7 +349,6 @@ describe("add-runtime-model", () => {
       join(targetRoot, "local", "models", "second-local.config.json"),
     );
     expect(profile).toMatchObject({
-      generation: { temperature: 0 },
       context: {
         tokenEstimation: {
           asciiCharactersPerToken: 3,
@@ -360,10 +359,11 @@ describe("add-runtime-model", () => {
       calibration: {
         "context.compact": {
           format: "json",
-          generation: { temperature: 0, reasoningEffort: "none" },
         },
       },
     });
+    expect(profile).not.toHaveProperty("generation");
+    expect(asRecord(asRecord(profile.calibration)["context.compact"])).not.toHaveProperty("generation");
     expect(profile.supportsThinking).toBeUndefined();
     const runtime = await readJson(
       join(targetRoot, "local", "runtime.config.json"),

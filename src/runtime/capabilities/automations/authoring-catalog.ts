@@ -128,6 +128,7 @@ export function projectAutomationAuthoringCatalogIndex(
       label: operation.label.slice(0, LABEL_MAX_LENGTH),
       labelTruncated: operation.label.length > LABEL_MAX_LENGTH,
       ...(operation.pluginName ? { pluginName: operation.pluginName } : {}),
+      ...(operation.requiresRequestBinding ? { requiresRequestBinding: true as const } : {}),
       catalogGroups: operation.catalogGroups, permissionMode: operation.permissionMode,
       effect: operation.effect, granted: granted.has(operationKey(operation)),
     })), offset);

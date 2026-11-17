@@ -2,7 +2,7 @@ import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
 
 /** A saved approval is progress presentation, never a copyable final answer. */
 export function createConversationApprovalPresentation({
-  message, activity, thinking, progress, status, statusPlacement, documentRoot,
+  message, updates, activity, thinking, progress, status, statusPlacement, documentRoot,
 }) {
   const row = documentRoot.createElement("article");
   row.className = "message-row assistant message-approval-presentation";
@@ -18,7 +18,10 @@ export function createConversationApprovalPresentation({
   if (activity) bubble.appendChild(activity);
   if (thinking) bubble.appendChild(thinking);
   if (progress) bubble.appendChild(progress);
-  if (message.text) {
+  const bodyShownInProgress = (activity || progress) && updates.some((update) =>
+    update.requestId === message.requestId && update.text?.trim() === message.text?.trim(),
+  );
+  if (message.text && !bodyShownInProgress) {
     const intent = documentRoot.createElement("div");
     intent.className = "markdown-body conversation-approval-intent";
     applyTextDirection(intent, message.text);

@@ -1,5 +1,6 @@
 import { applyProviderTokenEstimationDefaults } from "./provider-token-estimation.js";
-import { resolveInvocationReasoning } from "./reasoning-policy.js";
+import { resolveInvocationParameters } from "./invocation-parameters.js";
+import { mergeModelGenerationConfig } from "./model-generation-merge.js";
 export { normalizeReasoning, resolveThink } from "./reasoning-policy.js";
 import {
   type InvocationProfileCandidate,
@@ -43,10 +44,7 @@ function applyInvocationProfileOverlay(
 
   return {
     ...candidate.profile,
-    generation: {
-      ...candidate.profile.generation,
-      ...(overlay.generation ?? {}),
-    },
+    generation: mergeModelGenerationConfig(candidate.profile.generation, overlay.generation),
     context: applyProviderTokenEstimationDefaults(candidate.profile.provider, {
       ...candidate.profile.context,
       ...(overlay.context ?? {}),
@@ -212,7 +210,7 @@ export function resolveModelInvocation(
   return {
     model: profile.model,
     profile,
-    ...resolveInvocationReasoning(requestBody, profile),
+    ...resolveInvocationParameters(requestBody, profile),
     ...(selectedInvocationProfile?.format
       ? { format: selectedInvocationProfile.format }
       : {}),

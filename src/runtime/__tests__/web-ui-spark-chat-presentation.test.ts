@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 // @ts-expect-error Browser presentation module.
 import { createSparkChatResults } from "../../web-ui/app/components/spark-chat/results.js";
 // @ts-expect-error Browser presentation module.
-import { sparkConversationMessages, sparkMessageStatus, sparkWorkingStatus } from "../../web-ui/app/lib/spark-chat-presentation.js";
+import { sparkConversationMessages, sparkMessageStatus } from "../../web-ui/app/lib/spark-chat-presentation.js";
 // @ts-expect-error Browser-only view.
 import { createConversationView } from "../../web-ui/app/components/conversation-view.js";
 import { syncChatgptPlanIndicator } from "../../web-ui/app/components/chatgpt-plan-indicator.js";
@@ -40,14 +40,12 @@ describe("SPARK friendly presentation", () => {
     expect(note.hidden).toBe(true);
   });
 
-  test("keeps composer feedback but hides every per-message technical status", () => {
+  test("keeps actionable composer feedback without duplicating routine working status", () => {
     expect(sparkMessageStatus("ABot response completed.")).toBe("");
     expect(sparkMessageStatus("ABot is working.")).toBe("");
     expect(sparkMessageStatus("File upload failed: connection lost")).toBe("File upload failed: connection lost");
     expect(sparkMessageStatus("Waiting for your approval.")).toBe("Waiting for your approval.");
     expect(sparkMessageStatus("Message queued for this conversation.")).toBe("Message queued for this conversation.");
-    for (const model of [null, { label: "Running tool", animate: true }, { label: "Tool approval", animate: false }])
-      expect(sparkWorkingStatus(model)).toBeNull();
   });
 
   test("renders only scoped, ordered, deduplicated EA updates using shared safe message styling", () => {
@@ -103,7 +101,7 @@ describe("SPARK friendly presentation", () => {
       getActiveRequestId: () => "r", getActivityForMessage: () => ({ events: [] }),
       getPendingApprovals: () => [{}], createApprovalCard: () => approval,
       copyText, notify() {}, createActivityView: createSparkChatResults,
-      statusPresentation: sparkWorkingStatus, statusPlacement: "outside",
+      statusPlacement: "outside",
       showReasoning: false, showContextWindow: false, preserveMessageHistory: true,
       scrollBehavior: { afterRender() {} },
     });
@@ -111,7 +109,8 @@ describe("SPARK friendly presentation", () => {
     expect(dom.messagesList.querySelector(".conversation-work-message")).not.toBeNull();
     expect(dom.messagesList.querySelector(".conversation-progress")).toBeNull();
     expect(dom.messagesList.querySelector(".message-approval-presentation")).toBeNull();
-    expect(dom.messagesList.querySelector(".conversation-status")?.hidden).toBe(true);
+    expect(dom.messagesList.querySelector(".conversation-status")?.hidden).toBe(false);
+    expect(dom.messagesList.querySelector(".conversation-status")?.classList.contains("is-animated")).toBe(true);
     expect(dom.messagesList.children.at(-1)).toBe(approval);
     const final = "**Exact final**\n\nKeep this spacing.  \n";
     messages[0] = { ...messages[0]!, text: final, streaming: false };
@@ -120,6 +119,7 @@ describe("SPARK friendly presentation", () => {
     expect(dom.messagesList.textContent).toContain("<strong>Exact final</strong>");
     expect(dom.messagesList.textContent).not.toContain("Tool approval required.");
     expect(dom.messagesList.querySelector(".conversation-work-message")).not.toBeNull();
+    expect(dom.messagesList.querySelector(".conversation-status")).toBeNull();
     expect(dom.messagesList.children.at(-1)).toBe(approval);
     dom.messagesList.querySelector("button")!.dispatch("click");
     await Promise.resolve();

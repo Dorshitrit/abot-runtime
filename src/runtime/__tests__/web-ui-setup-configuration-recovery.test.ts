@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { LocalRuntimeApiRouter } from "../../web-ui/local-runtime/api-router.js";
 import { RuntimeSetupService } from "../../web-ui/local-runtime/runtime-setup-service.js";
 import { RuntimeEnvironmentRegistry } from "../../web-ui/local-runtime/environment-registry.js";
 import { createRuntimeOnboardingController } from "../../web-ui/app/controllers/runtime-onboarding-controller.js";
@@ -66,6 +67,55 @@ test.each([
     expect(await readFile(configPath, "utf8")).toBe(raw);
   },
 );
+
+test("a malformed main file exposes a safe diagnostic and rechecks after repair", async () => {
+  const raw = '{\n "secret": "private-fixture",,}';
+  await writeFile(configPath, raw);
+  const registry = new RuntimeEnvironmentRegistry({ rootDir, configPath, defaultEnvironmentId: "prod" });
+  const service = new RuntimeSetupService({
+    rootDir, getConfigPath: () => configPath, activate: async () => ({ status: "ready" }),
+  });
+  const router = new LocalRuntimeApiRouter({ rootDir, configPath, defaultEnvironmentId: "prod", providerAdapters: {} as never }, registry, {} as never);
+  const logged = vi.spyOn(console, "error");
+  try {
+    await registry.start(["prod"]);
+    await router.initializeSessionReadState(["prod"]);
+    expect(logged).not.toHaveBeenCalled();
+  } finally { logged.mockRestore(); }
+  const catalog = registry.modelCatalog("prod");
+  const setup = await service.status();
+  expect(setup).toMatchObject({ status: "required", configExists: true, recovery: "configuration_file" });
+  expect(catalog.availability).toMatchObject({ recovery: setup.recovery, message: setup.message });
+  expect(setup.message).toContain(configPath);
+  expect(setup.message).toMatch(/: Invalid JSON syntax(?: \(line 2 column \d+\))?$/u);
+  expect(setup.message).not.toContain("private-fixture");
+  await expect(service.save({ provider: "ollama", model: "replacement" })).rejects.toThrow();
+  expect(await readFile(configPath, "utf8")).toBe(raw);
+
+  const harness = createGuideHarness();
+  const controller = createRuntimeOnboardingController({
+    state: { runtimeAvailability: { status: "loading" } }, guide: harness.guide,
+    reloadModels: async () => controller.applyCatalog(registry.modelCatalog("prod")),
+    setMessageStatus: vi.fn(),
+  });
+  controller.bind();
+  controller.applyCatalog(catalog);
+  expect(harness.container.innerHTML).toContain(configPath);
+  expect(harness.container.innerHTML).not.toMatch(/Connect your first model|Open Models/u);
+  expect(harness.loadSetup).not.toHaveBeenCalled();
+  await writeFile(configPath, "{}");
+  harness.click("check");
+  await harness.ready();
+  expect(harness.container.innerHTML).toContain('data-runtime-setup-field="provider"');
+});
+
+test("syntax errors quoting invalid private values never reveal their content", async () => {
+  await writeFile(configPath, "SECRET_CONFIG_VALUE");
+  const registry = new RuntimeEnvironmentRegistry({ rootDir, configPath, defaultEnvironmentId: "prod" });
+  const serialized = JSON.stringify(registry.modelCatalog("prod"));
+  expect(serialized).toContain("Invalid runtime config JSON");
+  expect(serialized).not.toContain("SECRET");
+});
 
 test("an empty profile map still offers ordinary initial setup", async () => {
   await writeFile(

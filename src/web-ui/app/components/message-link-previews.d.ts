@@ -11,6 +11,7 @@ export declare function createMessageLinkPreviews(options?: {
     role?: string;
     text?: string;
     streaming?: boolean;
+    failedResponse?: boolean;
   }): HTMLElement | null;
   reset(): void;
 };

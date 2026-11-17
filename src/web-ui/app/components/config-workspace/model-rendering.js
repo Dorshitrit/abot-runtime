@@ -6,6 +6,7 @@ import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { groupModelSelectorOptions } from "../../lib/model-selector-options.js";
 import { isConfigObject } from "./config-model.js";
 import { renderModelPluginPermissions } from "./model-plugin-permissions.js";
+import { modelParameterPresentation, renderModelParameters } from "./model-parameters.js";
 
 function modelListStatus(model, hasImage) {
   if (model.registered === false) return "Not registered";
@@ -31,6 +32,19 @@ function renderModelRegistrationAction(model) {
     return '<p class="muted">Not registered in the saved configuration. This file is kept for reference.</p>';
   if (model.registered !== true) return "";
   return `<button type="button" data-config-action="remove-model" data-id="${escapeAttribute(model.id)}">Remove model</button>`;
+}
+
+function renderContextWindowField(model, renderConfigInput) {
+  const source = model.config?.contextWindowTokens === undefined ? "Not configured" : "Saved config";
+  return `<div class="config-model-parameter" role="group" aria-label="Context window">
+    <div class="config-model-parameter-header"><span class="config-model-parameter-name">Context window</span>
+      <span class="config-model-parameter-source">${source}</span>
+      <details class="config-model-parameter-info"><summary aria-label="About Context window">i</summary>
+        <div class="config-model-parameter-help"><p>Total context available to the model, including input and output tokens.</p></div>
+      </details>
+    </div>
+    <label><span class="sr-only">Context window</span>${renderConfigInput(model, ["contextWindowTokens"], { type: "number", min: "1", step: "1" })}</label>
+  </div>`;
 }
 
 export function createConfigModelRendering({
@@ -95,6 +109,8 @@ export function createConfigModelRendering({
 
   function renderCalibrationCard(file, stepId, profile) {
     const basePath = ["calibration", stepId];
+    const parameters = modelParameterPresentation(state, file, [...basePath, "generation"]);
+    const modeBudgets = renderReasoningModeBudgets(file, [...basePath, "generation"], renderConfigInput, { supported: isTokenBudgetModel(file, state.configDashboard, profile) });
     const displayName =
       textOf(profile?.name).trim() || calibrationProfileLabel(stepId);
     const description = textOf(profile?.description).trim();
@@ -131,7 +147,7 @@ export function createConfigModelRendering({
               ...basePath,
               "format",
             ])}</label>
-            <label><span>Temperature</span>${renderConfigInput(
+            ${parameters ? renderModelParameters(file, [...basePath, "generation"], parameters, { advancedFields: modeBudgets }) : `<label><span>Temperature</span>${renderConfigInput(
               file,
               [...basePath, "generation", "temperature"],
               { type: "number", step: "0.01" },
@@ -142,8 +158,8 @@ export function createConfigModelRendering({
               { type: "number", step: "0.01" },
             )}</label>
             ${renderReasoningBudget(file, [...basePath, "generation"], renderConfigInput, { supported: isTokenBudgetModel(file, state.configDashboard, profile), dashboard: state.configDashboard })}
-            ${renderReasoningEffort(file, [...basePath, "generation"], renderConfigInput)}
-            ${renderReasoningModeBudgets(file, [...basePath, "generation"], renderConfigInput, { supported: isTokenBudgetModel(file, state.configDashboard, profile) })}
+            ${renderReasoningEffort(file, [...basePath, "generation"], renderConfigInput)}`}
+            ${!parameters ? modeBudgets : ""}
           </div>
           <button
             class="config-icon-button config-calibration-remove"
@@ -177,6 +193,8 @@ export function createConfigModelRendering({
     const calibration = isConfigObject(model.config?.calibration)
       ? model.config.calibration
       : {};
+    const parameters = modelParameterPresentation(state, model, ["generation"]);
+    const modeBudgets = renderReasoningModeBudgets(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard) });
     const calibrationCards = Object.entries(calibration)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([stepId, profile]) => renderCalibrationCard(model, stepId, profile))
@@ -224,7 +242,9 @@ export function createConfigModelRendering({
               { type: "select", values: configProviderOptions() },
             )}</label>
             <label><span>Model</span>${renderConfigInput(model, ["model"])}</label>
-            <label><span>Temperature</span>${renderConfigInput(
+            ${parameters ? renderModelParameters(model, ["generation"], parameters, {
+              reasoningFields: renderContextWindowField(model, renderConfigInput), advancedFields: modeBudgets,
+            }) : `<label><span>Temperature</span>${renderConfigInput(
               model,
               ["generation", "temperature"],
               { type: "number", step: "0.01" },
@@ -233,15 +253,15 @@ export function createConfigModelRendering({
               model,
               ["generation", "topP"],
               { type: "number", step: "0.01" },
-            )}</label>
-            <label><span>Context window</span>${renderConfigInput(
+            )}</label>`}
+            ${!parameters ? `<label><span>Context window</span>${renderConfigInput(
               model,
               ["contextWindowTokens"],
               { type: "number", min: "1", step: "1" },
-            )}</label>
-            ${isTokenBudgetModel(model, state.configDashboard) ? renderReasoningEffort(model, ["generation"], renderConfigInput) : ""}
-            ${renderReasoningBudget(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard), dashboard: state.configDashboard })}
-            ${renderReasoningModeBudgets(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard) })}
+            )}</label>` : ""}
+            ${!parameters && isTokenBudgetModel(model, state.configDashboard) ? renderReasoningEffort(model, ["generation"], renderConfigInput) : ""}
+            ${!parameters ? renderReasoningBudget(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard), dashboard: state.configDashboard }) : ""}
+            ${!parameters ? modeBudgets : ""}
           </div>
           ${renderModelPromptCache(model, state.configDashboard)}
           ${renderExecutionRoute(model)}

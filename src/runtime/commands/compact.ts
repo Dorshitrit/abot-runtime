@@ -1,5 +1,6 @@
 import { hasExecutionHistoryAuthority } from "../context/execution-history-policy.js";
 import { createRequestSessionMemory } from "../context/session-memory/controller.js";
+import { SESSION_MEMORY_PROTECTED_TURN_COUNT } from "../context/session-memory/contracts.js";
 import { projectSessionMemoryMessages } from "../context/session-memory/projection.js";
 import { createSessionHistoryCompactionStage } from "../context/session-memory/stage.js";
 import { resolvePolicySessionMemoryCompactor } from "../context/super-compaction/history-routing.js";
@@ -30,16 +31,19 @@ export async function compactSessionCommand(
     ),
   });
   const before = memory.project();
-  if (before.compactableTurnCount === 0)
+  if (before.compactableTurnCount === 0) {
+    const onlyProtectedHistoryRemains = !executionHistory && before.historyMessages.length > 0;
     return {
       eventName: "context.compaction.completed",
       outcome: "no_change",
       details: {
         reason: "no_eligible_sources",
+        ...(onlyProtectedHistoryRemains ? { protectedTurnLimit: SESSION_MEMORY_PROTECTED_TURN_COUNT } : {}),
         compactionScope: "session_history",
         checkpointRevision: before.checkpointRevision,
       },
     };
+  }
   const modelStep = executionHistory
     ? "execution.decision"
     : "supervisor.decision";

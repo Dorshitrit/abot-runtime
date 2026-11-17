@@ -31,8 +31,8 @@ import {
 } from "./errors.js";
 import {
   payloadRejection,
-  prepareOperationPayload,
 } from "./payload-lifecycle.js";
+import { prepareDeclaredOperationPayload } from "./execution-file-payload.js";
 import { projectSelectedTargetReferences } from "./result-observer.js";
 import { resolveEffectiveOperationTargetControls } from "./runtime-path-controls.js";
 import { createWorkerCapabilityPreparationFailureFingerprint } from "../../orchestration/worker-capabilities/preparation-fingerprint.js";
@@ -244,7 +244,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
       ? params.descriptor.selectionControlIds
       : undefined,
   );
-  const preparedPayload = await prepareOperationPayload({
+  const preparedPayload = await prepareDeclaredOperationPayload({
     projection: params.projection,
     executor: payloadObservability.lifecycleEmitter,
     sharedState: params.sharedState,

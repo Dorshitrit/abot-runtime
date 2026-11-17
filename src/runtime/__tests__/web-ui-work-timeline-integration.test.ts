@@ -71,6 +71,18 @@ describe("default chat work timeline integration", () => {
     expect({ messages, events }).toEqual(original);
   });
 
+  test("an approval body already displayed as progress appears only once, leaving distinct approval instructions visible", () => {
+    const line = "I will inspect the file.";
+    const approval: Item = { ...answer(line, false), kind: "tool_approval_request" };
+    const f = fixture([update(line, 1), approval], []);
+    f.view.render();
+    expect(nodes(f.messagesList, ".conversation-work-message")).toHaveLength(1);
+    expect(f.messagesList.querySelector(".conversation-approval-intent")).toBeNull();
+    approval.text = "Approve this read.";
+    f.view.render();
+    expect(f.messagesList.querySelector(".conversation-approval-intent")?.textContent).toContain("Approve this read.");
+  });
+
   test("shows SUPER acknowledge and intent while excluding unmarked reasoning", () => {
     const events = [
       { type: "event", name: "thinking.delta", requestId, eventSequence: 1, presentationKind: "acknowledgement", text: "I will inspect the file." },

@@ -1,6 +1,6 @@
 import { captureRequestReasoningPreference } from "../request/reasoning-preference.js";
 import type { RuntimeConfig } from "../ports.js";
-import { resolveModelSelection } from "../model/model-selection.js";
+import { supportsRequestExecutionPolicy } from "../../shared/request-execution-policy.js";
 import {
   validateToolNormalInvocationInput,
   validateToolNormalInvocationPayload,
@@ -16,6 +16,7 @@ import { normalizeAutomationSchedule, requireAutomationScheduleOccurrence,
 import { validateTimeZone } from "../scheduler/schedule-validation.js";
 import { SchedulerValidationError } from "../scheduler/validation-error.js";
 import { automationTriggerSchedule } from "./trigger-schedule.js";
+import { createAutomationAgentModelSelection } from "./agent-model-selection.js";
 
 function validateTriggerSchedule(definition: AutomationRevision, now: number, timeZone: string,
   checkScheduleReadiness: boolean, existingSchedule?: AutomationScheduleTiming): AutomationGraphIssue[] {
@@ -41,6 +42,11 @@ function matchesOperation(candidate: AutomationCatalogOperation, selected: Opera
   return candidate.toolName === selected.toolName &&
     candidate.operationId === selected.operationId &&
     candidate.contractVersion === selected.contractVersion;
+}
+
+function requiresAgentRequestBinding(node: { kind: string }, operation: AutomationCatalogOperation): boolean {
+  if (node.kind !== "tool") return false;
+  return operation.requiresRequestBinding === true;
 }
 
 function validateToolNodeInputs(node: ToolNode, operation: AutomationCatalogOperation): AutomationGraphIssue[] {
@@ -109,6 +115,8 @@ export function validateAutomationPublication(input: {
   if (workingDirectoryIssue) return [workingDirectoryIssue];
   const compiled = compileAutomationGraph(input.definition);
   if (!compiled.ok) return compiled.issues;
+  const agentModels = compiled.graph.steps.some(({ node }) => node.kind === "agent")
+    ? createAutomationAgentModelSelection(input.config) : undefined;
   const issues: AutomationGraphIssue[] = validateTriggerSchedule(input.definition, input.now ?? Date.now(),
     input.timeZone ?? "UTC", input.checkScheduleReadiness !== false, input.existingSchedule);
   let sourceMayReceiveGeneratedFiles = false;
@@ -127,6 +135,8 @@ export function validateAutomationPublication(input: {
     const selections = node.kind === "tool"
       ? [node.operation]
       : node.tools.map((tool) => tool.operation);
+    const executionPolicy = node.kind === "agent"
+      ? agentModels!.execution(node).execution.policy : undefined;
     for (const [index, selected] of selections.entries()) {
       const operation = input.operations.find((entry) => matchesOperation(entry, selected));
       const path = node.kind === "tool"
@@ -136,6 +146,16 @@ export function validateAutomationPublication(input: {
         issues.push({ code: "automation_operation_unavailable", path, message: "Grant and configure this operation before publishing." });
         continue;
       }
+      if (requiresAgentRequestBinding(node, operation)) {
+        issues.push({ code: "automation_operation_unavailable", path,
+          message: "This operation requires an Agent request and cannot run as a standalone Tool step." });
+        continue;
+      }
+      if (!supportsRequestExecutionPolicy(operation.executionPolicies, executionPolicy)) {
+        issues.push({ code: "automation_operation_unavailable", path,
+          message: "This operation does not support the selected Agent's execution route." });
+        continue;
+      }
       if (node.kind === "tool") issues.push(...validateToolNodeInputs(node, operation));
       if (operation.effect !== "read_only") sourceMayReceiveGeneratedFiles = true;
       if (operation.approval === "always" && input.grantMode !== "full_plus") {
@@ -143,12 +163,7 @@ export function validateAutomationPublication(input: {
       }
     }
     if (node.kind !== "agent") continue;
-    const selection = resolveModelSelection({
-      agentMode: node.agentMode,
-      modelPreference: { profileId: node.modelProfileId, scope: "all" },
-      modelPolicy: input.config.models,
-      modelExecutionPolicies: input.config.modelExecutionPolicies,
-    });
+    const selection = agentModels!.admission(node);
     try {
       captureRequestReasoningPreference(node.reasoningPreference, selection);
     } catch (error) {

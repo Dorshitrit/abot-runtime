@@ -1,6 +1,7 @@
 import { ChatGptAuthError } from "../../../provider-auth/chatgpt/contracts.js";
 import { getChatGptAuthService } from "../../../provider-auth/chatgpt/service.js";
 import type { ModelProviderAdapter } from "../contracts.js";
+import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
 import { emitOpenAISchemaDiagnostics } from "../openai/diagnostics.js";
 import { invokeOpenAIResponses } from "../openai/responses-invocation.js";
 import { buildChatGptResponsesPayload } from "./payload.js";
@@ -13,6 +14,7 @@ export function createChatGptProviderAdapter(options: Readonly<{
     getChatGptAuthService().getAccessToken(accountRef, signal));
   return Object.freeze({
     type: "openai-chatgpt",
+    parameterCapabilities: getProviderParameterCapabilities("openai-chatgpt"),
     supportsImageInput: true,
     async invoke(params) {
       params.abortSignal?.throwIfAborted();

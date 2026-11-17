@@ -242,12 +242,17 @@ describe("optional onboarding steps", () => {
   });
 
   test("discovers only on demand and never chooses an embedding model automatically", async () => {
-    const harness = resumed();
+    const discoverEmbeddingModels = vi.fn(async () => ({
+      catalog: { supported: true, models: ["embedding-test"], unverifiedModels: ["legacy-model"] },
+    }));
+    const harness = resumed({ discoverEmbeddingModels });
     await harness.open();
-    expect(harness.discoverEmbeddingModels).not.toHaveBeenCalled();
+    expect(discoverEmbeddingModels).not.toHaveBeenCalled();
     harness.click("embedding-discover");
     await harness.ready();
-    expect(harness.discoverEmbeddingModels).toHaveBeenCalledWith("ollama");
+    expect(discoverEmbeddingModels).toHaveBeenCalledWith("ollama");
+    expect(harness.container.innerHTML).toContain("unknown for legacy-model");
+    expect(harness.container.innerHTML).not.toContain('<option value="legacy-model">');
     expect(harness.container.innerHTML).toContain(
       '<option value="embedding-test">',
     );
@@ -363,7 +368,7 @@ describe("optional onboarding steps", () => {
     harness.click("apply");
     await harness.ready();
     expect(harness.container.innerHTML).toContain(
-      "Connection applied. Check model availability again.",
+      "Connection applied. Reload the model catalog.",
     );
     expect(harness.container.innerHTML).not.toContain(
       'data-runtime-setup-action="back"',

@@ -162,6 +162,18 @@ The source-checkout web UI defaults to a direct local runtime backend. It
 serves the browser UI, accepts `/web-api` chat requests, and streams runtime
 events over `/web-realtime` without requiring an external bridge.
 
+`GET /web-api/chat/models` returns the configured model profiles. Its
+`availability.status` is `ready` when the catalog is ready for chat selection.
+The catalog check reads configuration without contacting the model providers.
+For Ollama, check the configured server's `/api/tags` endpoint to see which
+models it currently has installed.
+
+In an idle conversation, submit `/compact` to summarize older completed turns
+for future requests. The original messages remain visible. SUPER keeps the
+latest ten completed turns in full, so the first older turn becomes eligible
+after eleven completed turns. Execution Agent can compact from its first
+completed turn. An empty conversation has no saved history to compact.
+
 The environment picker is loaded from `environment.profiles` in the active
 runtime config. Its initial selection is `environment.default`, or
 `LLM_RUNTIME_WEB_ENVIRONMENT` when you explicitly set a web UI default.

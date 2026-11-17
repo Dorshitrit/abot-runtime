@@ -27,6 +27,7 @@ import {
   type ModelStepTimeoutIdentity,
 } from "./model-step-timeout-event.js";
 import { ModelStepAttempt } from "./model-step-provider-attempt.js";
+import { projectInvocationReasoning } from "./invocation-reasoning-presentation.js";
 import { withModelInvocationAbort } from "./scoped-model-abort.js";
 import { ProviderContextRecovery, createProviderContextRecoveryPreparation } from "./provider-context-recovery.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
@@ -383,6 +384,7 @@ class ModelStepInvocation<T> {
       profileId: admission.invocation.profile.id,
       provider: admission.invocation.profile.provider,
       model: admission.invocation.model,
+      ...projectInvocationReasoning(admission.invocation),
       measurement:
         assessment.budget.measuredInputTokens !== undefined
           ? "actual"

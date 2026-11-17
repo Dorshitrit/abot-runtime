@@ -11,7 +11,7 @@ import {
   removePluginSelectionFixtures,
 } from "./plugin-selection-fixture.js";
 
-const WINDOWS_COHORT = ["capability-brief", "code-outline", "document-reader", "exec", "filesystem", "json-inspector", "local-search", "memory", "project-orientation", "system", "system-probe", "web"];
+const WINDOWS_COHORT = ["capability-brief", "code-outline", "document-reader", "exec", "filesystem", "filesystem-ea", "json-inspector", "local-search", "memory", "project-orientation", "system", "system-probe", "web"];
 
 afterEach(async () => {
   vi.unstubAllGlobals();

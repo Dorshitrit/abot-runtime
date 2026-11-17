@@ -4729,14 +4729,152 @@ function isDesktopEntryOverBudget(content) {
   return content.length > 128e3;
 }
 
+// src/computer-access/application-summary.ts
+function formatSystemApplicationSummary(data) {
+  const summaryRoots = data.catalogScope.roots.slice(0, 16).map((root) => root.slice(0, 256));
+  const summary = {
+    ...data,
+    catalogScope: { ...data.catalogScope, roots: summaryRoots },
+    summaryRootsOmitted: Math.max(0, data.catalogScope.roots.length - summaryRoots.length),
+    summaryRootCharactersOmitted: data.catalogScope.roots.reduce(
+      (total, root, index) => total + root.length - (summaryRoots[index]?.length ?? 0),
+      0
+    ),
+    applications: [...data.applications],
+    summaryApplicationsOmitted: 0
+  };
+  while (hasOverBudgetApplicationSummary(summary)) {
+    summary.applications.pop();
+    summary.summaryApplicationsOmitted += 1;
+  }
+  while (hasOverBudgetCatalogRootSummary(summary)) {
+    const removedRoot = summary.catalogScope.roots.pop();
+    summary.summaryRootsOmitted += 1;
+    summary.summaryRootCharactersOmitted += removedRoot.length;
+  }
+  return JSON.stringify(summary);
+}
+function hasOverBudgetApplicationSummary(summary) {
+  if (summary.applications.length === 0) return false;
+  return JSON.stringify(summary).length > 7e3;
+}
+function hasOverBudgetCatalogRootSummary(summary) {
+  if (summary.catalogScope.roots.length === 0) return false;
+  return JSON.stringify(summary).length > 7e3;
+}
+
+// src/computer-access/application-result-budget.ts
+function projectSystemApplicationResultForBudget(result, budget) {
+  const assessed = enforcePluginResultByteBudget(result, budget);
+  if (assessed === result) return result;
+  if (assessed.errorCode !== "plugin_result_too_large") return result;
+  const observation = readCanonicalApplicationObservation(result);
+  if (!observation) return result;
+  if (!hasOptionalExecutableMetadata(observation.applications)) return result;
+  const originalSummary = formatSystemApplicationSummary(observation);
+  if (!result.output.endsWith(originalSummary)) return result;
+  const prefix = result.output.slice(0, result.output.length - originalSummary.length);
+  const present = (applications) => ({
+    ...result,
+    output: prefix + formatSystemApplicationSummary({ ...observation, applications }),
+    data: { ...result.data, applications }
+  });
+  const withheld = present(observation.applications.map((application) => {
+    if (!application.executableResolution) return application;
+    return { ...application, executableResolution: {
+      status: "unresolved",
+      source: application.executableResolution.source,
+      reason: "output_budget_exceeded"
+    } };
+  }));
+  if (enforcePluginResultByteBudget(withheld, budget) === withheld) return withheld;
+  const identities = present(observation.applications.map(({ executableResolution: _resolution, ...identity }) => identity));
+  if (enforcePluginResultByteBudget(identities, budget) === identities) return identities;
+  return result;
+}
+function readCanonicalApplicationObservation(result) {
+  if (!result.ok) return void 0;
+  if (!isApplicationObservationRecord(result.data)) return void 0;
+  const data = result.data;
+  const transport = data.transport === "host_companion" ? data.nativeTransport : data.transport;
+  if (!isSystemApplicationTarget(data.target)) return void 0;
+  if (!isApplicationObservationTransport(transport)) return void 0;
+  if (data.absenceConclusionSupported !== false) return void 0;
+  if (data.completenessMeaning !== "declared_catalog_sources_only") return void 0;
+  if (typeof data.catalogComplete !== "boolean") return void 0;
+  if (!isApplicationMatchCount(data.observedMatches)) return void 0;
+  if (!isApplicationMatchCount(data.omittedMatches)) return void 0;
+  if (!Array.isArray(data.applications)) return void 0;
+  if (data.applications.length > 100) return void 0;
+  if (!data.applications.every(isCanonicalSystemApplication)) return void 0;
+  const scope = data.catalogScope;
+  if (!isApplicationObservationRecord(scope)) return void 0;
+  if (!isDeclaredApplicationCatalogSource(scope.source)) return void 0;
+  if (scope.includesExecutableSearch !== false) return void 0;
+  if (scope.includesOtherTargets !== false) return void 0;
+  if (!Array.isArray(scope.roots)) return void 0;
+  if (!scope.roots.every((root) => typeof root === "string")) return void 0;
+  return {
+    target: data.target,
+    transport,
+    absenceConclusionSupported: false,
+    completenessMeaning: "declared_catalog_sources_only",
+    catalogScope: { source: scope.source, roots: scope.roots, includesExecutableSearch: false, includesOtherTargets: false },
+    catalogComplete: data.catalogComplete,
+    observedMatches: data.observedMatches,
+    omittedMatches: data.omittedMatches,
+    applications: data.applications
+  };
+}
+function isApplicationObservationRecord(value) {
+  if (value === null) return false;
+  if (typeof value !== "object") return false;
+  return !Array.isArray(value);
+}
+function isSystemApplicationTarget(value) {
+  return value === "windows" || value === "linux" || value === "macos";
+}
+function isApplicationObservationTransport(value) {
+  return value === "native" || value === "wsl_interop";
+}
+function isDeclaredApplicationCatalogSource(value) {
+  return value === "windows_start_apps" || value === "macos_application_bundles" || value === "linux_desktop_entries";
+}
+function isApplicationMatchCount(value) {
+  if (typeof value !== "number") return false;
+  if (!Number.isSafeInteger(value)) return false;
+  return value >= 0;
+}
+function isCanonicalSystemApplication(value) {
+  if (!isApplicationObservationRecord(value)) return false;
+  if (typeof value.id !== "string") return false;
+  if (typeof value.name !== "string") return false;
+  if (!isSystemApplicationTarget(value.target)) return false;
+  const resolution = value.executableResolution;
+  if (resolution === void 0) return true;
+  if (!isApplicationObservationRecord(resolution)) return false;
+  if (typeof resolution.source !== "string") return false;
+  if (!["windows_apps_folder_target", "macos_bundle_executable", "linux_desktop_exec"].includes(resolution.source)) return false;
+  if (resolution.status === "resolved") return typeof resolution.path === "string";
+  if (resolution.status !== "unresolved" && resolution.status !== "ambiguous") return false;
+  return typeof resolution.reason === "string";
+}
+function hasOptionalExecutableMetadata(applications) {
+  return applications.some((application) => application.executableResolution !== void 0);
+}
+
 // src/computer-access/application-observation.ts
-var SUMMARY_MAX_CHARS = 7e3;
-var SUMMARY_ROOT_LIMIT = 16;
-var SUMMARY_ROOT_CHARS = 256;
-function systemApplicationObservation(target, catalog, query, limit) {
+function selectSystemApplications(catalog, query, limit) {
   const matches = catalog.applications.filter(
     (application) => matchesApplicationQuery(application.name, application.id, query)
   );
+  return {
+    observedMatches: matches.length,
+    omittedMatches: Math.max(0, matches.length - limit),
+    applications: matches.slice(0, limit)
+  };
+}
+function systemApplicationObservation(target, catalog, query, limit, selection = selectSystemApplications(catalog, query, limit)) {
   const data = {
     target: target.id,
     transport: target.transport,
@@ -4744,47 +4882,343 @@ function systemApplicationObservation(target, catalog, query, limit) {
     completenessMeaning: "declared_catalog_sources_only",
     catalogScope: catalog.scope,
     catalogComplete: catalog.complete,
-    observedMatches: matches.length,
-    omittedMatches: Math.max(0, matches.length - limit),
-    applications: matches.slice(0, limit)
+    ...selection
   };
-  const summaryRoots = catalog.scope.roots.slice(0, SUMMARY_ROOT_LIMIT).map((root) => root.slice(0, SUMMARY_ROOT_CHARS));
-  const summary = {
-    ...data,
-    catalogScope: { ...catalog.scope, roots: summaryRoots },
-    summaryRootsOmitted: Math.max(
-      0,
-      catalog.scope.roots.length - summaryRoots.length
-    ),
-    summaryRootCharactersOmitted: catalog.scope.roots.reduce(
-      (total, root, index) => total + root.length - (summaryRoots[index]?.length ?? 0),
-      0
-    ),
-    applications: [...data.applications],
-    summaryApplicationsOmitted: 0
+  return { output: formatSystemApplicationSummary(data), data };
+}
+function systemApplicationResult(target, catalog, query, limit, selection, budget) {
+  const { output, data } = systemApplicationObservation(target, catalog, query, limit, selection);
+  const result = {
+    ok: true,
+    output,
+    producedNewInformation: true,
+    data: { ...data, observationMeta: { kind: "volatile_external", carryPolicy: "never" } }
   };
-  while (isApplicationSummaryOverBudget(summary)) {
-    summary.applications.pop();
-    summary.summaryApplicationsOmitted += 1;
-  }
-  while (isCatalogRootSummaryOverBudget(summary)) {
-    const removedRoot = summary.catalogScope.roots.pop();
-    summary.summaryRootsOmitted += 1;
-    summary.summaryRootCharactersOmitted += removedRoot.length;
-  }
-  return { output: JSON.stringify(summary), data };
+  return enforcePluginResultByteBudget(projectSystemApplicationResultForBudget(result, budget), budget);
 }
 function matchesApplicationQuery(name, id, query) {
   if (name.toLowerCase().includes(query)) return true;
   return id.toLowerCase().includes(query);
 }
-function isApplicationSummaryOverBudget(summary) {
-  if (summary.applications.length === 0) return false;
-  return JSON.stringify(summary).length > SUMMARY_MAX_CHARS;
+
+// src/computer-access/windows-application-executable.ts
+var import_node_path6 = require("node:path");
+var SOURCE = "windows_apps_folder_target";
+var CATALOG_LIMIT = 2e3;
+async function observeWindowsApplicationExecutables(target, applications, run, abortSignal) {
+  abortSignal?.throwIfAborted();
+  if (applications.length === 0) return [];
+  const ids = [...new Set(applications.map(({ id }) => id))];
+  const result = await run({
+    executable: target.shell,
+    args: powershellArguments(windowsApplicationExecutableScript(ids)),
+    timeoutMs: 15e3,
+    outputMaxChars: 512e3,
+    ...abortSignal ? { abortSignal } : {}
+  }).catch((error) => {
+    abortSignal?.throwIfAborted();
+    if (isWindowsExecutableObservationAbort(error)) throw error;
+    return void 0;
+  });
+  abortSignal?.throwIfAborted();
+  if (result?.status === "aborted")
+    throw new DOMException("Application executable observation aborted.", "AbortError");
+  if (!hasCompleteResolutionOutput(result))
+    return applications.map(() => unresolved("source_unavailable"));
+  let rows;
+  try {
+    rows = JSON.parse(result.stdout);
+  } catch {
+    return applications.map(() => unresolved("source_invalid"));
+  }
+  if (!Array.isArray(rows))
+    return applications.map(() => unresolved("source_invalid"));
+  return applications.map(({ id }) => readExactApplicationResolution(id, rows));
 }
-function isCatalogRootSummaryOverBudget(summary) {
-  if (summary.catalogScope.roots.length === 0) return false;
-  return JSON.stringify(summary).length > SUMMARY_MAX_CHARS;
+function windowsApplicationExecutableScript(ids) {
+  return `$selected=[string[]](ConvertFrom-Json -InputObject ${powershellLiteral(JSON.stringify(ids))});
+$shell=New-Object -ComObject Shell.Application;
+$folder=$shell.NameSpace('shell:AppsFolder');
+if($null -eq $folder){throw 'apps_folder_unavailable'};
+$items=$folder.Items();
+$rows=[System.Collections.Generic.List[object]]::new();
+if($items.Count -gt ${CATALOG_LIMIT}){throw 'apps_folder_budget_exceeded'};
+foreach($id in $selected){
+  $paths=[System.Collections.Generic.List[string]]::new();
+  $matched=$false;
+  $incomplete=$false;
+  foreach($item in $items){
+    if(-not [string]::Equals([string]$item.Path,[string]$id,[StringComparison]::Ordinal)){continue};
+    $matched=$true;
+    try {
+      $path=[string]$item.ExtendedProperty('System.Link.TargetParsingPath');
+      if([string]::IsNullOrWhiteSpace($path)){continue};
+      if($path.Length -gt 4096){$incomplete=$true;continue};
+      if(-not [IO.Path]::IsPathRooted($path)){continue};
+      if(-not [string]::Equals([IO.Path]::GetExtension($path),'.exe',[StringComparison]::OrdinalIgnoreCase)){continue};
+      $file=Get-Item -LiteralPath $path -Force -ErrorAction Stop;
+      if($file.PSIsContainer){continue};
+      if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){$incomplete=$true;continue};
+      if(-not $paths.Contains($file.FullName)){$paths.Add($file.FullName)};
+    } catch {$incomplete=$true}
+  };
+  $status='unresolved';$reason='registered_executable_unavailable';$resolved=$null;
+  if(-not $matched){$reason='catalog_identity_unavailable'};
+  if($incomplete){$reason='registered_target_unavailable'};
+  if($paths.Count -gt 1){$status='ambiguous';$reason='multiple_registered_targets'};
+  if($paths.Count -eq 1 -and -not $incomplete){$status='resolved';$resolved=$paths[0];$reason=$null};
+  $rows.Add([pscustomobject]@{id=[string]$id;status=$status;path=$resolved;reason=$reason});
+};
+ConvertTo-Json -InputObject @($rows.ToArray()) -Compress -Depth 3`;
+}
+function hasCompleteResolutionOutput(result) {
+  if (!result) return false;
+  if (result.status !== "completed") return false;
+  if (result.exitCode !== 0) return false;
+  return !result.outputTruncated;
+}
+function readExactApplicationResolution(id, rows) {
+  const matches = rows.filter((row2) => hasExactWindowsExecutableIdentity(row2, id));
+  if (matches.length !== 1) return unresolved("source_invalid");
+  const row = matches[0];
+  if (row.status === "ambiguous")
+    return { status: "ambiguous", source: SOURCE, reason: "multiple_registered_targets" };
+  if (row.status === "unresolved") {
+    const reasons = ["registered_executable_unavailable", "catalog_identity_unavailable", "registered_target_unavailable"];
+    return unresolved(reasons.includes(String(row.reason)) ? String(row.reason) : "source_invalid");
+  }
+  if (!hasAbsoluteExecutablePath(row)) return unresolved("source_invalid");
+  return { status: "resolved", source: SOURCE, path: row.path };
+}
+function hasAbsoluteExecutablePath(row) {
+  if (row.status !== "resolved") return false;
+  if (typeof row.path !== "string") return false;
+  if (row.path.length > 4096) return false;
+  if (row.path.includes("\0")) return false;
+  if (!hasExplicitWindowsFilePath(row.path)) return false;
+  return import_node_path6.win32.extname(row.path).toLowerCase() === ".exe";
+}
+function hasExplicitWindowsFilePath(path) {
+  if (/^[a-z]:[\\/]/iu.test(path)) return true;
+  return /^\\\\[^\\/]+[\\/][^\\/]+[\\/]/u.test(path);
+}
+function hasExactWindowsExecutableIdentity(value, id) {
+  if (value === null) return false;
+  if (typeof value !== "object") return false;
+  if (Array.isArray(value)) return false;
+  if (!("id" in value)) return false;
+  return value.id === id;
+}
+function isWindowsExecutableObservationAbort(error) {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError";
+}
+function unresolved(reason) {
+  return { status: "unresolved", source: SOURCE, reason };
+}
+
+// src/computer-access/linux-application-executable.ts
+var import_promises5 = require("node:fs/promises");
+
+// src/computer-access/application-executable-file.ts
+var import_node_fs5 = require("node:fs");
+var import_promises4 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+async function isObservedRegularExecutable(path, abortSignal) {
+  abortSignal?.throwIfAborted();
+  if (!(0, import_node_path7.isAbsolute)(path)) return false;
+  if (path.length > 4096) return false;
+  if (path.includes("\0")) return false;
+  try {
+    const file = await (0, import_promises4.lstat)(path);
+    abortSignal?.throwIfAborted();
+    if (!file.isFile()) return false;
+    if (file.isSymbolicLink()) return false;
+    await (0, import_promises4.access)(path, import_node_fs5.constants.X_OK);
+    abortSignal?.throwIfAborted();
+    return true;
+  } catch (error) {
+    abortSignal?.throwIfAborted();
+    if (isExecutableFileObservationAbort(error)) throw error;
+    return false;
+  }
+}
+function isExecutableFileObservationAbort(error) {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError";
+}
+
+// src/computer-access/linux-application-executable.ts
+var SOURCE2 = "linux_desktop_exec";
+var DESKTOP_METADATA_LIMIT = 128e3;
+async function observeLinuxApplicationExecutable(application, abortSignal) {
+  abortSignal?.throwIfAborted();
+  let content;
+  try {
+    const file = await (0, import_promises5.lstat)(application.id);
+    abortSignal?.throwIfAborted();
+    if (!canReadDesktopExecutableMetadata(file))
+      return unavailableLinuxExecutable("desktop_entry_unavailable");
+    content = await (0, import_promises5.readFile)(application.id, { encoding: "utf8", ...abortSignal ? { signal: abortSignal } : {} });
+    abortSignal?.throwIfAborted();
+  } catch (error) {
+    abortSignal?.throwIfAborted();
+    if (isLinuxExecutableObservationAbort(error)) throw error;
+    return unavailableLinuxExecutable("desktop_entry_unavailable");
+  }
+  if (Buffer.byteLength(content, "utf8") > DESKTOP_METADATA_LIMIT)
+    return unavailableLinuxExecutable("desktop_entry_unavailable");
+  const source = readDirectDesktopExecutable(content);
+  if (source.status !== "resolved") return source;
+  if (!await isObservedRegularExecutable(source.path, abortSignal))
+    return unavailableLinuxExecutable("registered_target_unavailable");
+  return source;
+}
+function readDirectDesktopExecutable(content) {
+  const sections = content.split(/^\[Desktop Entry\]\s*$/mu);
+  if (sections.length !== 2) return unavailableLinuxExecutable("desktop_entry_invalid");
+  const lines = sections[1].split(/^\[/mu)[0].split(/\r?\n/u);
+  const commands = lines.filter((line) => /^Exec\s*=/u.test(line));
+  if (commands.length > 1)
+    return { status: "ambiguous", source: SOURCE2, reason: "multiple_registered_targets" };
+  if (commands.length === 0) return unavailableLinuxExecutable("desktop_exec_unavailable");
+  const command = commands[0].slice(commands[0].indexOf("=") + 1).trim();
+  const quoted = command.match(/^"(\/[^"\\%$`\0]+)"(?: +%[fFuU])?$/u);
+  const simple = command.match(/^(\/[^\s"'\\%$`=<>~|&;*?#()\0]+)(?: +%[fFuU])?$/u);
+  const path = quoted?.[1] ?? simple?.[1];
+  if (!isDirectDesktopExecutablePath(path)) return unavailableLinuxExecutable("desktop_exec_requires_interpretation");
+  return { status: "resolved", source: SOURCE2, path };
+}
+function canReadDesktopExecutableMetadata(file) {
+  if (!file.isFile()) return false;
+  if (file.isSymbolicLink()) return false;
+  return file.size <= DESKTOP_METADATA_LIMIT;
+}
+function isDirectDesktopExecutablePath(path) {
+  if (!path) return false;
+  return !path.includes("=");
+}
+function isLinuxExecutableObservationAbort(error) {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError";
+}
+function unavailableLinuxExecutable(reason) {
+  return { status: "unresolved", source: SOURCE2, reason };
+}
+
+// src/computer-access/macos-application-executable.ts
+var import_node_path8 = require("node:path");
+var SOURCE3 = "macos_bundle_executable";
+var PLIST_METADATA_LIMIT = 128e3;
+var BUNDLE_EXECUTABLE_SCRIPT = `ObjC.import('Foundation');
+function run(argv) {
+  return JSON.stringify(JSON.parse(argv[0]).map(function(id) {
+    try {
+      var metadataPath = $(id + '/Contents/Info.plist');
+      var attributes = $.NSFileManager.defaultManager.attributesOfItemAtPathError(metadataPath, null);
+      if (!attributes) return {id:id};
+      if (ObjC.unwrap(attributes.objectForKey('NSFileType')) !== 'NSFileTypeRegular') return {id:id};
+      if (Number(ObjC.unwrap(attributes.objectForKey('NSFileSize'))) > ${PLIST_METADATA_LIMIT}) return {id:id};
+      var info = $.NSDictionary.dictionaryWithContentsOfFile(metadataPath);
+      if (!info) return {id:id};
+      var value = info.objectForKey('CFBundleExecutable');
+      return {id:id, executable:value ? ObjC.unwrap(value) : null};
+    } catch (_) { return {id:id}; }
+  }));
+}`;
+async function observeMacApplicationExecutables(applications, run, abortSignal) {
+  abortSignal?.throwIfAborted();
+  if (applications.length === 0) return [];
+  const result = await run({
+    executable: "/usr/bin/osascript",
+    args: [
+      "-l",
+      "JavaScript",
+      "-e",
+      BUNDLE_EXECUTABLE_SCRIPT,
+      JSON.stringify(applications.map(({ id }) => id))
+    ],
+    timeoutMs: 15e3,
+    outputMaxChars: 512e3,
+    ...abortSignal ? { abortSignal } : {}
+  }).catch((error) => {
+    abortSignal?.throwIfAborted();
+    if (isMacExecutableObservationAbort(error)) throw error;
+    return void 0;
+  });
+  abortSignal?.throwIfAborted();
+  if (result?.status === "aborted")
+    throw new DOMException("Application executable observation aborted.", "AbortError");
+  if (!hasCompleteMacExecutableSource(result))
+    return applications.map(() => unavailableMacExecutable("source_unavailable"));
+  let rows;
+  try {
+    rows = JSON.parse(result.stdout);
+  } catch {
+    return applications.map(() => unavailableMacExecutable("source_invalid"));
+  }
+  if (!Array.isArray(rows)) return applications.map(() => unavailableMacExecutable("source_invalid"));
+  const sourceRows = rows;
+  return Promise.all(applications.map(({ id }) => resolveMacExecutable(id, sourceRows, abortSignal)));
+}
+async function resolveMacExecutable(id, rows, abortSignal) {
+  abortSignal?.throwIfAborted();
+  const matches = rows.filter((row) => hasExactBundleExecutableIdentity(row, id));
+  if (matches.length > 1)
+    return { status: "ambiguous", source: SOURCE3, reason: "multiple_registered_targets" };
+  if (matches.length === 0) return unavailableMacExecutable("source_invalid");
+  const name = matches[0].executable;
+  if (!isBundleExecutableBasename(name)) return unavailableMacExecutable("bundle_executable_unavailable");
+  const path = (0, import_node_path8.join)(id, "Contents", "MacOS", name);
+  if (!await isObservedRegularExecutable(path, abortSignal)) return unavailableMacExecutable("registered_target_unavailable");
+  return { status: "resolved", source: SOURCE3, path };
+}
+function isBundleExecutableBasename(value) {
+  if (typeof value !== "string") return false;
+  if (value.length === 0) return false;
+  if (value.length > 4096) return false;
+  if (value === ".") return false;
+  if (value === "..") return false;
+  if (value.includes("\\")) return false;
+  if (value.includes("\0")) return false;
+  return (0, import_node_path8.basename)(value) === value;
+}
+function hasExactBundleExecutableIdentity(value, id) {
+  if (value === null) return false;
+  if (typeof value !== "object") return false;
+  if (Array.isArray(value)) return false;
+  if (!("id" in value)) return false;
+  return value.id === id;
+}
+function hasCompleteMacExecutableSource(result) {
+  if (!result) return false;
+  if (result.status !== "completed") return false;
+  if (result.exitCode !== 0) return false;
+  return !result.outputTruncated;
+}
+function isMacExecutableObservationAbort(error) {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AbortError";
+}
+function unavailableMacExecutable(reason) {
+  return { status: "unresolved", source: SOURCE3, reason };
+}
+
+// src/computer-access/application-executable-resolution.ts
+async function observeSystemApplicationExecutables(target, applications, run, abortSignal) {
+  abortSignal?.throwIfAborted();
+  const resolutions = await observeSelectedExecutables(target, applications, run, abortSignal);
+  abortSignal?.throwIfAborted();
+  return applications.map((application, index) => ({
+    ...application,
+    executableResolution: resolutions[index]
+  }));
+}
+async function observeSelectedExecutables(target, applications, run, abortSignal) {
+  if (applications.length === 0) return [];
+  if (target.id === "windows") return observeWindowsApplicationExecutables(target, applications, run, abortSignal);
+  if (target.id === "macos") return observeMacApplicationExecutables(applications, run, abortSignal);
+  return Promise.all(applications.map((application) => observeLinuxApplicationExecutable(application, abortSignal)));
 }
 
 // src/computer-access/target-observation.ts
@@ -4905,8 +5339,8 @@ function hasUnsupportedTargetArguments(target, args) {
 }
 
 // src/computer-access/commands.ts
-var import_promises4 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_promises6 = require("node:fs/promises");
+var import_node_path9 = require("node:path");
 
 // src/computer-access/elevation.ts
 var WINDOWS_ADMIN_PROBE = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)";
@@ -4992,7 +5426,7 @@ async function executeSystemCommand(input) {
       "system_command_invalid",
       "elevated must be a boolean."
     );
-  const absoluteCwd = target.id === "windows" ? hasExplicitWindowsDirectory(cwd) : (0, import_node_path6.isAbsolute)(cwd);
+  const absoluteCwd = target.id === "windows" ? hasExplicitWindowsDirectory(cwd) : (0, import_node_path9.isAbsolute)(cwd);
   if (!absoluteCwd)
     throw new SystemOperationError(
       "system_cwd_invalid",
@@ -5028,7 +5462,7 @@ function hasInvalidElevationFlag(value) {
 }
 async function requireNativeWorkingDirectory(target, cwd) {
   if (target.id === "windows") return;
-  const directory = await (0, import_promises4.stat)(cwd).catch(() => void 0);
+  const directory = await (0, import_promises6.stat)(cwd).catch(() => void 0);
   if (directory?.isDirectory()) return;
   throw new SystemOperationError(
     "system_cwd_unavailable",
@@ -5225,7 +5659,8 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
     if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
-  const applications = async (params) => {
+  const applications = async (params, context) => {
+    context?.abortSignal?.throwIfAborted();
     const target = await resolveTarget(readSystemTargetId(params.target));
     const query = (readOptionalString(params.query) ?? "").toLowerCase();
     const limit = params.limit === void 0 ? 50 : readBoundedInteger(params.limit, {
@@ -5234,20 +5669,22 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
       maximum: 100
     });
     const observed = await readSystemApplications(target, run);
+    context?.abortSignal?.throwIfAborted();
     const catalog = protection ? protectSystemResult(() => protection.protectCatalog(observed)) : observed;
-    const { output, data } = systemApplicationObservation(
+    const selection = selectSystemApplications(catalog, query, limit);
+    const enriched = {
+      ...catalog,
+      applications: await observeSystemApplicationExecutables(target, selection.applications, run, context?.abortSignal)
+    };
+    const protectedSelection = protection ? protectSystemResult(() => protection.protectCatalog(enriched)) : enriched;
+    return systemApplicationResult(
       target,
       catalog,
       query,
-      limit
+      limit,
+      { ...selection, applications: protectedSelection.applications },
+      context?.resultBudget
     );
-    return successResult({
-      output,
-      data: {
-        ...data,
-        observationMeta: { kind: "volatile_external", carryPolicy: "never" }
-      }
-    });
   };
   const launch = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));
@@ -5285,13 +5722,13 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
 // src/computer-access/command-output-capture.ts
 var import_node_crypto6 = require("node:crypto");
 var import_node_events = require("node:events");
-var import_node_fs5 = require("node:fs");
-var import_promises7 = require("node:fs/promises");
-var import_node_path8 = require("node:path");
-var import_promises8 = require("node:stream/promises");
+var import_node_fs6 = require("node:fs");
+var import_promises9 = require("node:fs/promises");
+var import_node_path11 = require("node:path");
+var import_promises10 = require("node:stream/promises");
 
 // src/computer-access/command-output-protection.ts
-var import_promises5 = require("node:fs/promises");
+var import_promises7 = require("node:fs/promises");
 var CapturedOutputProtectionError = class extends Error {
   constructor(reason) {
     super(reason);
@@ -5305,8 +5742,8 @@ async function protectCapturedOutput(paths, redact) {
     stdout = await protectStream(paths.stdout, redact);
     stderr = await protectStream(paths.stderr, redact);
     const writes = await Promise.allSettled([
-      (0, import_promises5.writeFile)(paths.stdout, stdout, { flag: "w", mode: 384, flush: true }),
-      (0, import_promises5.writeFile)(paths.stderr, stderr, { flag: "w", mode: 384, flush: true })
+      (0, import_promises7.writeFile)(paths.stdout, stdout, { flag: "w", mode: 384, flush: true }),
+      (0, import_promises7.writeFile)(paths.stderr, stderr, { flag: "w", mode: 384, flush: true })
     ]);
     if (hasRejectedOutputWrite(writes)) throw new CapturedOutputProtectionError("output_storage_failed");
     return { stdout, stderr };
@@ -5319,7 +5756,7 @@ async function protectCapturedOutput(paths, redact) {
 async function protectStream(path, redact) {
   let bytes;
   try {
-    bytes = await (0, import_promises5.readFile)(path);
+    bytes = await (0, import_promises7.readFile)(path);
   } catch {
     throw new CapturedOutputProtectionError("output_storage_failed");
   }
@@ -5335,7 +5772,7 @@ async function protectStream(path, redact) {
   }
 }
 async function discardCapturedOutput(paths) {
-  const removed = await Promise.allSettled(Object.values(paths).map((path) => (0, import_promises5.rm)(path, { force: true })));
+  const removed = await Promise.allSettled(Object.values(paths).map((path) => (0, import_promises7.rm)(path, { force: true })));
   return removed.every((entry) => entry.status === "fulfilled");
 }
 function isProtectedOutputText(value) {
@@ -5346,29 +5783,29 @@ function hasRejectedOutputWrite(writes) {
 }
 
 // src/computer-access/command-output-retention.ts
-var import_promises6 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises8 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
 var DEFAULT_SYSTEM_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 6e4;
 var activeSystemCaptures = /* @__PURE__ */ new Set();
 var jobs = /* @__PURE__ */ new Map();
 var CAPTURE_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 async function cleanupSystemOutput(root, retentionMs) {
-  const entries = await (0, import_promises6.readdir)(root, { withFileTypes: true }).catch((error) => {
+  const entries = await (0, import_promises8.readdir)(root, { withFileTypes: true }).catch((error) => {
     if (error.code === "ENOENT") return [];
     throw error;
   });
   let removed = 0;
   for (const entry of entries) {
     if (!entry.isDirectory() || !CAPTURE_ID.test(entry.name)) continue;
-    const directory = (0, import_node_path7.join)(root, entry.name);
+    const directory = (0, import_node_path10.join)(root, entry.name);
     if (activeSystemCaptures.has(directory)) continue;
-    const files = await (0, import_promises6.readdir)(directory);
-    const times = await Promise.all(files.map(async (file) => (await (0, import_promises6.stat)((0, import_node_path7.join)(directory, file))).mtimeMs));
-    const completedAt = Math.max((await (0, import_promises6.stat)(directory)).mtimeMs, ...times);
+    const files = await (0, import_promises8.readdir)(directory);
+    const times = await Promise.all(files.map(async (file) => (await (0, import_promises8.stat)((0, import_node_path10.join)(directory, file))).mtimeMs));
+    const completedAt = Math.max((await (0, import_promises8.stat)(directory)).mtimeMs, ...times);
     const captureRetentionMs = await readCaptureRetention(directory, entry.name, retentionMs);
     if (Date.now() - completedAt < captureRetentionMs) continue;
     if (activeSystemCaptures.has(directory)) continue;
-    await (0, import_promises6.rm)(directory, { recursive: true });
+    await (0, import_promises8.rm)(directory, { recursive: true });
     removed += 1;
   }
   return removed;
@@ -5376,7 +5813,7 @@ async function cleanupSystemOutput(root, retentionMs) {
 async function readCaptureRetention(directory, id, fallbackMs) {
   let receipt;
   try {
-    receipt = JSON.parse(await (0, import_promises6.readFile)((0, import_node_path7.join)(directory, "receipt.json"), "utf8"));
+    receipt = JSON.parse(await (0, import_promises8.readFile)((0, import_node_path10.join)(directory, "receipt.json"), "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return fallbackMs;
     if (error instanceof SyntaxError) return fallbackMs;
@@ -5403,7 +5840,7 @@ function scheduleSystemOutputCleanup(root, retentionMs) {
     let empty = false;
     try {
       await cleanupSystemOutput(root, job.retentionMs);
-      empty = (await (0, import_promises6.readdir)(root).catch((error) => {
+      empty = (await (0, import_promises8.readdir)(root).catch((error) => {
         if (error.code === "ENOENT") return [];
         throw error;
       })).length === 0;
@@ -5429,10 +5866,10 @@ async function createSystemOutputCapture(root, retentionMs, redact) {
   if (!hasOutputProtection(redact))
     throw new SystemOperationError("system_output_protection_failed", "Command output protection is unavailable. The command was not dispatched.");
   const id = (0, import_node_crypto6.randomUUID)();
-  const directory = (0, import_node_path8.join)(root, id);
+  const directory = (0, import_node_path11.join)(root, id);
   activeSystemCaptures.add(directory);
   try {
-    await (0, import_promises7.mkdir)(directory, { recursive: true, mode: 448 });
+    await (0, import_promises9.mkdir)(directory, { recursive: true, mode: 448 });
   } catch {
     activeSystemCaptures.delete(directory);
     throw new SystemOperationError("system_output_storage_failed", "Output storage could not be prepared. The command was not dispatched.");
@@ -5445,10 +5882,10 @@ async function createSystemOutputCapture(root, retentionMs, redact) {
   let finishing;
   const sources = [];
   const completeStreams = /* @__PURE__ */ new Set();
-  const paths = { stdout: (0, import_node_path8.join)(directory, "stdout.bytes"), stderr: (0, import_node_path8.join)(directory, "stderr.bytes") };
+  const paths = { stdout: (0, import_node_path11.join)(directory, "stdout.bytes"), stderr: (0, import_node_path11.join)(directory, "stderr.bytes") };
   const streams = STREAMS.map((name) => {
-    const sink = (0, import_node_fs5.createWriteStream)(paths[name], { flags: "wx", mode: 384, highWaterMark: OUTPUT_IO_CHUNK_BYTES, flush: true });
-    const completion = (0, import_promises8.finished)(sink).catch(() => {
+    const sink = (0, import_node_fs6.createWriteStream)(paths[name], { flags: "wx", mode: 384, highWaterMark: OUTPUT_IO_CHUNK_BYTES, flush: true });
+    const completion = (0, import_promises10.finished)(sink).catch(() => {
       storageFailure ??= "write_failed";
       stop?.();
     });
@@ -5552,8 +5989,8 @@ async function createSystemOutputCapture(root, retentionMs, redact) {
         } : {}
       };
       try {
-        const temporary = (0, import_node_path8.join)(directory, "receipt.tmp");
-        await (0, import_promises7.writeFile)(
+        const temporary = (0, import_node_path11.join)(directory, "receipt.tmp");
+        await (0, import_promises9.writeFile)(
           temporary,
           JSON.stringify({
             kind: "system_command_output_v1",
@@ -5566,7 +6003,7 @@ async function createSystemOutputCapture(root, retentionMs, redact) {
           }),
           { flag: "wx", mode: 384, flush: true }
         );
-        await (0, import_promises7.rename)(temporary, (0, import_node_path8.join)(directory, "receipt.json"));
+        await (0, import_promises9.rename)(temporary, (0, import_node_path11.join)(directory, "receipt.json"));
       } catch {
         storageFailure ??= "receipt_write_failed";
         receipt = { ...receipt, complete: false };
@@ -5606,7 +6043,7 @@ async function createSystemOutputCapture(root, retentionMs, redact) {
     async read(stream, offset, length) {
       if (!admitted) throw new Error("system_output_unavailable");
       if (!isAdmittedOutputRead(stream, offset, length, receipt)) throw new Error("system_output_reference_invalid");
-      const file = await (0, import_promises7.open)(paths[stream], "r");
+      const file = await (0, import_promises9.open)(paths[stream], "r");
       try {
         const size = stream === "stdout" ? receipt.stdoutBytes : receipt.stderrBytes;
         const bytes = Buffer.alloc(Math.min(length, size - offset));
@@ -5667,7 +6104,7 @@ function readSystemOutputTransfer(value) {
 }
 
 // plugins/system/source/command-working-directory.ts
-var import_node_path9 = require("node:path");
+var import_node_path12 = require("node:path");
 function createSystemCommandPathAdapter(adapter, snapshot, resolver) {
   if (!resolver) return adapter;
   return {
@@ -5690,13 +6127,262 @@ function hasNativeWindowsRelativeDirectory(call, snapshot) {
   if (call.tool !== "system_command") return false;
   if (call.params.target !== "windows") return false;
   if (typeof call.params.cwd !== "string") return false;
-  if (import_node_path9.win32.isAbsolute(call.params.cwd.trim())) return false;
+  if (import_node_path12.win32.isAbsolute(call.params.cwd.trim())) return false;
   const route = snapshot.find((entry) => {
     if (entry.kind !== "native") return false;
     if (entry.target.id !== "windows") return false;
     return entry.target.transport === "native";
   });
   return route !== void 0;
+}
+
+// plugins/system/source/security/secret-text.ts
+var REDACTED = "[REDACTED]";
+var CREDENTIAL_KEY_SOURCE = String.raw`(?:[A-Za-z][A-Za-z0-9_-]*\.)*(?:[A-Za-z][A-Za-z0-9]*[-_])*(?:password|passwd|pwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret[_ -]?access[_ -]?key|recovery[_ -]?code)`;
+var credentialIndicator = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_.-])(?:-{1,2})?(?:${CREDENTIAL_KEY_SOURCE}|(?:proxy-)?authorization)[\s"'\\]*[:=]`,
+  "iu"
+);
+function detectionText(input) {
+  const percentDecoded = input.replace(
+    /%([0-7][0-9a-f])/giu,
+    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
+  );
+  return percentDecoded.replace(
+    /\\(?:u00|x|U000000)([0-7][0-9a-fA-F])/gu,
+    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
+  );
+}
+function hasPrivateKeyIndicator(text) {
+  return /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/u.test(text);
+}
+function hasUrlCredentials(text) {
+  return /\b[a-z][a-z0-9+.-]*(?::|%3a)(?:\/|%2f){2}[^\s/?#<>]*(?:@|%40)/iu.test(text);
+}
+function hasAuthorizationCredentials(text) {
+  for (const match of text.matchAll(
+    /\b(Bearer|Basic)[ \t]+([A-Za-z0-9._~+/-]+={0,2})/giu
+  )) {
+    if (match[1].toLowerCase() === "bearer") return true;
+    const value = match[2];
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) continue;
+    if (value.length < 8) continue;
+    if (Buffer.from(value, "base64").toString("utf8").includes(":")) return true;
+  }
+  return false;
+}
+function isAwsAccessKeyValue(value, atEnd) {
+  if (/^[A-Z0-9]{16}$/u.test(value)) return true;
+  if (!atEnd) return false;
+  return /^[A-Z0-9]{4,15}$/u.test(value);
+}
+function isRecognizedProviderToken(prefix, value, atEnd) {
+  if (prefix === "AKIA" || prefix === "ASIA")
+    return isAwsAccessKeyValue(value, atEnd);
+  if (value.length >= 20) return true;
+  const partialMinimum = prefix === "sk-" ? 8 : 1;
+  return atEnd && value.length >= partialMinimum;
+}
+function hasProviderToken(text) {
+  const provider = /\b(sk-(?:proj-|svcacct-)?|gh[pousr]_|github_pat_|xox[baprs]-|AKIA|ASIA)([A-Za-z0-9_-]+)/gu;
+  for (const match of text.matchAll(provider)) {
+    const atEnd = match.index + match[0].length === text.length;
+    if (isRecognizedProviderToken(match[1], match[2], atEnd)) return true;
+  }
+  return false;
+}
+function compactJoseSegmentCount(header) {
+  try {
+    const value = JSON.parse(
+      Buffer.from(header, "base64url").toString("utf8")
+    );
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return void 0;
+    const fields = value;
+    if (typeof fields.alg !== "string") return void 0;
+    return typeof fields.enc === "string" ? 5 : 3;
+  } catch {
+    return void 0;
+  }
+}
+function hasCompactJoseToken(text) {
+  const jose = /\b([A-Za-z0-9_-]+)(?:\.[A-Za-z0-9_-]*)+/gu;
+  for (const match of text.matchAll(jose)) {
+    const parts = match[0].split(".");
+    const capturedAtEnd = match.index + match[0].length === text.length;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const expected = compactJoseSegmentCount(parts[index]);
+      if (expected === void 0) continue;
+      if (expected === 3 && parts[index + 1] === "") continue;
+      if (parts.length - index >= expected) return true;
+      if (capturedAtEnd) return true;
+    }
+  }
+  return false;
+}
+function hasSecretIndicator(text) {
+  if (credentialIndicator.test(text)) return true;
+  if (hasPrivateKeyIndicator(text)) return true;
+  if (hasUrlCredentials(text)) return true;
+  if (hasAuthorizationCredentials(text)) return true;
+  if (hasProviderToken(text)) return true;
+  return hasCompactJoseToken(text);
+}
+function redactSecretText(input) {
+  if (hasSecretIndicator(input)) return REDACTED;
+  if (hasSecretIndicator(detectionText(input))) return REDACTED;
+  return input;
+}
+
+// plugins/system/source/request-target-snapshot.ts
+async function captureSystemTargetSnapshot(input) {
+  const [native, companion] = await Promise.allSettled([
+    input.observeTargets(),
+    input.readHostStatus()
+  ]);
+  const routes = capturedNativeRoutes(native);
+  if (companion.status !== "fulfilled") return Object.freeze(routes);
+  const remote = connectedCompanionRoute(companion.value);
+  if (!remote) return Object.freeze(routes);
+  if (!input.includeSameOsCompanion && routes.some((route) => routeTargetId(route) === remote.target))
+    return Object.freeze(routes);
+  return Object.freeze([...routes, remote]);
+}
+function capturedNativeRoutes(observation) {
+  if (observation.status !== "fulfilled") return [];
+  return observation.value.targets.flatMap((target) => {
+    if (!target.available) return [];
+    return [
+      Object.freeze({
+        kind: "native",
+        target: Object.freeze({
+          id: target.id,
+          shell: target.shell,
+          transport: target.transport
+        })
+      })
+    ];
+  });
+}
+function connectedCompanionRoute(status) {
+  if (!status.paired) return void 0;
+  if (!status.connected) return void 0;
+  if (!isHostIdentifier(status.hostId)) return void 0;
+  if (!isHostIdentifier(status.connectionId)) return void 0;
+  if (!isHostIdentity(status.identity)) return void 0;
+  return Object.freeze({
+    kind: "companion",
+    target: status.identity.os,
+    hostId: status.hostId,
+    connectionId: status.connectionId,
+    identity: Object.freeze({ ...status.identity }),
+    ...status.capabilities ? { capabilities: Object.freeze([...status.capabilities]) } : {}
+  });
+}
+function routeTargetId(route) {
+  if (route.kind === "native") return route.target.id;
+  return route.target;
+}
+function requireSystemRequestRoute(snapshot, target) {
+  const route = snapshot.find(
+    (candidate) => routeTargetId(candidate) === target
+  );
+  if (route) return route;
+  throw new SystemOperationError(
+    "system_target_unavailable",
+    "The requested OS target is unavailable in this request."
+  );
+}
+function resolveCapturedNativeTarget(snapshot, target) {
+  const route = requireSystemRequestRoute(snapshot, target);
+  if (route.kind === "native") return route.target;
+  throw new SystemOperationError(
+    "system_target_unavailable",
+    "The request did not bind this target to native execution."
+  );
+}
+function systemRouteBindingIdentity(route) {
+  if (route.kind === "native")
+    return JSON.stringify([route.kind, route.target]);
+  return JSON.stringify([
+    route.kind,
+    route.target,
+    route.hostId,
+    route.connectionId
+  ]);
+}
+function systemRouteMetadata(route) {
+  if (route.kind === "native")
+    return {
+      displayTarget: route.target.id,
+      transport: route.target.transport
+    };
+  return {
+    displayTarget: route.target,
+    transport: "host_companion",
+    computerName: redactSecretText(route.identity.name)
+  };
+}
+function observeCapturedSystemTargets(snapshot) {
+  return {
+    targets: snapshot.map((route) => ({
+      id: routeTargetId(route),
+      available: true,
+      ...modelSafeRouteObservation(route),
+      guiSessionStatus: "not_checked"
+    })),
+    availabilityScope: "request_execution_routes"
+  };
+}
+function modelSafeRouteObservation(route) {
+  if (route.kind === "native")
+    return {
+      transport: route.target.transport,
+      commandExecutionStatus: "probed",
+      availabilityScope: "command_execution_only"
+    };
+  return {
+    transport: "host_companion",
+    commandExecutionStatus: "not_probed",
+    availabilityScope: "transport_connection_only"
+  };
+}
+
+// plugins/system/source/system-command-guidance.ts
+function projectSystemCommandTargets(snapshot, hasRuntimePathResolver) {
+  return Object.freeze(snapshot.map((route) => {
+    const target = routeTargetId(route);
+    return Object.freeze({
+      target,
+      shell: target === "windows" ? "PowerShell" : "Bash",
+      transport: route.kind === "native" ? route.target.transport : "host_companion",
+      cwd: supportsRuntimeRelativeCommandDirectory(route, hasRuntimePathResolver) ? "runtime_relative_or_absolute" : "absolute"
+    });
+  }));
+}
+function systemCommandGuidance(snapshot, hasRuntimePathResolver) {
+  const targets = projectSystemCommandTargets(snapshot, hasRuntimePathResolver);
+  if (targets.length === 0) return "";
+  return ` Command targets: ${targets.map(describeCommandTarget).join("; ")}.`;
+}
+function supportsRuntimeRelativeCommandDirectory(route, hasRuntimePathResolver) {
+  if (!hasRuntimePathResolver) return false;
+  if (route.kind !== "native") return false;
+  if (route.target.id !== "windows") return false;
+  return route.target.transport === "native";
+}
+function describeCommandTarget(target) {
+  const transport = target.transport === "host_companion" ? "companion, command readiness unprobed" : target.transport;
+  const cwd = target.cwd === "runtime_relative_or_absolute" ? "cwd absolute or agent-work-relative; workspace/ uses workspace root" : "cwd absolute in target OS";
+  return `${target.target} (${target.shell}; ${transport}; ${cwd})`;
+}
+function systemRequestTargetGuidance(toolName, snapshot, hasRuntimePathResolver) {
+  if (usesCommandTargetContract(toolName))
+    return systemCommandGuidance(snapshot, hasRuntimePathResolver);
+  return ` Available targets for this request: ${snapshot.map(routeTargetId).join(", ")}.`;
+}
+function usesCommandTargetContract(toolName) {
+  return toolName === "system_command";
 }
 
 // plugins/system/source/computer/public-action.ts
@@ -5860,104 +6546,6 @@ function fits(value) {
   return Buffer.byteLength(value, "utf8") <= COMPUTER_OBSERVATION_OUTPUT_MAX_BYTES;
 }
 
-// plugins/system/source/security/secret-text.ts
-var REDACTED = "[REDACTED]";
-var CREDENTIAL_KEY_SOURCE = String.raw`(?:[A-Za-z][A-Za-z0-9_-]*\.)*(?:[A-Za-z][A-Za-z0-9]*[-_])*(?:password|passwd|pwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret[_ -]?access[_ -]?key|recovery[_ -]?code)`;
-var credentialIndicator = new RegExp(
-  String.raw`(?<![\p{L}\p{N}_.-])(?:-{1,2})?(?:${CREDENTIAL_KEY_SOURCE}|(?:proxy-)?authorization)[\s"'\\]*[:=]`,
-  "iu"
-);
-function detectionText(input) {
-  const percentDecoded = input.replace(
-    /%([0-7][0-9a-f])/giu,
-    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
-  );
-  return percentDecoded.replace(
-    /\\(?:u00|x|U000000)([0-7][0-9a-fA-F])/gu,
-    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
-  );
-}
-function hasPrivateKeyIndicator(text) {
-  return /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/u.test(text);
-}
-function hasUrlCredentials(text) {
-  return /\b[a-z][a-z0-9+.-]*(?::|%3a)(?:\/|%2f){2}[^\s/?#<>]*(?:@|%40)/iu.test(text);
-}
-function hasAuthorizationCredentials(text) {
-  for (const match of text.matchAll(
-    /\b(Bearer|Basic)[ \t]+([A-Za-z0-9._~+/-]+={0,2})/giu
-  )) {
-    if (match[1].toLowerCase() === "bearer") return true;
-    const value = match[2];
-    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) continue;
-    if (value.length < 8) continue;
-    if (Buffer.from(value, "base64").toString("utf8").includes(":")) return true;
-  }
-  return false;
-}
-function isAwsAccessKeyValue(value, atEnd) {
-  if (/^[A-Z0-9]{16}$/u.test(value)) return true;
-  if (!atEnd) return false;
-  return /^[A-Z0-9]{4,15}$/u.test(value);
-}
-function isRecognizedProviderToken(prefix, value, atEnd) {
-  if (prefix === "AKIA" || prefix === "ASIA")
-    return isAwsAccessKeyValue(value, atEnd);
-  if (value.length >= 20) return true;
-  const partialMinimum = prefix === "sk-" ? 8 : 1;
-  return atEnd && value.length >= partialMinimum;
-}
-function hasProviderToken(text) {
-  const provider = /\b(sk-(?:proj-|svcacct-)?|gh[pousr]_|github_pat_|xox[baprs]-|AKIA|ASIA)([A-Za-z0-9_-]+)/gu;
-  for (const match of text.matchAll(provider)) {
-    const atEnd = match.index + match[0].length === text.length;
-    if (isRecognizedProviderToken(match[1], match[2], atEnd)) return true;
-  }
-  return false;
-}
-function compactJoseSegmentCount(header) {
-  try {
-    const value = JSON.parse(
-      Buffer.from(header, "base64url").toString("utf8")
-    );
-    if (typeof value !== "object" || value === null || Array.isArray(value))
-      return void 0;
-    const fields = value;
-    if (typeof fields.alg !== "string") return void 0;
-    return typeof fields.enc === "string" ? 5 : 3;
-  } catch {
-    return void 0;
-  }
-}
-function hasCompactJoseToken(text) {
-  const jose = /\b([A-Za-z0-9_-]+)(?:\.[A-Za-z0-9_-]*)+/gu;
-  for (const match of text.matchAll(jose)) {
-    const parts = match[0].split(".");
-    const capturedAtEnd = match.index + match[0].length === text.length;
-    for (let index = 0; index < parts.length - 1; index += 1) {
-      const expected = compactJoseSegmentCount(parts[index]);
-      if (expected === void 0) continue;
-      if (expected === 3 && parts[index + 1] === "") continue;
-      if (parts.length - index >= expected) return true;
-      if (capturedAtEnd) return true;
-    }
-  }
-  return false;
-}
-function hasSecretIndicator(text) {
-  if (credentialIndicator.test(text)) return true;
-  if (hasPrivateKeyIndicator(text)) return true;
-  if (hasUrlCredentials(text)) return true;
-  if (hasAuthorizationCredentials(text)) return true;
-  if (hasProviderToken(text)) return true;
-  return hasCompactJoseToken(text);
-}
-function redactSecretText(input) {
-  if (hasSecretIndicator(input)) return REDACTED;
-  if (hasSecretIndicator(detectionText(input))) return REDACTED;
-  return input;
-}
-
 // plugins/system/source/security/observed-error.ts
 function protectObservedError(error, fallback) {
   try {
@@ -5969,120 +6557,6 @@ function protectObservedError(error, fallback) {
 
 // plugins/system/source/computer/request-computers.ts
 var import_node_crypto8 = require("node:crypto");
-
-// plugins/system/source/request-target-snapshot.ts
-async function captureSystemTargetSnapshot(input) {
-  const [native, companion] = await Promise.allSettled([
-    input.observeTargets(),
-    input.readHostStatus()
-  ]);
-  const routes = capturedNativeRoutes(native);
-  if (companion.status !== "fulfilled") return Object.freeze(routes);
-  const remote = connectedCompanionRoute(companion.value);
-  if (!remote) return Object.freeze(routes);
-  if (!input.includeSameOsCompanion && routes.some((route) => routeTargetId(route) === remote.target))
-    return Object.freeze(routes);
-  return Object.freeze([...routes, remote]);
-}
-function capturedNativeRoutes(observation) {
-  if (observation.status !== "fulfilled") return [];
-  return observation.value.targets.flatMap((target) => {
-    if (!target.available) return [];
-    return [
-      Object.freeze({
-        kind: "native",
-        target: Object.freeze({
-          id: target.id,
-          shell: target.shell,
-          transport: target.transport
-        })
-      })
-    ];
-  });
-}
-function connectedCompanionRoute(status) {
-  if (!status.paired) return void 0;
-  if (!status.connected) return void 0;
-  if (!isHostIdentifier(status.hostId)) return void 0;
-  if (!isHostIdentifier(status.connectionId)) return void 0;
-  if (!isHostIdentity(status.identity)) return void 0;
-  return Object.freeze({
-    kind: "companion",
-    target: status.identity.os,
-    hostId: status.hostId,
-    connectionId: status.connectionId,
-    identity: Object.freeze({ ...status.identity }),
-    ...status.capabilities ? { capabilities: Object.freeze([...status.capabilities]) } : {}
-  });
-}
-function routeTargetId(route) {
-  if (route.kind === "native") return route.target.id;
-  return route.target;
-}
-function requireSystemRequestRoute(snapshot, target) {
-  const route = snapshot.find(
-    (candidate) => routeTargetId(candidate) === target
-  );
-  if (route) return route;
-  throw new SystemOperationError(
-    "system_target_unavailable",
-    "The requested OS target is unavailable in this request."
-  );
-}
-function resolveCapturedNativeTarget(snapshot, target) {
-  const route = requireSystemRequestRoute(snapshot, target);
-  if (route.kind === "native") return route.target;
-  throw new SystemOperationError(
-    "system_target_unavailable",
-    "The request did not bind this target to native execution."
-  );
-}
-function systemRouteBindingIdentity(route) {
-  if (route.kind === "native")
-    return JSON.stringify([route.kind, route.target]);
-  return JSON.stringify([
-    route.kind,
-    route.target,
-    route.hostId,
-    route.connectionId
-  ]);
-}
-function systemRouteMetadata(route) {
-  if (route.kind === "native")
-    return {
-      displayTarget: route.target.id,
-      transport: route.target.transport
-    };
-  return {
-    displayTarget: route.target,
-    transport: "host_companion",
-    computerName: redactSecretText(route.identity.name)
-  };
-}
-function observeCapturedSystemTargets(snapshot) {
-  return {
-    targets: snapshot.map((route) => ({
-      id: routeTargetId(route),
-      available: true,
-      ...modelSafeRouteObservation(route),
-      guiSessionStatus: "not_checked"
-    })),
-    availabilityScope: "request_execution_routes"
-  };
-}
-function modelSafeRouteObservation(route) {
-  if (route.kind === "native")
-    return {
-      transport: route.target.transport,
-      commandExecutionStatus: "probed",
-      availabilityScope: "command_execution_only"
-    };
-  return {
-    transport: "host_companion",
-    commandExecutionStatus: "not_probed",
-    availabilityScope: "transport_connection_only"
-  };
-}
 
 // plugins/system/source/computer/desktop-bindings.ts
 var import_node_crypto7 = require("node:crypto");
@@ -6746,6 +7220,23 @@ function unboundComputerFailure() {
   });
 }
 
+// plugins/system/source/computer/action-guidance.ts
+function wholeNotchScrollTargets(routes) {
+  return Object.freeze([...new Set(routes.map(routeTargetId))].filter(
+    requiresWholeNotchScroll
+  ));
+}
+function computerActionGuidance(operationId, routes) {
+  if (operationId !== "computer_scroll") return "";
+  const targets = wholeNotchScrollTargets(routes);
+  if (targets.length === 0) return "";
+  return ` On ${targets.join("/")}, both scroll deltas must be multiples of 120 wheel units.`;
+}
+function requiresWholeNotchScroll(target) {
+  if (target === "linux") return true;
+  return target === "macos";
+}
+
 // plugins/system/source/computer/request-modules.ts
 function unboundComputerHandlers() {
   return Object.fromEntries(
@@ -6779,6 +7270,7 @@ function prepareComputerModules(rootDir, modules, routes, connection, preparatio
       ...module2.normalInvocation,
       operations: module2.normalInvocation.operations.map((operation) => ({
         ...operation,
+        summary: operation.summary + computerActionGuidance(operation.operationId, routes),
         input: {
           ...operation.input,
           properties: {
@@ -6927,13 +7419,14 @@ function boundOperation(input, operation) {
         });
       if (operation === "system_command")
         return await executeCompanionCommand({ ...input, route, params, context });
-      return await input.connection.executeHostOperation(input.rootDir, {
+      const result = await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
         connectionId: route.connectionId,
         operation,
         params,
         ...context?.abortSignal ? { abortSignal: context.abortSignal } : {}
       });
+      return operation === "system_applications" ? projectSystemApplicationResultForBudget(result, context?.resultBudget) : result;
     } catch (error) {
       if (error instanceof SystemOperationError)
         return failureResult({ errorCode: error.code, message: redactSecretText(error.message) });
@@ -7012,7 +7505,11 @@ function uniqueSystemCommandRoutes(candidates) {
 }
 function projectSystemRequestModule(module2, snapshot, handlers, resolver) {
   const targets = Object.freeze(snapshot.map(routeTargetId));
-  const availability = ` Available targets for this request: ${targets.join(", ")}.`;
+  const availability = systemRequestTargetGuidance(
+    module2.definition.name,
+    snapshot,
+    resolver !== void 0
+  );
   return Object.freeze({
     ...module2,
     normalInvocation: {
@@ -7052,12 +7549,12 @@ function systemExecutionBinding(snapshot) {
 }
 
 // plugins/system/source/local-command-output.ts
-var import_node_path11 = require("node:path");
+var import_node_path14 = require("node:path");
 
 // plugins/system/source/security/windows-output-directory.ts
 var import_node_child_process5 = require("node:child_process");
-var import_promises9 = require("node:fs/promises");
-var import_node_path10 = require("node:path");
+var import_promises11 = require("node:fs/promises");
+var import_node_path13 = require("node:path");
 var import_node_util2 = require("node:util");
 var execute = (0, import_node_util2.promisify)(import_node_child_process5.execFile);
 var privateDirectoryScript = `
@@ -7090,9 +7587,9 @@ if ($rule.InheritanceFlags -ne $inherit) { exit 5 }
 if ($rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) { exit 5 }
 `;
 async function verifyPrivateOutputDirectory(directory, create = false) {
-  const info = await (0, import_promises9.lstat)(directory);
+  const info = await (0, import_promises11.lstat)(directory);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("output_directory_unavailable");
-  const powershell = (0, import_node_path10.join)(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const powershell = (0, import_node_path13.join)(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   await execute(powershell, [
     "-NoProfile",
     "-NonInteractive",
@@ -7111,7 +7608,7 @@ function isAbsentPath(error) {
 }
 async function hasOutputDirectoryPath(directory) {
   try {
-    await (0, import_promises9.lstat)(directory);
+    await (0, import_promises11.lstat)(directory);
     return true;
   } catch (error) {
     if (isAbsentPath(error)) return false;
@@ -7120,18 +7617,18 @@ async function hasOutputDirectoryPath(directory) {
 }
 async function installPrivateOutputDirectory(directory) {
   if (await hasOutputDirectoryPath(directory)) return;
-  const parent = (0, import_node_path10.dirname)(directory);
-  await (0, import_promises9.mkdir)(parent, { recursive: true });
-  const candidate = await (0, import_promises9.mkdtemp)((0, import_node_path10.join)(parent, `.${(0, import_node_path10.basename)(directory)}.private-`));
+  const parent = (0, import_node_path13.dirname)(directory);
+  await (0, import_promises11.mkdir)(parent, { recursive: true });
+  const candidate = await (0, import_promises11.mkdtemp)((0, import_node_path13.join)(parent, `.${(0, import_node_path13.basename)(directory)}.private-`));
   try {
     await verifyPrivateOutputDirectory(candidate, true);
     try {
-      await (0, import_promises9.rename)(candidate, directory);
+      await (0, import_promises11.rename)(candidate, directory);
     } catch (error) {
       if (!await hasOutputDirectoryPath(directory)) throw error;
     }
   } finally {
-    await (0, import_promises9.rmdir)(candidate).catch((error) => {
+    await (0, import_promises11.rmdir)(candidate).catch((error) => {
       if (!isAbsentPath(error)) throw error;
     });
   }
@@ -7163,7 +7660,7 @@ function scheduleLocalSystemOutputCleanup(root, retentionMs) {
 // plugins/system/source/local-command-output.ts
 var CONTEXT_STREAMS = Object.freeze(["stdout", "stderr"]);
 function createLocalSystemCommandOutput(plugin) {
-  const root = (0, import_node_path11.join)(plugin.stateDir, "command-output");
+  const root = (0, import_node_path14.join)(plugin.stateDir, "command-output");
   const retentionMs = systemCommandOutputRetentionMs(plugin);
   const initialization = scheduleLocalSystemOutputCleanup(root, retentionMs);
   return (context) => {
@@ -7239,7 +7736,22 @@ var INCOMPLETE_STREAM = "[UNAVAILABLE: incomplete output cannot be scanned for s
 var SENSITIVE_TARGET = "Target unavailable because its shell identity contains sensitive text.";
 function protectApplication(application) {
   if (redactSecretText(application.id) !== application.id) return void 0;
+  const resolution = application.executableResolution;
+  if (isSensitiveResolvedExecutable(resolution))
+    return {
+      ...application,
+      name: redactSecretText(application.name),
+      executableResolution: {
+        status: "unresolved",
+        source: resolution.source,
+        reason: "sensitive_executable_withheld"
+      }
+    };
   return { ...application, name: redactSecretText(application.name) };
+}
+function isSensitiveResolvedExecutable(resolution) {
+  if (resolution?.status !== "resolved") return false;
+  return redactSecretText(resolution.path) !== resolution.path;
 }
 function protectCatalog(catalog) {
   const applications = catalog.applications.flatMap((application) => {

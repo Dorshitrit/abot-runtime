@@ -1,4 +1,6 @@
 import { parseRequiredToolPermissionMode } from "../tool-permission-mode.js";
+import { parseRequestExecutionPolicies } from "../../shared/request-execution-policy.js";
+import { parseRequestBindingRequirement } from "../tool-request-discovery.js";
 import type { ToolDefinition } from "../tool-types.js";
 import {
   isDevelopmentRole,
@@ -31,6 +33,8 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
   if (typeof name !== "string" || name.trim().length === 0) {
     throw new Error("Invalid tool definition entry (name)");
   }
+  const executionPolicies = parseRequestExecutionPolicies(raw.executionPolicies, `${name}.executionPolicies`);
+  const requiresRequestBinding = parseRequestBindingRequirement(raw.requiresRequestBinding, `${name}.requiresRequestBinding`);
 
   if (description !== undefined && typeof description !== "string") {
     throw new Error(`Invalid tool definition for ${name} (description)`);
@@ -85,6 +89,8 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
 
   return {
     name,
+    ...(executionPolicies ? { executionPolicies } : {}),
+    ...(requiresRequestBinding ? { requiresRequestBinding } : {}),
     ...(typeof pluginName === "string" ? { pluginName } : {}),
     ...(typeof pluginDescription === "string" ? { pluginDescription } : {}),
     requiredPermissionMode: parseRequiredToolPermissionMode(

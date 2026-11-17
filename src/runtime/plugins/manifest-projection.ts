@@ -85,6 +85,8 @@ export function projectManifestRuntimeContract(
       definition: {
         name: capabilityId,
         pluginName: manifest.name,
+        ...(extension.executionPolicies ? { executionPolicies: extension.executionPolicies } : {}),
+        ...(extension.requiresRequestBinding ? { requiresRequestBinding: true } : {}),
         ...(manifest.description !== undefined
           ? { pluginDescription: manifest.description }
           : {}),

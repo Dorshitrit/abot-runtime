@@ -1,6 +1,7 @@
 import { titleCaseEventValue } from "./event-presentation.js";
 
 const INPUT_TEXT_LIMIT = 8_192;
+const COMMAND_TEXT_LIMIT = 24_576;
 
 function textField(fields, label, value, limit = 500) {
   if (typeof value !== "string" || value.length === 0) return;
@@ -21,7 +22,7 @@ function booleanField(fields, label, value) {
 function hasCompleteCommandText(meta) {
   if (meta.commandTruncated !== false) return false;
   return (
-    typeof meta.command === "string" && meta.command.length <= INPUT_TEXT_LIMIT
+    typeof meta.command === "string" && meta.command.length <= COMMAND_TEXT_LIMIT
   );
 }
 
@@ -40,7 +41,7 @@ export function processInputFields(meta) {
     fields,
     hasCompleteCommandText(meta) ? "Command" : "Command excerpt",
     meta.command,
-    INPUT_TEXT_LIMIT,
+    COMMAND_TEXT_LIMIT,
   );
   if (hasUnrecordedCommandInput(meta)) {
     fields.push({

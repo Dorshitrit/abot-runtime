@@ -11,7 +11,7 @@ export type ExecSettings = Readonly<{
 export const DEFAULT_EXEC_HARD_TIMEOUT_MS = 600_000;
 export const DEFAULT_EXEC_YIELD_AFTER_MS = 15_000;
 export const DEFAULT_EXEC_IDLE_TIMEOUT_MS = 120_000;
-export const EXEC_COMMAND_MAX_CHARS = 8_192;
+export const EXEC_COMMAND_MAX_CHARS = 24_576;
 
 export function readExecSettings(
   config: Readonly<Record<string, unknown>> | undefined,

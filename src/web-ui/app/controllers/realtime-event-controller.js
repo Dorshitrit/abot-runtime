@@ -93,6 +93,7 @@ export function createRealtimeEventController({
   selectedEnvironmentId,
   handleSteerAcknowledgement,
   shouldAcceptMessage,
+  observeRunEvent = () => {},
   applySessionReadState,
   activeAssistantForRequest,
   addOrMergeMessage,
@@ -180,6 +181,7 @@ export function createRealtimeEventController({
   function recordEvent(message) {
     if (commandEvents.handle(message)) return;
     if (!hasCurrentAcknowledgementScope(state, message, selectedEnvironmentId())) return;
+    observeRunEvent(message);
     if (isUserInteractionEvent(message)) {
       if (!acceptsUserInteractionScope(state, message, selectedEnvironmentId())) return;
       const changed = applyUserInteractionEvent(state, message, selectedEnvironmentId());
@@ -372,7 +374,10 @@ export function createRealtimeEventController({
     if (message.type === "steer_ack" && handleSteerAcknowledgement(message))
       return;
     if (scheduleRealtime.handle(message)) return;
-    if (!shouldAcceptMessage(message)) return;
+    if (!shouldAcceptMessage(message)) {
+      observeRunEvent(message);
+      return;
+    }
     if (lifecycleController.handle(message)) {
       recordEvent(message);
       return;
@@ -456,6 +461,7 @@ export function createRealtimeEventController({
       if (requestId) {
         const assistant = activeAssistantForRequest(requestId);
         assistant.streaming = false;
+        assistant.failedResponse = !isStopResult(message);
         assistant.text = isStopResult(message)
           ? stoppedResponseText(assistant.text, message)
           : failureResponseText(message);

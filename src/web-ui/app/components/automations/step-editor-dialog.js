@@ -4,6 +4,7 @@ import { listAvailableAutomationProducers } from "../../lib/automation-binding-p
 import { findAutomationNode } from "./timeline.js";
 import { workflowSteps } from "./run-steps-view.js";
 import { renderAutomationToolIdentity } from "./tool-identity.js";
+import { standaloneAutomationOperations } from "./permission-selection.js";
 import { operationIdentity, readAutomationNodePatch, renderAutomationNodeInspector,
   renderAutomationToolInputs, updateAgentToolPicker } from "./node-inspector.js";
 import { changeAutomationBindingKind, handleAutomationBindingClick,
@@ -171,7 +172,7 @@ export function createAutomationStepEditorDialog({ root, actions, documentRoot, 
       syncReasoningModeField(form, entry.catalog?.models);
     if (target.matches("[data-agent-tool]")) updateAgentToolPicker(form);
     if (event.type === "change" && target.matches('[name="toolOperation"]')) {
-      const operations = entry.catalog?.grantableOperations || entry.catalog?.operations || [];
+      const operations = standaloneAutomationOperations(entry.catalog);
       const operation = operations.find((item) => operationIdentity(item) === target.value);
       form.querySelector("[data-automation-tool-inputs]").innerHTML =
         renderAutomationToolInputs(operation, {}, undefined, entry.producers);

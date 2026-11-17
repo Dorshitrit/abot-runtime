@@ -122,7 +122,8 @@ export function buildModelConfig(
   contextWindowTokens?: number,
   modelOptions: SetupModelOptions = {},
   label?: string,
-  applyCreationTemperature = true,
+  applyCreationTemperature = false,
+  applyLegacyCompactionDefaults = false,
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
   const tokenEstimation = isRecord(context.tokenEstimation)
@@ -146,7 +147,7 @@ export function buildModelConfig(
       isRecord(template.generation) ? template.generation : {},
       modelOptions,
     ),
-    ...(shouldApplyOllamaSetupCalibration
+    ...(shouldApplyOllamaSetupCalibration && applyLegacyCompactionDefaults
       ? {
           calibration: {
             ...calibration,

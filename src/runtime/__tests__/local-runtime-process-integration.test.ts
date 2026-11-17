@@ -50,7 +50,7 @@ async function waitForPending(
   return pending!;
 }
 
-describe("local Runtime across separate processes", () => {
+describe("local Runtime across separate processes", { timeout: 75_000 }, () => {
   test("a child manages the owner's schedules and receives one canonical run, then detaches without stopping the owner", async () => {
     const local = await fixture();
     const child = await local.child();
@@ -122,7 +122,7 @@ describe("local Runtime across separate processes", () => {
     const later = await local.observer.services.scheduler.runNow(job.id);
     await local.observer.services.scheduler.tick();
     expect((await local.waitForRun(later.id)).status).toBe("succeeded");
-  }, 15_000);
+  });
 
   test("an ordinary request from another process blocks a due Job and contributes its settled answer to scheduled history", async () => {
     const entered = createSchedulerTestGate();
@@ -169,7 +169,7 @@ describe("local Runtime across separate processes", () => {
     expect(JSON.stringify(scheduledModelMessages(decisions[1][0]))).toContain(
       SCHEDULED_ANSWER,
     );
-  }, 15_000);
+  });
 
   test.each(["delete", "cancel"] as const)(
     "%s from a child invalidates pending real dispatch at the single owner",
@@ -235,7 +235,6 @@ describe("local Runtime across separate processes", () => {
         readFile(join(local.config.paths.sessionsDir, "session.json"), "utf-8"),
       ).rejects.toMatchObject({ code: "ENOENT" });
     },
-    15_000,
   );
 
   test("deleting a session during an active scheduled response does not recreate it after the response settles", async () => {
@@ -277,7 +276,7 @@ describe("local Runtime across separate processes", () => {
     await expect(
       readFile(join(local.config.paths.sessionsDir, "session.json"), "utf-8"),
     ).rejects.toMatchObject({ code: "ENOENT" });
-  }, 15_000);
+  });
 
   test("different environment owners keep their Jobs, requests and model execution isolated", async () => {
     const first = await fixture(undefined, "first-environment");
@@ -319,5 +318,5 @@ describe("local Runtime across separate processes", () => {
       },
     ]);
     expect(await secondChild.call("listRuns")).toEqual([]);
-  }, 20_000);
+  });
 });

@@ -64,6 +64,8 @@ export function createConversationSessionController({
   selectedEnvironmentId,
   applyConversationChrome,
   applyModelSelection,
+  onSessionSnapshot = () => {},
+  onResetRunSelection = () => {},
   renderSessions,
   renderMessages,
   updateComposerSendState,
@@ -167,6 +169,7 @@ export function createConversationSessionController({
 
   function resetLiveRequestView() {
     history.reset();
+    onResetRunSelection();
     state.events = [];
     state.taskProgressByRequest.clear();
     state.contextWindowByRequest.clear();
@@ -486,6 +489,7 @@ export function createConversationSessionController({
     ) {
       return false;
     }
+    onSessionSnapshot(payload, { environmentId: selectedEnvironmentId(), sessionId, viewVersion });
     history.adopt(payload);
     const rawMessages = Array.isArray(payload.messages) ? payload.messages : [];
     state.messages = rawMessages.map((message, index) =>

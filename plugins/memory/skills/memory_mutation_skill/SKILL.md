@@ -1,4 +1,4 @@
-# Memory Mutation Skill
+# Memory Mutation Tool Instructions
 
 Use `memory_add` only when the user explicitly asks to save or remember a
 personal fact or preference for future conversations. It is not file storage

@@ -6,7 +6,7 @@ import { renderAutomationEditorActions } from "./editor-actions.js";
 import { toolDisplayName } from "./tool-identity.js";
 export { toolDisplayName } from "./tool-identity.js";
 import { listAvailableAutomationProducers } from "../../lib/automation-binding-producers.js";
-import { requiresFullPlus, selectedAutomationOperations } from "./permission-selection.js";
+import { requiresFullPlus, selectedAutomationOperations, standaloneAutomationOperations } from "./permission-selection.js";
 
 function triggerChoice(trigger) {
   return trigger?.kind === "schedule" ? trigger.schedule?.kind || "daily" : trigger?.kind || "manual";
@@ -49,8 +49,7 @@ function renderLimits(limits) {
 }
 
 function toolCatalogItems(catalog) {
-  const operations = Array.isArray(catalog?.grantableOperations)
-    ? catalog.grantableOperations : catalog?.operations || [];
+  const operations = standaloneAutomationOperations(catalog);
   const tools = new Map();
   for (const operation of operations) {
     const existing = tools.get(operation.toolName) || {

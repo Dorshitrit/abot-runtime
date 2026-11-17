@@ -21,11 +21,13 @@ export function createLocalLongTermMemoryOnboardingService(params: {
   configPath?: string;
   fetchImpl?: typeof fetch;
   repository?: LongTermMemoryOnboardingConfigRepository;
+  backup?: boolean;
 }): LongTermMemoryOnboardingService {
   const repository =
     params.repository ??
     createFileLongTermMemoryOnboardingConfigRepository({
       rootDir: params.rootDir,
+      backup: params.backup,
       ...(params.configPath ? { configPath: params.configPath } : {}),
     });
   const service = createLongTermMemoryOnboardingService({

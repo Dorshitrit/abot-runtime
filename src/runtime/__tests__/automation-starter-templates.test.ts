@@ -33,7 +33,7 @@ function registration(toolName: string, operationId: string, effect = "read_only
     definition: { catalogGroups: ["read"], requiredPermissionMode: "full_access" },
     contract: { version: 7, operations: [{ operationId, summary: "Read bounded data",
       effect, approval: "request_policy", input: { type: "object", additionalProperties: false,
-        properties, required: [] } }, { kind: "agent", modelProfileId: "", tools: [] }] },
+        properties, required: [] } }] },
   };
 }
 

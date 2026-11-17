@@ -31,8 +31,14 @@ function createFilesystemMutationCoordinator(): FilesystemMutationCoordinator {
 // Coordination is owned by the filesystem plugin but shared by every plugin
 // instance loaded in this process so two handlers cannot mutate one target
 // from stale observations.
-const PROCESS_MUTATION_COORDINATOR = createFilesystemMutationCoordinator();
+// Public plugins are bundled separately; a module singleton cannot serialize
+// writes across those bundles. The versioned process slot owns only the queue.
+const COORDINATOR_KEY = Symbol.for("abot.filesystem.mutation-coordinator.v1");
+const processState = globalThis as typeof globalThis & {
+  [COORDINATOR_KEY]?: FilesystemMutationCoordinator;
+};
 
 export function getProcessFilesystemMutationCoordinator(): FilesystemMutationCoordinator {
-  return PROCESS_MUTATION_COORDINATOR;
+  return processState[COORDINATOR_KEY] ??=
+    createFilesystemMutationCoordinator();
 }

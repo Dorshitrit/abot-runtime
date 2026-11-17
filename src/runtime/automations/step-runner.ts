@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import { hasToolAbortReceipt } from "../../capabilities/tool-interruption.js";
 import type { ToolRegistry, RuntimeConfig } from "../ports.js";
+import { discoverToolOperations } from "../capabilities/tool-operation-discovery.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { CapabilityJsonValue } from "../orchestration/capability-adapters/result.js";
 import type { CompiledAutomationGraph, CompiledAutomationStep } from "./graph-validation.js";
@@ -177,8 +178,7 @@ export function createAutomationStepRunner(options: {
   let attachmentOperations: Promise<readonly AttachmentInputOperation[]> | undefined;
   const loadAttachmentOperations = () => {
     if (!attachmentOperations) attachmentOperations = (async () => {
-      const registry = await options.tools.prepareRequest?.() ?? options.tools;
-      return (registry.listNormalInvocations?.() ?? []).flatMap((registration) =>
+      return (await discoverToolOperations(options.tools)).flatMap((registration) =>
         registration.contract.operations.map((operation) => ({
           toolName: registration.toolName,
           operationId: operation.operationId,

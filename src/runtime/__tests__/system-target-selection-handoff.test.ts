@@ -10,19 +10,16 @@ import {
 } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
 import { createRequestWorkerCapabilityProvider } from "../request/worker-capability-composition.js";
-import { SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT } from "../orchestration/role-calls/index.js";
+import { resolveRequestExecutionPolicy } from "../request/role-executor-composition.js";
 import { createTestRequestExecutionScopeWithCapabilities } from "./support/request-execution-scope.js";
 import {
   createTargetHandoffFixture,
   finalDispatchReport,
   selectedHost,
   selectedConnection,
-  targetHandoffSeed,
 } from "./support/system-target-handoff-fixture.js";
-import {
-  createTargetHandoffScript,
-  readHandoffCapsule,
-} from "./support/system-target-handoff-script.js";
+import { readHandoffCapsule } from "./support/system-target-handoff-script.js";
+import { createTargetEaScript, targetEaSeed } from "./support/system-target-ea-script.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => {
@@ -30,29 +27,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("plugin target evidence survives the complete delegated request", () => {
+describe("plugin target evidence survives the complete EA request", () => {
   test.each(["ask", "full_access", "full_plus"] as const)(
-    "%s keeps implicit host binding and approval through Worker and Reviewer",
+    "%s keeps implicit host binding and approval from discovery through launch",
     async (mode) => {
       const root = await mkdtemp(join(tmpdir(), "target-handoff-"));
       const fixture = createTargetHandoffFixture(root);
       await mkdir(fixture.config.paths.agentWorkDir);
-      const script = createTargetHandoffScript((input) => {
+      const executionPolicy = resolveRequestExecutionPolicy("execution-agent-v1");
+      const script = createTargetEaScript((input) => {
         expect(fixture.executeHostOperation).toHaveBeenCalledOnce();
         const evidence = readHandoffCapsule(
           input,
-          "runtime_request_tool_results_v1",
+          "runtime_execution_capability_result_v1",
         );
         expect(evidence).toMatchObject({
-          authority: "reference_data",
-          coverage: { kind: "call", callId: "call-3" },
-          results: [
-            {
-              callId: "call-3",
+          authority: "canonical_role_call_ledger",
+          result: {
+              executionId: "capability-execution-1",
+              capabilityId: "discover_system_applications",
               outcome: "succeeded",
-              acceptedAction: {
-                controls: { target: "windows", query: "Fixture", limit: 50 },
-              },
               adapterResult: {
                 authority: "registered_plugin",
                 result: {
@@ -60,12 +54,8 @@ describe("plugin target evidence survives the complete delegated request", () =>
                   data: { transport: "host_companion", observedMatches: 1 },
                 },
               },
-            },
-          ],
+          },
         });
-        expect(
-          readHandoffCapsule(input, "runtime_worker_assignment"),
-        ).toMatchObject({ callId: "call-3", parentCallId: "call-2" });
       });
       let nextCall = 0;
       const respond = withSupervisorPreparation(async (input) => {
@@ -90,21 +80,34 @@ describe("plugin target evidence survives the complete delegated request", () =>
         expect(visible).not.toContain("host_id");
         return respond(input);
       });
-      const seed = targetHandoffSeed(invoke, mode);
-      const preparedRegistry = await fixture.registry.prepareRequest!();
+      const seed = targetEaSeed(invoke, mode);
+      const preparedRegistry = await fixture.registry.prepareRequest!({
+        requestId: seed.requestId, executionPolicy: executionPolicy.authority.id,
+        rootContractId: executionPolicy.rootContract.contractId,
+      });
       const request = createTestRequestExecutionScopeWithCapabilities(
         seed,
         (view) =>
           createRequestWorkerCapabilityProvider({
             request: view,
-            executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
+            executionPolicyAuthority: executionPolicy.authority,
             runtimeConfig: fixture.config,
             toolRegistryOverride: preparedRegistry,
           }),
+        { executionPolicy },
       );
       try {
-        await expect(runRequestRunner(request)).resolves.toEqual({
+        const result = await runRequestRunner(request);
+        expect(result).toMatchObject({
           output: finalDispatchReport,
+          outputTextMode: "exact",
+        });
+        expect(JSON.parse(result.finalObservation!.observationContent)).toMatchObject({
+          kind: "runtime_execution_tool_observation_v1",
+          results: [
+            expect.objectContaining({ capabilityId: "discover_system_applications", outcome: "succeeded" }),
+            expect.objectContaining({ capabilityId: "launch_system_application", outcome: "succeeded" }),
+          ],
         });
         expect(nextCall).toBe(script.length);
         expect(fixture.run).not.toHaveBeenCalled();

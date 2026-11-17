@@ -11,6 +11,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function validateManifestEntrypoint(params: {
   pluginId: string;
   expectedCapabilityIds: readonly string[];
+  requiresRequestBinding?: true;
   raw: unknown;
 }): RuntimePluginEntrypoint {
   if (!isRecord(params.raw) || !isRecord(params.raw.handlers)) {
@@ -19,7 +20,7 @@ export function validateManifestEntrypoint(params: {
     );
   }
   const unsupported = Object.keys(params.raw).find(
-    (key) => !["handlers", "adapters", "prepareRequest"].includes(key),
+    (key) => !["handlers", "adapters", "prepareRequest", "discoverCapabilities"].includes(key),
   );
   if (unsupported) {
     throw new Error(
@@ -37,6 +38,8 @@ export function validateManifestEntrypoint(params: {
     params.raw.adapters,
   );
   const prepareRequest = params.raw.prepareRequest;
+  const discoverCapabilities = params.raw.discoverCapabilities;
+  assertRequestDiscoveryContract(params.pluginId, params.requiresRequestBinding, prepareRequest, discoverCapabilities);
   if (!isOptionalEntrypointFunction(prepareRequest)) {
     throw new Error(
       `Runtime plugin ${params.pluginId} prepareRequest must be a function`,
@@ -44,6 +47,7 @@ export function validateManifestEntrypoint(params: {
   }
   return {
     handlers,
+    ...(discoverCapabilities ? { discoverCapabilities: discoverCapabilities as RuntimePluginEntrypoint["discoverCapabilities"] } : {}),
     ...(prepareRequest
       ? {
           prepareRequest:
@@ -52,6 +56,17 @@ export function validateManifestEntrypoint(params: {
       : {}),
     ...(Object.keys(adapters).length > 0 ? { adapters } : {}),
   };
+}
+
+function assertRequestDiscoveryContract(pluginId: string, required: true | undefined,
+  prepare: unknown, discover: unknown): void {
+  if (!isOptionalEntrypointFunction(discover))
+    throw new Error(`Runtime plugin ${pluginId} discoverCapabilities must be a function`);
+  if (!required && discover !== undefined)
+    throw new Error(`Runtime plugin ${pluginId} discovery requires requiresRequestBinding`);
+  if (!required) return;
+  if (typeof prepare !== "function" || typeof discover !== "function")
+    throw new Error(`Runtime plugin ${pluginId} requires prepareRequest and discoverCapabilities`);
 }
 
 function validateEntrypointHandlers(
@@ -113,7 +128,7 @@ function validateEntrypointAdapter(
 ): ToolCallAdapter {
   const label = `Runtime plugin ${pluginId} adapter ${capabilityId}`;
   if (!isRecord(raw)) throw new Error(`${label} must be an object`);
-  const fields = ["normalizeCall", "validateCall", "executionBinding"];
+  const fields = ["normalizeCall", "validateCall", "executionBinding", "preparePayload"];
   const unsupported = Object.keys(raw).find((key) => !fields.includes(key));
   if (unsupported)
     throw new Error(`${label} contains unsupported field ${unsupported}`);

@@ -1,6 +1,8 @@
 import { conversationTitle } from "../lib/conversation-title.js";
 import { confirmDialog } from "../components/confirmation-dialog.js";
 import { createSessionPinUpdates } from "./session-pin-updates.js";
+import { createSessionActivityController } from "./session-activity-controller.js";
+import { sessionActivityMarkup, updateSessionActivity } from "../components/session-activity.js";
 import {
   isOlderSessionReadState,
   isSessionReadStateUnavailable,
@@ -21,6 +23,7 @@ export function createSessionController({
   shell,
   preferences,
   client,
+  realtime,
   selectedEnvironmentId,
   onOpen,
   onClearCurrent,
@@ -34,6 +37,8 @@ export function createSessionController({
   copyText = (value) => navigator.clipboard.writeText(value),
 }) {
   let pagination;
+  const activity = createSessionActivityController({ client, getEnvironmentId: selectedEnvironmentId,
+    onChange: () => updateSessionActivity(dom.sessionsList, activity.isWorking), realtime, isConnected: () => state.connected !== false });
   const updatePinnedSessions = createSessionPinUpdates({ state, preferences });
   const titleOf = conversationTitle;
   const byId = (sessionId) =>
@@ -92,6 +97,7 @@ export function createSessionController({
       <button id="session-open-${escapeAttribute(encodeURIComponent(sessionId))}" class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
         <div class="session-title-row">
           <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
+          ${sessionActivityMarkup(sessionId, activity.isWorking(sessionId))}
           ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
           ${
             hasUnread
@@ -145,6 +151,8 @@ export function createSessionController({
     const normalizedSessionId = textOf(sessionId);
     const normalizedTitle = textOf(title).trim();
     if (!normalizedSessionId || !normalizedTitle) return false;
+    // Canonical snapshots may still carry the ID while the list has a display title.
+    if (normalizedTitle === normalizedSessionId && conversationTitle(byId(normalizedSessionId), "")) return false;
     let found = false;
     let changed = false;
     state.sessions = state.sessions.map((session) => {
@@ -359,6 +367,7 @@ export function createSessionController({
   }
 
   return {
+    refreshActivity: activity.refresh,
     setPagination: (value) => { pagination = value; },
     paginationQuery: () => ({ ...sidebar.paginationQuery(), ...(client?.supportsProjects?.() ? { sidebar: true } : {}) }),
     archiveSession: (sessionId) => sidebar.archiveSession(sessionId),

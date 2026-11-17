@@ -17,6 +17,7 @@ import {
   ABOT_PLUGIN_COMPATIBILITY_EXTENSION,
   type PluginPlatformDeclaration,
 } from "./platform-compatibility.js";
+import type { RequestExecutionPolicyId } from "../shared/request-execution-policy.js";
 export const AGENT_PLUGIN_MANIFEST_SCHEMA =
   "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const ABOT_RUNTIME_EXTENSION = "ai.abot.runtime";
@@ -60,6 +61,10 @@ export type AgentPluginSettingsManifest = Readonly<{
 export type AbotRuntimePluginExtension = Readonly<{
   version: typeof ABOT_RUNTIME_EXTENSION_VERSION;
   entrypoint: string;
+  /** Supported request routes; omission preserves availability on every route. */
+  executionPolicies?: readonly RequestExecutionPolicyId[];
+  /** Operations require model-request preparation; unavailable to standalone Tool steps. */
+  requiresRequestBinding?: true;
   catalogGroups?: readonly ToolCatalogGroup[];
   settings?: AgentPluginSettingsManifest;
   secrets?: Readonly<Record<string, AgentPluginSecretManifest>>;

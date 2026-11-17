@@ -8,6 +8,7 @@ import {
 export function createFileLongTermMemoryOnboardingConfigRepository(params: {
   rootDir: string;
   configPath?: string;
+  backup?: boolean;
 }): LongTermMemoryOnboardingConfigRepository {
   const source = () =>
     inspectRuntimeConfigFileWithMeta(params.rootDir, params.configPath);
@@ -28,10 +29,13 @@ export function createFileLongTermMemoryOnboardingConfigRepository(params: {
           async (transaction) => {
             if (!transaction.snapshot.exists)
               throw new Error(`runtime_config_not_found:${current.path}`);
-            const result = await transaction.write(config, { expectedConfig });
+            const result = await transaction.write(config, {
+              expectedConfig,
+              backup: params.backup,
+            });
             return Object.freeze({
               configPath: transaction.path,
-              backupPath: result.backupPath!,
+              ...(result.backupPath ? { backupPath: result.backupPath } : {}),
             });
           },
         );

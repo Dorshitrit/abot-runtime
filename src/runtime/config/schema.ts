@@ -1,4 +1,4 @@
-import { modelReasoningBudgetByModeSchema, modelReasoningBudgetSchema } from "./model-reasoning-schema.js";
+import { modelGenerationSchema } from "./model-generation-schema.js";
 import { modelPluginConfigSchema } from "./model-plugin-config.js";
 import { DEFAULT_MEMORY_RECALL_CALL_LIMIT } from "../long-term-memory/recall-policy.js";
 import {
@@ -99,31 +99,6 @@ function stringMapSchema(description: string): Record<string, unknown> {
     additionalProperties: {
       type: "string",
       minLength: 1,
-    },
-  };
-}
-
-function modelGenerationSchema(): Record<string, unknown> {
-  return {
-    type: "object",
-    description: "Generation settings for a model profile.",
-    properties: {
-      temperature: {
-        type: "number",
-        description: "Sampling temperature forwarded to the model provider.",
-      },
-      topP: {
-        type: "number",
-        description: "Nucleus sampling value forwarded to the model provider.",
-      },
-      reasoningBudget: modelReasoningBudgetSchema,
-      reasoningBudgetByMode: modelReasoningBudgetByModeSchema,
-      reasoningEffort: {
-        type: "string",
-        enum: ["none", "minimal", "low", "medium", "high", "xhigh"],
-        description:
-          "Default reasoning effort for providers/models that support it.",
-      },
     },
   };
 }

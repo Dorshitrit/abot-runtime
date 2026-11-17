@@ -33,7 +33,25 @@ export type SystemApplication = Readonly<{
   id: string;
   name: string;
   target: SystemTargetId;
+  executableResolution?: SystemApplicationExecutableResolution;
 }>;
+export type SystemApplicationExecutableSource =
+  | "windows_apps_folder_target"
+  | "macos_bundle_executable"
+  | "linux_desktop_exec";
+/** Registered executable observation, never a complete invocation or launch receipt. */
+export type SystemApplicationExecutableResolution = Readonly<
+  | {
+      status: "resolved";
+      source: SystemApplicationExecutableSource;
+      path: string;
+    }
+  | {
+      status: "unresolved" | "ambiguous";
+      source: SystemApplicationExecutableSource;
+      reason: string;
+    }
+>;
 export class SystemOperationError extends Error {
   constructor(
     readonly code: string,

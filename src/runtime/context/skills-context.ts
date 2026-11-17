@@ -26,7 +26,7 @@ function buildActionContext(
     if (!content) {
       continue;
     }
-    parts.push(`### SKILL: ${skillName}`, content, "");
+    parts.push("### Tool instructions — already provided", content, "");
   }
   return parts.join("\n").trim();
 }

@@ -1,4 +1,5 @@
 import { parsePromptCacheInput } from "./prompt-cache.js";
+import { modelParameterInputValidationError } from "./model-parameter-input-drafts.js";
 import { parseReasoningBudgetMode } from "./reasoning-budget.js";
 import { parseReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import {
@@ -197,6 +198,7 @@ export function createConfigWorkspaceModel() {
   }
 
   function isFileDirty(file) {
+    if (modelParameterInputValidationError(file.config)) return true;
     if (state.appliedJsonRepairKeys.has(configFileKey(file))) return true;
     const baseline = baselineFor(file);
     return baseline ? !configValuesEqual(file.config, baseline) : false;

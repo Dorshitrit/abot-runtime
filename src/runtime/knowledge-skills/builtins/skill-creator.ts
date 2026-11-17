@@ -3,7 +3,7 @@ import type { KnowledgeSkillDocument } from "../store.js";
 export const SKILL_CREATOR: KnowledgeSkillDocument = {
   skillId: "skill-creator",
   name: "Skill Creator",
-  description: "When the user asks to create or edit a personal Skill or reusable guidance.",
+  description: "Use when the user asks to create or edit a personal Skill or reusable guidance. Completing a one-off task or noticing a useful preference does not by itself qualify.",
   content: `# Skill Creator
 
 Use this reference when the user asks to create or edit reusable guidance. Do not save a Skill merely because a preference or useful technique appears in conversation.

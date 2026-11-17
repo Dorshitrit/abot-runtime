@@ -42,6 +42,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       { timeout: 5000 },
     );
     await vi.waitFor(() => expect(f.requests.healthDetails()).toEqual([]));
+    expect(f.requests.activityDetails()).toEqual([]);
     expect(f.owner.isIdle?.()).toBe(true);
     expect(f.execute).not.toHaveBeenCalled();
     const message = {
@@ -64,7 +65,11 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       }),
     ).toBe(true);
     await vi.waitFor(() => expect(f.execute).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(f.requests.activityDetails()).toEqual([expect.objectContaining({
+      requestId, sessionId: "session", environment: f.base.config.runtimeId,
+    })]));
     expect(f.requests.healthDetails()).toEqual([]);
+    expect(f.requests.activeReplay(requestId, 0)).toBeUndefined();
     const receipt = {
       type: "steer_ack",
       requestId,
@@ -83,7 +88,11 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       accepted: false,
       reason: "steer_id_conflict",
     });
+    expect(f.requests.activityDetails()).toEqual([expect.objectContaining({
+      requestId, sessionId: "session", environment: f.base.config.runtimeId,
+    })]);
     expect(f.requests.healthDetails()).toEqual([]);
+    expect(f.requests.activeReplay(requestId, 0)).toBeUndefined();
     f.effect.open();
     await f.owner.whenIdle?.();
     await vi.waitFor(
@@ -120,6 +129,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       reason: "request_not_active",
     });
     expect(f.requests.healthDetails()).toEqual([]);
+    expect(f.requests.activityDetails()).toEqual([]);
     expect(f.model.invokeRaw).not.toHaveBeenCalled();
   },
   20000,

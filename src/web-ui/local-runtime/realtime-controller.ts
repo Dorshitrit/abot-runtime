@@ -135,6 +135,7 @@ export class LocalRealtimeController {
         sessionId: replay.sessionId,
         environment: environmentId,
         error: replay.finalState.error,
+        ...(replay.finalState.details ? { details: replay.finalState.details } : {}),
       });
     }
     // A returned send call is not a browser delivery acknowledgement.

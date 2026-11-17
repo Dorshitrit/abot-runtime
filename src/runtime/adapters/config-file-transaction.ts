@@ -34,6 +34,8 @@ export type ConfigFileExpectation = Readonly<{
   expectedConfig?: JsonConfig;
   expectedRevision?: string;
 }>;
+export type ConfigFileWriteOptions = ConfigFileExpectation &
+  Readonly<{ backup?: boolean }>;
 export type ConfigFileCommit = Readonly<{
   revision: string;
   backupPath?: string;
@@ -43,7 +45,7 @@ export type ConfigFileTransaction = Readonly<{
   snapshot: ConfigFileSnapshot;
   write(
     config: JsonConfig,
-    expectation?: ConfigFileExpectation,
+    options?: ConfigFileWriteOptions,
   ): Promise<ConfigFileCommit>;
 }>;
 
@@ -163,6 +165,14 @@ async function requireUnchangedFile(
     throw new ConfigFileConflictError();
 }
 
+function shouldCreateConfigBackup(
+  snapshot: ConfigFileSnapshot,
+  options: ConfigFileWriteOptions,
+): boolean {
+  if (options.backup === false) return false;
+  return snapshot.exists;
+}
+
 /** All cooperating config writers hold this lock from read through commit.
  * Revision checks also reject completed external edits; advisory locks cannot
  * exclude an external editor that writes between the final check and rename.
@@ -183,12 +193,12 @@ export async function withConfigFileTransaction<T>(
         get snapshot() {
           return current;
         },
-        async write(config, expectation = {}) {
-          requireExpectedSnapshot(current, expectation);
+        async write(config, writeOptions = {}) {
+          requireExpectedSnapshot(current, writeOptions);
           await requireUnchangedFile(canonicalPath, current.revision, options);
           const token = randomUUID();
           const temporaryPath = `${canonicalPath}.${token}.tmp`;
-          const backupPath = current.exists
+          const backupPath = shouldCreateConfigBackup(current, writeOptions)
             ? `${canonicalPath}.${new Date().toISOString().replace(/[:.]/gu, "-")}.${token}.bak`
             : undefined;
           const mode = current.exists

@@ -17,8 +17,9 @@ test.each(["registered", "orphan"])(
     const input = { profileId: "worker", providerId: "ollama", model: "test-model" };
     const result = await fixture.service.add(input);
     const profile = await fixture.readModelProfile(input.profileId);
-    expect(profile.generation).toEqual({ temperature: 0 });
-    delete profile.generation;
+    expect(profile.generation).toBeUndefined();
+    // Reproduce the historical file shape; retries must preserve it byte-for-byte.
+    profile.calibration["context.compact"].generation = { temperature: 0, reasoningEffort: "none" };
     await fixture.writeModelProfile(input.profileId, profile);
     const config = await fixture.readConfig();
     const path = resolve(dirname(fixture.configPath), config.models.profiles.worker.configRef);
@@ -38,8 +39,8 @@ test.each(["registered", "orphan"])("rejects a %s model whose temperature was ex
   const input = { profileId: "local", newProvider: { type: "llamacpp", id: "local-llama" }, model: "test-model" };
   await fixture.service.add(input);
   const profile = await fixture.readModelProfile(input.profileId);
-  expect(profile.generation.temperature).toBe(0);
-  profile.generation.temperature = 0.7;
+  expect(profile.generation).toBeUndefined();
+  profile.generation = { temperature: 0.7 };
   await fixture.writeModelProfile(input.profileId, profile);
   const config = await fixture.readConfig();
   const path = resolve(dirname(fixture.configPath), config.models.profiles.local.configRef);
@@ -61,9 +62,9 @@ test.each([
 ])("a same-model connection edit retains saved sampling $temperature / $native", async ({ temperature, native }) => {
   const draft = (await readRuntimeSetupDraft(fixture.configPath))!;
   const modelConfig = await fixture.readModelProfile("default");
-  expect(modelConfig.generation.temperature).toBe(0);
+  expect(modelConfig.generation).toBeUndefined();
   if (temperature === undefined) delete modelConfig.generation;
-  else modelConfig.generation.temperature = temperature;
+  else modelConfig.generation = { temperature };
   if (native !== undefined) modelConfig.options = { temperature: native };
   await fixture.writeModelProfile("default", modelConfig);
   await writeRuntimeSetupDraft({ ...draft, modelConfig });
@@ -82,6 +83,24 @@ test.each([
     provider: "llamacpp", model: "replacement", deferActivation: true, connectionRevision: edit.setup.editableConnection!.revision,
   });
   const replacement = await fixture.readModelProfile("default");
-  expect(replacement.generation.temperature).toBe(0);
+  expect(replacement.generation).toBeUndefined();
   expect(replacement.options?.temperature).toBeUndefined();
+});
+
+test("same-model connection edits preserve generic controls including explicit omission", async () => {
+  const draft = (await readRuntimeSetupDraft(fixture.configPath))!;
+  const modelConfig = await fixture.readModelProfile("default");
+  modelConfig.generation = { parameters: {
+    temperature: { mode: "inherit" }, top_k: { mode: "value", value: 0 },
+    max_output_tokens: { mode: "omit" },
+  } };
+  await fixture.writeModelProfile("default", modelConfig);
+  await writeRuntimeSetupDraft({ ...draft, modelConfig });
+  const wizard = new RuntimeSetupService({
+    rootDir: fixture.rootDir, getConfigPath: () => fixture.configPath,
+    activate: async () => { throw new Error("connection edits must remain deferred"); },
+  });
+  await wizard.save({ provider: "ollama", model: "fixture-chat",
+    baseUrl: "http://127.0.0.1:4999", deferActivation: true, connectionRevision: draft.revision });
+  expect((await fixture.readModelProfile("default")).generation).toEqual(modelConfig.generation);
 });

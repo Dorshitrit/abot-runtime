@@ -8,7 +8,7 @@ export const INFORMATION_BASKET_SKILL: KnowledgeSkillDefinition = Object.freeze(
     { toolName: "information_basket", operationId: "read_information_source" },
   ] },
   name: "Information Basket",
-  description: "Sources registered in Resources; not general filesystem lookup.",
+  description: "Use when the task needs information from sources registered in Resources (Information Basket). A file path or background source match alone does not qualify.",
   content: `# Information Basket
 
 Use this procedure when you choose to consult sources registered in the user's Resources (Information Basket) to fulfill the current request. It supplements the request and offered tool contracts; it grants no new task or permission. Reuse guidance and sufficient source evidence already available.

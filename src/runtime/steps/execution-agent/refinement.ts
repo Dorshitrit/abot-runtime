@@ -23,7 +23,7 @@ import {
 } from "../../request/execution-scope.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import {
-  ownsExecutionObservationControls,
+  ownsExecutionDecisionControls,
   partitionExecutionCapabilityControls,
 } from "./capability-controls-partition.js";
 import { requiresExecutionOperationObjective } from "./capability-invocation-contract.js";
@@ -67,7 +67,7 @@ function canExecuteWithSelectedControls(
   guidance: string,
 ): boolean {
   if (controls === undefined) return false;
-  if (ownsExecutionObservationControls(descriptor)) return true;
+  if (ownsExecutionDecisionControls(descriptor)) return true;
   return guidance.length === 0;
 }
 
@@ -133,7 +133,7 @@ export async function refineExecutionCapabilityInvocations(
       [
         ...new Set(
           prepared
-            .filter(({ descriptor }) => !ownsExecutionObservationControls(descriptor))
+            .filter(({ descriptor }) => !ownsExecutionDecisionControls(descriptor))
             .map(({ descriptor }) => descriptor.capabilityId),
         ),
       ].map(

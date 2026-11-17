@@ -17,6 +17,8 @@ import type {
   ToolModuleRequestPreparation,
 } from "../capabilities/tool-types.js";
 import type { ToolNormalInvocationContract } from "../capabilities/normal-invocation/contracts.js";
+import type { ToolCapabilityDiscovery } from "../capabilities/tool-request-discovery.js";
+export type { ToolCapabilityDiscovery, ToolDiscoveryDeclaration } from "../capabilities/tool-request-discovery.js";
 export type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "../capabilities/tool-execution-binding.js";
 
 export type RuntimePluginLoadContext = {
@@ -49,6 +51,8 @@ export type RuntimePluginEntrypoint = Readonly<{
   adapters?: Readonly<Record<string, ToolCallAdapter>>;
   /** Observe availability once before any model sees this request's catalog. */
   prepareRequest?: ToolModuleRequestPreparation;
+  /** Metadata-only availability for plugins declaring requiresRequestBinding. */
+  discoverCapabilities?: ToolCapabilityDiscovery;
 }>;
 
 export type RuntimePluginEntrypointFactory = (

@@ -1,5 +1,8 @@
-import { parseModelReasoningBudgetByMode } from "../../shared/model-reasoning-modes.js";
-import { parseModelReasoningBudget } from "../../shared/model-reasoning.js";
+import { loadModelParameterProfileCatalog } from "../../model-gateway/model-parameter-profiles/loader.js";
+import { mergeModelProfileSources, type NormalizedModelProfileSource } from "./model-profile-sources.js";
+export { mergeModelProfileSources } from "./model-profile-sources.js";
+import { buildModelGenerationConfig } from "./model-generation-config.js";
+export { buildModelGenerationConfig } from "./model-generation-config.js";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
@@ -17,7 +20,6 @@ import type {
   ModelGatewayEmbeddingProfileConfig,
   ModelGatewayProfileConfig,
   ModelGatewayProviderConfig,
-  ModelGenerationConfig,
   ModelInvocationProfileConfig,
   ModelModality,
   ModelStepCalibrationConfig,
@@ -135,7 +137,7 @@ export function buildPluginConfig(
 }
 
 function buildModelProfile(
-  profile: Record<string, unknown>,
+  profile: NormalizedModelProfileSource,
 ): ModelGatewayProfileConfig | undefined {
   const model = readNestedConfigString(profile, "model");
   if (!model) {
@@ -148,7 +150,7 @@ function buildModelProfile(
     "contextWindowTokens",
   );
   const supportsThinking = readOptionalBoolean(profile, "supportsThinking");
-  const generation = buildModelGenerationConfig(profile.generation);
+  const generation = profile.generation;
   const context = buildModelContextConfig(profile.context);
   const capabilities = buildModelCapabilities(profile.capabilities);
   const calibration = buildModelStepCalibrations(profile.calibration);
@@ -169,80 +171,8 @@ function buildModelProfile(
   };
 }
 
-function mergeRawCalibration(
-  base: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Array.from(new Set([...Object.keys(base), ...Object.keys(override)])).map(
-      (slotId) => {
-        const baseSlot = base[slotId];
-        const overrideSlot = override[slotId];
-        return [
-          slotId,
-          isRecord(baseSlot) && isRecord(overrideSlot)
-            ? mergeModelProfileSources(baseSlot, overrideSlot)
-            : (overrideSlot ?? baseSlot),
-        ];
-      },
-    ),
-  );
-}
-
-function mergeModelProfileSources(
-  referenced: Record<string, unknown>,
-  inline: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    ...referenced,
-    ...inline,
-    ...(isRecord(referenced.options) || isRecord(inline.options)
-      ? {
-          options: {
-            ...(isRecord(referenced.options) ? referenced.options : {}),
-            ...(isRecord(inline.options) ? inline.options : {}),
-          },
-        }
-      : {}),
-    ...(isRecord(referenced.generation) || isRecord(inline.generation)
-      ? {
-          generation: {
-            ...(isRecord(referenced.generation) ? referenced.generation : {}),
-            ...(isRecord(inline.generation) ? inline.generation : {}),
-          },
-        }
-      : {}),
-    ...(isRecord(referenced.context) || isRecord(inline.context)
-      ? {
-          context: {
-            ...(isRecord(referenced.context) ? referenced.context : {}),
-            ...(isRecord(inline.context) ? inline.context : {}),
-          },
-        }
-      : {}),
-    ...(isRecord(referenced.capabilities) || isRecord(inline.capabilities)
-      ? {
-          capabilities: {
-            ...(isRecord(referenced.capabilities)
-              ? referenced.capabilities
-              : {}),
-            ...(isRecord(inline.capabilities) ? inline.capabilities : {}),
-          },
-        }
-      : {}),
-    ...(isRecord(referenced.calibration) || isRecord(inline.calibration)
-      ? {
-          calibration: mergeRawCalibration(
-            isRecord(referenced.calibration) ? referenced.calibration : {},
-            isRecord(inline.calibration) ? inline.calibration : {},
-          ),
-        }
-      : {}),
-  };
-}
-
 function buildModelStepCalibrations(
-  value: unknown,
+  value: NormalizedModelProfileSource["calibration"],
 ): Record<string, ModelStepCalibrationConfig> | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -254,7 +184,7 @@ function buildModelStepCalibrations(
     }
     const profileId = readNestedConfigString(calibration, "profileId");
     const timeoutMs = readConfigPositiveInt(calibration, "timeoutMs");
-    const generation = buildModelGenerationConfig(calibration.generation);
+    const generation = calibration.generation;
     const context = buildModelContextConfig(calibration.context);
     const format = buildModelGatewayFormat(calibration.format);
     const instructions = readNestedConfigStringArray(
@@ -470,35 +400,6 @@ function buildModelFormatTokenAccountingConfig(
   };
 }
 
-export function buildModelGenerationConfig(
-  value: unknown,
-): ModelGenerationConfig | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const reasoningBudget = parseModelReasoningBudget(value.reasoningBudget);
-  const reasoningBudgetByMode = parseModelReasoningBudgetByMode(value.reasoningBudgetByMode);
-  const temperature = readOptionalNumber(value, "temperature");
-  const topP = readOptionalNumber(value, "topP");
-  const reasoningEffort =
-    value.reasoningEffort === "none" ||
-    value.reasoningEffort === "minimal" ||
-    value.reasoningEffort === "low" ||
-    value.reasoningEffort === "medium" ||
-    value.reasoningEffort === "high" ||
-    value.reasoningEffort === "xhigh"
-      ? value.reasoningEffort
-      : undefined;
-  const config: ModelGenerationConfig = {
-    ...(temperature !== undefined ? { temperature } : {}),
-    ...(topP !== undefined ? { topP } : {}),
-    ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(reasoningBudget ? { reasoningBudget } : {}),
-    ...(reasoningBudgetByMode ? { reasoningBudgetByMode } : {}),
-  };
-  return Object.keys(config).length > 0 ? config : undefined;
-}
-
 export function buildModelContextConfig(
   value: unknown,
 ): ModelContextConfig | undefined {
@@ -615,9 +516,7 @@ function buildModelProfiles(
             configRef,
           })
         : undefined;
-    const source = referenced
-      ? mergeModelProfileSources(referenced, profile)
-      : profile;
+    const source = mergeModelProfileSources(referenced ?? {}, profile);
     const modelProfile = buildModelProfile(source);
     if (!modelProfile && configRef) {
       throw new RuntimeConfigValidationError(
@@ -714,6 +613,7 @@ export function buildRuntimeModelConfiguration(
     invocationProfiles ||
     defaults
       ? {
+          parameterProfiles: loadModelParameterProfileCatalog(options),
           ...(providers ? { providers } : {}),
           ...(builtProfiles.gatewayProfiles
             ? { profiles: builtProfiles.gatewayProfiles }

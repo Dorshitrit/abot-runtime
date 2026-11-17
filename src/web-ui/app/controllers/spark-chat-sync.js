@@ -2,9 +2,11 @@ import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { orderRequestInteractionMessages } from "../lib/request-interaction-messages.js";
 import { normalizeConversationMessage } from "./conversation-session-controller.js";
 import { rememberRequestLifecycle, sameConversationMessage } from "../lib/request-lifecycle-view.js";
+import { presentFailedResponseHistory } from "../lib/failed-response-history.js";
 
 function mergeSnapshotResponses(snapshot, current, hasNewer) {
   const canonical = (snapshot.messages || []).map(normalizeConversationMessage);
+  presentFailedResponseHistory(canonical, snapshot.requests || []);
   if (hasNewer) return current.map((message) => canonical.find((entry) => sameConversationMessage(message, entry)) || message);
   const activeRequestIds = new Set((snapshot.requests || []).filter((request) => request.status === "streaming").map((request) => request.requestId));
   const unsettled = current.filter((message) => {

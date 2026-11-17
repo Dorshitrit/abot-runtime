@@ -72,6 +72,7 @@ export function assertFilesystemScope(
 export async function filesystemScopeFixture(
   policy: RequestExecutionPolicyId,
   capacity = 32_000,
+  pluginAllow: readonly string[] = ["filesystem.write_file"],
 ) {
   const base = await createProjectFixture();
   const config: RuntimeConfig = {
@@ -81,7 +82,7 @@ export async function filesystemScopeFixture(
       enabled: false,
       rotation: { maxFileSizeMb: 1, maxFiles: 1, maxAgeDays: 1 },
     },
-    plugins: { enabled: true, allow: ["filesystem.write_file"] },
+    plugins: { enabled: true, allow: [...pluginAllow] },
     models: {
       defaults: { profileId: "scripted" },
       providers: { injected: { type: "openai" } },

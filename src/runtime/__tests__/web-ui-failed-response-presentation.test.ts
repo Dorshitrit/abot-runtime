@@ -17,7 +17,7 @@ describe("request failure presentation", () => {
       details: { stoppedResponse: response },
     };
     h.controller.handle(event);
-    expect(h.assistant.text).toBe(response);
+    expect(h.assistant).toMatchObject({ text: response, failedResponse: true });
     expect(h.assistant.streaming).toBe(false);
     expect(h.state.events.at(-1)?.summary).toBe(response);
   });
@@ -76,6 +76,7 @@ describe("request failure presentation", () => {
     await h.conversationSession.openSession("session-1");
     expect(h.state.messages.find((message) => message.role === "assistant")?.text)
       .toBe(failureResponseText(terminal));
+    expect(h.state.messages.find((message) => message.role === "assistant")).toHaveProperty("failedResponse", true);
     expect(h.state.events.at(-1)?.summary).toBe(failureResponseText(terminal));
     expect(payload).toEqual(original);
   });
@@ -93,6 +94,6 @@ describe("request failure presentation", () => {
       { requestId: "complete", status: "completed", finalState: { error: legacyError } },
       { requestId: "failed", status: "failed", finalState: { error: legacyError } },
     ]);
-    expect(messages).toEqual(original);
+    expect(messages).toEqual([...original.slice(0, -1), { ...original.at(-1), failedResponse: true }]);
   });
 });

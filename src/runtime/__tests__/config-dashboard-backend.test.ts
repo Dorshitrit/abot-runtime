@@ -132,6 +132,10 @@ describe("config dashboard backend", () => {
         "utf-8",
       ),
     ).toContain("gemma4:e4b-it-q4_K_M");
+    expect(await readdir(join(rootDir, "local"))).toEqual([
+      "models",
+      "runtime.config.json",
+    ]);
   });
 
   test("resolves and saves the generic runtime runner config", async () => {

@@ -5,12 +5,13 @@ import type {
 import type { ToolRegistry } from "../ports.js";
 import type { OperationRef } from "./definition-contracts.js";
 import { sameOperation } from "./permission-grants.js";
+import { discoverToolOperations } from "../capabilities/tool-operation-discovery.js";
 
 function selectedRegistrations(
-  registry: ToolRegistry,
+  registrations: readonly RegisteredToolNormalInvocation[],
   selections: readonly OperationRef[],
 ): RegisteredToolNormalInvocation[] {
-  return (registry.listNormalInvocations?.() ?? []).flatMap((registration) => {
+  return registrations.flatMap((registration) => {
     const operations = registration.contract.operations.filter((operation) =>
       selections.some((selected) => sameOperation(selected, {
         toolName: registration.toolName,
@@ -62,12 +63,13 @@ export function scopeToolRegistry(
   observeUnderlying: (invocationId: string, settled: Promise<ToolUnderlyingSettlement>) => void,
   invokeTool: <T>(invoke: () => Promise<T>) => Promise<T>,
 ): ToolRegistry {
-  const registrations = selectedRegistrations(registry, selected);
+  const registrations = selectedRegistrations(registry.listNormalInvocations?.() ?? [], selected);
   const names = new Set(registrations.map((item) => item.toolName));
   const definitions = registry.listDefinitions().filter((item) => names.has(item.name));
   const implementations = Object.fromEntries(Object.entries(registry.getImplementations())
     .filter(([name]) => names.has(name)));
   return {
+    discoverOperations: async () => selectedRegistrations(await discoverToolOperations(registry), selected),
     listDefinitions: () => definitions,
     listNormalInvocations: () => registrations,
     getDefinition: (name) => names.has(name) ? registry.getDefinition(name) : undefined,

@@ -120,7 +120,6 @@ describe("Web runtime setup persistence", () => {
       calibration: {
         "context.compact": {
           format: "json",
-          generation: { temperature: 0, reasoningEffort: "none" },
         },
       },
     });

@@ -340,8 +340,8 @@ when the frozen policy permits it. Capability adapters execute concrete
 operations and report bounded settled facts; they do not select roles, declare
 overall completion, or write the final response.
 
-Worker-owned and root-owned capabilities use the same `tool_payload.raw`
-payload author. The author validates the active principal against the frozen
+Worker-owned and ordinary root-owned capabilities use `tool_payload.raw`.
+The author validates the active principal against the frozen
 policy authority. The delegated Worker keeps its established assignment
 capsule; a direct root payload carries its selected bounded `operationObjective`
 through the same `authoringObjective` channel, bound to the exact request source,
@@ -352,8 +352,22 @@ presentation metadata and is never projected as payload authority or execution
 evidence. Before Worker payload or result authoring, dependency results are
 narrowed to their existing result fields and optional `semanticCheckpoints`;
 work receipts and derived lineage do not cross either raw authoring boundary.
-There is no second payload or adapter pipeline for
-`execution-agent-v1`.
+EA file operations alone use the isolated `execution.file_payload.raw` author.
+The `filesystem-ea` plugin is prepared only for EA requests; the EA registry
+replaces the legacy file read/write/edit surface using the EA plugin's independent
+permissions. Global plugin allowlists remain authoritative. Other plugins
+and the SUPER catalog, authoring instructions and staged lifecycle are unchanged.
+File reads execute directly. File writes select complete controls in the EA
+decision and author content once, with no location model or hidden repair.
+An exact edit uses file text already collected in canonical evidence, including
+multiple observed windows; preparing an edit never adds the whole file to model
+context. An explicitly selected revision-bound range supplies only that range.
+The file author preserves its accepted assignment while
+using the existing canonical result carrier, verified source digests, history
+reference memory and per-preparation compaction controller for passive evidence.
+The request ledger, task continuation, approval restore, events and context-window
+manager retain their existing contracts. File mutation queues are shared across
+the two bundled plugins; prepared source revisions are checked again at commit.
 
 For `execution-agent-v1` and `supervisor-worker-v1`, the frozen request policy
 disables automatic loading of related files from prior artifact references before
@@ -367,7 +381,8 @@ Agent selects the complete operation controls in its decision, including optiona
 ranges and locators. Only guidance for offered observation capabilities is included
 in that decision. Accepted controls are validated and passed directly to execution;
 optional null values mean omission and retain the tool's defaults. Mutation, mixed
-and payload-authored operations retain staged Controls, and the shared descriptors
+and ordinary payload-authored operations retain staged Controls; EA source-bound
+file payloads select all controls in the decision. The shared descriptors
 and Supervisor/Worker partition remain unchanged. Observation guidance and the
 expanded decision schema participate in the existing context budget.
 
@@ -708,6 +723,7 @@ The shared request kernel registers this union of policy and utility steps:
 - `degraded.finalization`
 - `execution.decision`
 - `execution.response`
+- `execution.file_payload.raw`
 - `auditor.decision`
 - `context.compact`
 - `tool_payload.raw`

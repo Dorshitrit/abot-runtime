@@ -99,12 +99,7 @@ describe("plugin configuration management", () => {
     });
     expect(managed(disabled)?.selectedCapabilityCount).toBe(0);
     expect(disabled.restartRequired).toBe(true);
-    expect(disabled.backupPath).toBeTruthy();
-    expect(
-      JSON.parse(
-        await readFile(join(options.rootDir, disabled.backupPath!), "utf8"),
-      ),
-    ).toEqual(options.rootConfig);
+    expect(disabled).not.toHaveProperty("backupPath");
 
     const enabled = await setRuntimePluginEnabled(options, {
       pluginId: "managed-example",
@@ -116,6 +111,9 @@ describe("plugin configuration management", () => {
     });
     const saved = JSON.parse(await readFile(options.configPath, "utf8"));
     expect(saved).toEqual(options.rootConfig);
+    expect(
+      (await readdir(options.rootDir)).filter((name) => name.endsWith(".bak")),
+    ).toEqual([]);
     expect(JSON.stringify(enabled)).not.toContain("private-test-value");
   });
 

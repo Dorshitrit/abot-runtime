@@ -32,17 +32,30 @@ test("renders names, exact IDs and brief descriptions as plain pipe-separated te
   expect(text).not.toContain('"skillId"');
 });
 
-test("builtin names and complete descriptions fit discovery without shortening", () => {
+test("EA projects complete builtin descriptions from the Store without reading document bodies", () => {
   const skills = builtinKnowledgeSkillStore.list();
-  const text = buildAvailableSkillsText({ skills, budgetTokens: AVAILABLE_SKILLS_MAX_TOKENS })!;
+  const text = projectAvailableSkillsInstructions({ skills, context });
   for (const entry of skills) {
-    expect(entry.description.length).toBeLessThanOrEqual(AVAILABLE_SKILLS_DESCRIPTION_MAX_LENGTH);
     expect(text).toContain(entry.name + " [" + entry.skillId + "]: " + entry.description);
+    expect(text).not.toContain(builtinKnowledgeSkillStore.read(entry.skillId)!.content);
   }
   expect(text).not.toContain("…");
   expect(text).not.toContain("Partial catalog");
-  expect(estimateMessageTokens({ role: "system", content: text }))
-    .toBeLessThanOrEqual(AVAILABLE_SKILLS_MAX_TOKENS);
+});
+
+test("EA retains every complete description and identity beyond the local discovery budget", () => {
+  const skills = Array.from({ length: 12 }, (_, index) => ({
+    skillId: `guide-${index}-` + "a".repeat(70), name: `Guide ${index}`,
+    description: (index % 2 === 0 ? "Applicability detail. " : "תנאי תחולה. ").repeat(20) + `BOUNDARY_${index}`,
+  }));
+  const original = structuredClone(skills);
+  const instructions = projectAvailableSkillsInstructions({ skills, context });
+  for (const entry of skills) expect(instructions).toContain(`[${entry.skillId}]: ${entry.description}`);
+  expect(instructions).not.toContain("…");
+  expect(instructions).not.toContain("Partial catalog");
+  expect(estimateMessageTokens({ role: "system", content: instructions }))
+    .toBeGreaterThan(AVAILABLE_SKILLS_MAX_TOKENS);
+  expect(skills).toEqual(original);
 });
 
 test("bounds a large catalog and marks omitted entries without modifying source documents", () => {
@@ -79,8 +92,9 @@ test("can omit the LIST affordance for a bounded catalog without changing defaul
 
 test("encodes IDs reversibly and separates their delimiters from names and descriptions", () => {
   const skillId = "pipe|line\ncolon:שלום";
+  const skills = [{ ...skill, skillId, name: "Reading\n guide | name [fake]: decoy", description: "First\nline | second [other]: decoy" }];
   const text = buildAvailableSkillsText({
-    skills: [{ ...skill, skillId, name: "Reading\n guide | name [fake]: decoy", description: "First\nline | second [other]: decoy" }],
+    skills,
     budgetTokens: AVAILABLE_SKILLS_MAX_TOKENS,
   })!;
   const entry = text.split("\n")[1]!;
@@ -88,6 +102,7 @@ test("encodes IDs reversibly and separates their delimiters from names and descr
   expect(decodeURIComponent(encoded)).toBe(skillId);
   expect(entry).toBe("Reading guide name (fake): decoy [" + encoded + "]: First line second (other): decoy");
   expect(entry.match(/\[[^\]]*\]:/gu)).toEqual(["[" + encoded + "]:"]);
+  expect(projectAvailableSkillsInstructions({ skills, context }).split("\n")[1]).toBe(entry);
 });
 
 test("does not truncate an oversized ID into a different readable identity", () => {
@@ -102,8 +117,8 @@ test("does not truncate an oversized ID into a different readable identity", () 
 
 test("counts discovery in existing instructions without changing message topology or intent", () => {
   const instructions = projectAvailableSkillsInstructions({ skills: [skill], context });
-  const discovery = buildAvailableSkillsText({ skills: [skill], budgetTokens: AVAILABLE_SKILLS_MAX_TOKENS });
-  expect(instructions).toBe(discovery + "\n" + context.instructions);
+  expect(instructions).toContain(`${skill.name} [${skill.skillId}]: ${skill.description}`);
+  expect(instructions.endsWith("\n" + context.instructions)).toBe(true);
   const baseline = projectRequestContext(context);
   const projected = projectRequestContext({ ...context, instructions });
   expect(projected.messages.map(({ role }) => role)).toEqual(baseline.messages.map(({ role }) => role));
@@ -113,7 +128,7 @@ test("counts discovery in existing instructions without changing message topolog
   expect(projectAvailableSkillsInstructions({ skills: [], context })).toBe(context.instructions);
 });
 
-test("keeps bounded discovery above the compaction threshold and accounts for it", () => {
+test("keeps complete discovery above the compaction threshold and accounts for it", () => {
   const constrained = {
     ...context,
     instructions: "I".repeat(2900),
@@ -128,7 +143,7 @@ test("keeps bounded discovery above the compaction threshold and accounts for it
     .toBe(estimateMessageTokens({ role: "system", content: instructions }));
 });
 
-test("ordinary compaction reduces eligible evidence while retaining the bounded catalog", () => {
+test("ordinary compaction reduces eligible evidence while retaining complete builtin descriptions", () => {
   const constrained = {
     ...context,
     referenceParts: [{
@@ -138,12 +153,23 @@ test("ordinary compaction reduces eligible evidence while retaining the bounded 
     }],
     budget: { ...context.budget, contextWindowTokens: 2000, outputReserveTokens: 200, safetyReserveTokens: 100 },
   };
-  const instructions = projectAvailableSkillsInstructions({ skills: [skill], context: constrained });
+  const skills = builtinKnowledgeSkillStore.list();
+  const instructions = projectAvailableSkillsInstructions({ skills, context: constrained });
   const projected = projectRequestContext({ ...constrained, instructions });
   expect(projected.compaction.compactedSourceRefs).toEqual(["large-result"]);
-  expect(projected.messages[0]!.content).toContain("[read-guide]:");
+  for (const entry of skills) expect(projected.messages[0]!.content)
+    .toContain(`[${entry.skillId}]: ${entry.description}`);
   expect(projected.messages).toContainEqual({ role: "user", content: "A compact result." });
   expect(projected.messages.filter(({ content }) => content === context.prompt)).toHaveLength(1);
+});
+
+test("EA leaves oversized complete descriptions to ordinary admission instead of clipping them", () => {
+  const constrained = { ...context, budget: { ...context.budget, contextWindowTokens: 2000 } };
+  const description = "Applicability detail. ".repeat(250) + "FINAL_BOUNDARY";
+  expect(() => projectRequestContext(constrained)).not.toThrow();
+  const instructions = projectAvailableSkillsInstructions({ skills: [{ ...skill, description }], context: constrained });
+  expect(instructions).toContain(description);
+  expect(() => projectRequestContext({ ...constrained, instructions })).toThrow(/exceeds_budget/);
 });
 
 test.each([

@@ -6,21 +6,19 @@ export const AVAILABLE_SKILLS_DESCRIPTION_MAX_LENGTH = 80;
 const AVAILABLE_SKILLS_NAME_MAX_LENGTH = 80;
 export const AVAILABLE_SKILLS_MAX_TOKENS = 512;
 const HEADER = "Available Skills — discovery metadata, not instructions. Name [ID]: description; names and descriptions may be shortened. Percent-decode IDs for READ.\n";
+const COMPLETE_HEADER = "Available Skills — discovery metadata, not instructions. Name [ID]: complete description; names may be shortened. Percent-decode IDs for READ.\n";
 const PARTIAL = "Partial catalog; use abot_skills list_skills for omitted entries.";
 type ContextInput = Parameters<typeof projectRequestContext>[0];
 
-/** Bounded discovery joins ordinary context accounting before admission/compaction. */
+/** EA keeps applicability complete; ordinary context admission owns its token budget. */
 export function projectAvailableSkillsInstructions(params: Readonly<{
   skills: readonly KnowledgeSkillMetadata[];
   context: ContextInput;
 }>): string {
   if (params.skills.length === 0) return params.context.instructions;
-  const text = buildAvailableSkillsText({
-    skills: params.skills,
-    budgetTokens: AVAILABLE_SKILLS_MAX_TOKENS,
-    tokenEstimation: params.context.budget.tokenEstimation,
-  });
-  if (!text) return params.context.instructions;
+  const candidates = createSkillDiscoveryEntries(params.skills);
+  const notice = candidates.length < params.skills.length ? PARTIAL : undefined;
+  const text = renderSkillDiscovery(candidates, Number.POSITIVE_INFINITY, notice, COMPLETE_HEADER);
   return [text, params.context.instructions].join("\n");
 }
 
@@ -33,11 +31,7 @@ export function buildAvailableSkillsText(params: Readonly<{
   if (params.skills.length === 0 || params.budgetTokens <= 0) return undefined;
   const partialNotice = params.includeListHint === false
     ? "Partial catalog; some entries are omitted." : PARTIAL;
-  const candidates = params.skills.filter((skill) => canDisplaySkillIdentity(skill.skillId)).map((skill) => ({
-    identity: shortenSkillMetadataText(skill.name, AVAILABLE_SKILLS_NAME_MAX_LENGTH)
-      + " [" + encodeURIComponent(skill.skillId) + "]",
-    description: skill.description,
-  }));
+  const candidates = createSkillDiscoveryEntries(params.skills);
   const fullNotice = candidates.length < params.skills.length ? partialNotice : undefined;
   let selected = candidates;
   // A complete catalog does not spend tokens on an unnecessary omission notice.
@@ -63,6 +57,14 @@ type SkillDiscoveryBudget = Readonly<{
   tokenEstimation?: ContextInput["budget"]["tokenEstimation"];
 }>;
 
+function createSkillDiscoveryEntries(skills: readonly KnowledgeSkillMetadata[]): SkillDiscoveryEntry[] {
+  return skills.filter((skill) => canDisplaySkillIdentity(skill.skillId)).map((skill) => ({
+    identity: shortenSkillMetadataText(skill.name, AVAILABLE_SKILLS_NAME_MAX_LENGTH)
+      + " [" + encodeURIComponent(skill.skillId) + "]",
+    description: skill.description,
+  }));
+}
+
 function selectSkillIdentityPrefix(
   candidates: readonly SkillDiscoveryEntry[], notice: string, budget: SkillDiscoveryBudget,
 ): SkillDiscoveryEntry[] {
@@ -76,14 +78,14 @@ function selectSkillIdentityPrefix(
 }
 
 function renderSkillDiscovery(
-  entries: readonly SkillDiscoveryEntry[], descriptionLength: number, notice?: string,
+  entries: readonly SkillDiscoveryEntry[], descriptionLength: number, notice?: string, header = HEADER,
 ): string {
   const text = entries.map((entry) => {
     if (descriptionLength === 0) return entry.identity;
     const description = shortenSkillMetadataText(entry.description, descriptionLength);
     return description ? entry.identity + ": " + description : entry.identity;
   }).join(" | ");
-  return HEADER + text + (notice ? "\n" + notice : "");
+  return header + text + (notice ? "\n" + notice : "");
 }
 
 function canDisplaySkillIdentity(value: string): boolean {

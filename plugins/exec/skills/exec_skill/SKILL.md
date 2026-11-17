@@ -1,4 +1,4 @@
-# Exec Skill
+# Exec Tool Instructions
 
 - Use `exec` for shell work needed by the user's task. Prefer dedicated capabilities when they express that work directly.
 - Prefer simple commands. Preserve stderr when diagnosing failures; do not hide it merely to simplify output.

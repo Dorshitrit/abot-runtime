@@ -18,6 +18,7 @@ const MODEL_STEP_LABELS = Object.freeze({
   "degraded.finalization": "Preparing response",
   "context.compact": "Compacting context",
   "tool_payload.raw": "Working",
+  "execution.file_payload.raw": "Preparing file content",
 });
 
 const SETTLED_TOOL_EVENTS = new Set([

@@ -148,7 +148,7 @@ export function createMessageLinkPreviews({
   }
 
   function createNode(message) {
-    if (message?.streaming) return null;
+    if (message?.streaming || message?.failedResponse) return null;
     const links = extractMessageLinks(message?.text);
     if (links.length === 0) return null;
     const container = previewElement(

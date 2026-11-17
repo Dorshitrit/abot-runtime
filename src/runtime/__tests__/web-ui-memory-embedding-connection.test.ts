@@ -137,7 +137,7 @@ describe("Memory settings embedding connection endpoint", () => {
       },
       probe: { dimensions: 3 },
     });
-    expect(typeof payload.backupPath).toBe("string");
+    expect(payload).not.toHaveProperty("backupPath");
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("http://127.0.0.1:8081/v1/embeddings");

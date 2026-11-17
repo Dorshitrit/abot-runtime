@@ -56,6 +56,7 @@ export interface ComposerAttachmentsControllerOptions {
 
 export interface ComposerAttachmentsController {
   activeUploadCount(): number;
+  assertCompatibleForSubmission(): void;
   clear(options?: { cleanup?: boolean }): void;
   cleanup(attachments: readonly ComposerAttachment[]): void;
   deletePending(attachment: ComposerAttachment): Promise<void>;

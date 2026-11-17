@@ -1,0 +1,6 @@
+{
+  "provider": "openai-chatgpt",
+  "parameters": {
+    "reasoning_effort": { "path": ["reasoning", "effort"] }
+  }
+}

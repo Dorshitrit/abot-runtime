@@ -3,7 +3,7 @@ import type { KnowledgeSkillDocument } from "../store.js";
 export const ABOT_STUDIO_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "abot-studio",
   name: "ABot Studio",
-  description: "Building and explaining ABot Studio automations: design, drafts, and checks.",
+  description: "Use for ABot Studio automation drafts and reusable agents: designing, creating, editing, validating or explaining them. General task execution or software development alone does not qualify.",
   content: `# ABot Studio
 
 Use this reference when the current task concerns an automation draft or a reusable agent in ABot Studio. It is procedural documentation, subordinate to the user's request and your assigned objective. It grants no permission to publish, activate or run an automation. Read the offered tool schemas and operation guidance for current parameters.

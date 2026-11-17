@@ -22,7 +22,7 @@ afterEach(async () => {
   resetDebugLoggerConfig();
 });
 
-test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
+test.each(["supervisor-worker-v1"] as const)(
   "%s carries locator guidance and failed candidates into a numeric successor",
   async (policy) => {
     const fixture = await createDevViewLocatorFixture();

@@ -80,7 +80,7 @@ describe("bundled system tools use ordinary plugin management", () => {
     expect(JSON.stringify(snapshot)).not.toContain("fixture-private-value");
   });
 
-  test("OFF and ON use the same persisted config transaction, backup and restart contract", async () => {
+  test("OFF and ON preserve the config transaction and restart contract without backups", async () => {
     const options = await fixture();
     const before = getRuntimePluginSnapshot(options);
     const disabled = await setRuntimePluginEnabled(options, {
@@ -101,10 +101,7 @@ describe("bundled system tools use ordinary plugin management", () => {
       restartRequired: true,
       application: "restart_required",
     });
-    expect(disabled.backupPath).toBeTruthy();
-    expect(
-      await readConfig(join(options.rootDir, disabled.backupPath!)),
-    ).toEqual(options.config);
+    expect(disabled).not.toHaveProperty("backupPath");
     expect(await readConfig(options.configPath)).toEqual({
       ...options.config,
       plugins: { disabledPluginIds: ["system"] },

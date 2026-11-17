@@ -127,7 +127,7 @@ export async function changeRuntimeModelProvider(
           options.configPath,
           transaction.path,
         );
-        await transaction.write(candidate, { expectedRevision });
+        await transaction.write(candidate, { expectedRevision, backup: false });
         return { providerId, restartRequired: true };
       },
     );

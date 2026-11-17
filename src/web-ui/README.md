@@ -53,6 +53,16 @@ Compaction status and before/after details come from that invocation's lifecycle
 events. A smaller snapshot or a different model step cannot complete a cycle.
 Live events and trusted session replay use the same scoped state reducer.
 
+The Chat composer restores the primary model selected by the active or latest
+request, including conversations created by another client. Home and new chats
+use the last model explicitly selected in the Web UI. Viewing a conversation or
+sending a message does not change that preference. An explicit composer change
+applies to the next message while the current request retains its recorded model.
+Recorded root-attempt reasoning describes resolved settings, including calibration,
+and is not confirmation of provider execution. Historical conversations without
+selection evidence explicitly indicate that the run settings are unavailable.
+Session selection is projected independently of the displayed history page.
+
 Native schedules are available only with the local Runtime backend. The browser
 uses the existing `/web-config` backend identity to expose the Schedules
 workspace after bootstrap. Bridge mode hides its navigation and blocks schedule

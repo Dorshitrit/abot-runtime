@@ -1,4 +1,4 @@
-# Document Reader Skill
+# Document Reader Tool Instructions
 
 Use `document_reader` to extract text from supported documents, especially PDF
 and Office files. For source code, select `read_one_file` or `inspect_target`

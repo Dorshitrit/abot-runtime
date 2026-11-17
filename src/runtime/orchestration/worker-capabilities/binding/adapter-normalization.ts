@@ -9,6 +9,7 @@ import {
   type WorkerCapabilityEffect,
 } from "../contracts.js";
 import { normalizeWorkerCapabilityControlsSchema } from "../controls.js";
+import { normalizeWorkerCapabilityControlDocumentation } from "../control-documentation.js";
 import { partitionWorkerCapabilityControlsSchema } from "../selection-controls.js";
 
 type AdapterNormalization<TContext> =
@@ -70,6 +71,13 @@ function normalizeCapabilityDescriptor(
   if (!controls.ok) {
     return { ok: false, issueCode: `descriptor_${controls.issueCode}` };
   }
+  const documentation = normalizeWorkerCapabilityControlDocumentation(
+    descriptor.controlDocumentation,
+    controls.value,
+  );
+  if (!documentation.ok) {
+    return { ok: false, issueCode: `descriptor_${documentation.issueCode}` };
+  }
   const runtimePathControlIds = normalizeRuntimePathControlIds(
     controls.value,
     descriptor.runtimePathControlIds,
@@ -93,6 +101,9 @@ function normalizeCapabilityDescriptor(
   if (!hasValidControlsRefinement(descriptor.controlsRefinement)) {
     return { ok: false, issueCode: "descriptor_controls_refinement_invalid" };
   }
+  if (descriptor.preparedPayloadSource !== undefined && descriptor.preparedPayloadSource !== true) {
+    return { ok: false, issueCode: "descriptor_payload_source_invalid" };
+  }
   if (
     !hasValidPayloadAuthoringRequirement(
       descriptor.requiresPayloadAuthoringObjective,
@@ -115,6 +126,10 @@ function normalizeCapabilityDescriptor(
       summary: descriptor.summary.trim(),
       effect: descriptor.effect,
       controls: controls.value,
+      ...(descriptor.preparedPayloadSource ? { preparedPayloadSource: true as const } : {}),
+      ...(documentation.value
+        ? { controlDocumentation: documentation.value }
+        : {}),
       ...(runtimePathControlIds.value.length > 0
         ? { runtimePathControlIds: runtimePathControlIds.value }
         : {}),

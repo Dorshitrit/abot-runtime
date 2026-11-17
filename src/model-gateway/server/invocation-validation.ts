@@ -85,6 +85,12 @@ export function emitResolvedModelInvocation(params: {
     supportsThinking: profile.supportsThinking,
     capabilities: profile.capabilities,
     generation: profile.generation,
+    ...(params.invocation.parameters ? { parameters: {
+      values: params.invocation.parameters.values,
+      sources: Object.fromEntries(Object.entries(params.invocation.parameters.fields).map(([key, field]) => [key, field.source])),
+      profileId: params.invocation.parameters.profileId,
+      warnings: params.invocation.parameters.warnings.map(({ code, key, profileId }) => ({ code, key, profileId })),
+    } } : {}),
     context: profile.context,
   });
 }

@@ -6,7 +6,6 @@ import type {
 } from "../../../capabilities/tool-types.js";
 import {
   WORKER_CAPABILITY_COUNT_MAX,
-  normalizeWorkerCapabilityControlsSchema,
   partitionWorkerCapabilityControlsSchema,
   type WorkerCapabilityDescriptor,
 } from "../../orchestration/worker-capabilities/index.js";
@@ -22,6 +21,7 @@ import type {
   SelectedOperation,
 } from "./contracts.js";
 import { RegisteredToolWorkerCapabilityCompositionError } from "./errors.js";
+import { projectRegisteredToolCapabilityControls } from "./control-documentation.js";
 
 export function resolveRegisteredToolCapabilityCatalog(
   registry: ToolRegistry,
@@ -41,6 +41,7 @@ export function resolveRegisteredToolCapabilityCatalog(
         registration.definition,
         operation,
         stagedPayloadPlan,
+        registration.adapter?.preparePayload !== undefined,
       ),
     ),
   );
@@ -140,7 +141,7 @@ function validateWorkerOperation(
     );
   }
   if (
-    !normalizeWorkerCapabilityControlsSchema(
+    !projectRegisteredToolCapabilityControls(
       stagedPayloadPlan?.publicInput ?? operation.input,
     ).ok
   ) {
@@ -161,8 +162,9 @@ function projectWorkerDescriptor(
   definition: RegisteredToolNormalInvocation["definition"],
   operation: ToolNormalInvocationOperation,
   stagedPayloadPlan: RegisteredToolStagedPayloadPlan | undefined,
+  preparedPayloadSource: boolean,
 ): WorkerCapabilityDescriptor {
-  const controls = normalizeWorkerCapabilityControlsSchema(
+  const controls = projectRegisteredToolCapabilityControls(
     stagedPayloadPlan?.publicInput ?? operation.input,
   );
   if (!controls.ok) {
@@ -186,7 +188,7 @@ function projectWorkerDescriptor(
           ]),
         ]);
   const controlsPartition = partitionWorkerCapabilityControlsSchema(
-    controls.value,
+    controls.controls,
     selectionControlIds,
   );
   if (!controlsPartition.ok || selectionControlIds === undefined) {
@@ -198,7 +200,7 @@ function projectWorkerDescriptor(
   const runtimePathControlIds = projectRuntimePathControlIds(
     definition,
     operation,
-    controls.value,
+    controls.controls,
   );
   const effect =
     operation.effect === "mutating"
@@ -213,7 +215,11 @@ function projectWorkerDescriptor(
     capabilityId: operation.operationId,
     summary: operation.summary,
     effect,
-    controls: controls.value,
+    controls: controls.controls,
+    ...(preparedPayloadSource ? { preparedPayloadSource: true as const } : {}),
+    ...(controls.controlDocumentation
+      ? { controlDocumentation: controls.controlDocumentation }
+      : {}),
     ...(runtimePathControlIds.length > 0 ? { runtimePathControlIds } : {}),
     ...(controlsPartition.value.selectionControlIds.length > 0
       ? { selectionControlIds: controlsPartition.value.selectionControlIds }

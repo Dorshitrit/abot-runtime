@@ -28,7 +28,7 @@ import type {
   RuntimeModelCatalogState,
   RuntimeSetupRequirement,
 } from "./contracts.js";
-import { inspectRuntimeSetupRequirement } from "./runtime-availability.js";
+import { inspectRuntimeSetupRequirement, inspectSetupSource } from "./runtime-availability.js";
 import { readSavedModelCatalog } from "./saved-model-catalog.js";
 import type { LearningChangedEvent } from "../../runtime/passive-learning/contracts.js";
 import type { SparkHomeChanged } from "../../runtime/local-host/client-spark-home-events.js";
@@ -238,10 +238,11 @@ export class RuntimeEnvironmentRegistry {
         availability: { status: "ready" },
       };
     }
-    const source = inspectRuntimeConfigFileWithMeta(
+    const { source, requirement } = inspectSetupSource(() => inspectRuntimeConfigFileWithMeta(
       this.options.rootDir ?? process.cwd(),
       this.options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
-    );
+    ));
+    if (requirement) return this.emptyModelCatalog(requirement);
     const setupRequirement = inspectRuntimeSetupRequirement(source);
     if (setupRequirement) {
       return this.emptyModelCatalog(setupRequirement);

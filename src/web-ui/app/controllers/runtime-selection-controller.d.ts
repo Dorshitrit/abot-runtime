@@ -109,10 +109,13 @@ export interface RuntimeSelectionControllerDependencies {
     >;
     defaultModelProfileId: string;
     currentSessionId: string;
+    sessionViewVersion?: number;
+    requestLifecycles?: Map<string, { generation?: string }>;
   };
   readonly dom: Readonly<{
     environmentSelect: RuntimeSelectionEnvironmentSelectSurface;
     modelSelect: RuntimeSelectionModelSelectSurface;
+    modelSelectButton?: HTMLButtonElement;
     agentPickerButton: RuntimeSelectionPickerButtonSurface;
     agentPickerMenu: RuntimeSelectionPickerMenuSurface;
     permissionModeButton: RuntimeSelectionControlButtonSurface;
@@ -162,6 +165,9 @@ export interface RuntimeSelectionControllerDependencies {
   }) => void;
   readonly onAttachmentPolicyChange: () => void;
   readonly getComposerSessionId?: () => string;
+  readonly getComposerIsHome?: () => boolean;
+  readonly hasUnsentDraft?: (scope: { environmentId: string; sessionId: string }) => boolean;
+  readonly getSubmissionScopes?: () => Iterable<{ environmentId: string; sessionId: string }>;
   readonly onModelCatalogLoading?: () => void;
   readonly onModelCatalogLoaded?: (payload: Record<string, unknown>) => void;
   readonly onModelCatalogUnavailable?: (error: unknown) => void;
@@ -172,6 +178,13 @@ export declare function createRuntimeSelectionController(
   options: RuntimeSelectionControllerDependencies,
 ): {
   applyModelSelection(): void;
+  applySessionSnapshot(payload: Record<string, unknown>, scope: { environmentId: string; sessionId: string; viewVersion?: number }): boolean;
+  observeRunEvent(message: Record<string, unknown>): boolean;
+  clearRunSelection(): void;
+  pruneEmptyDraftSelections(scope?: { environmentId: string; sessionId: string }): boolean;
+  retireSessionSelection(scope: { environmentId: string; sessionId: string }): boolean;
+  selectedAgentMode(): AgentMode;
+  modelProfileIdForSession(sessionId: string): string;
   clearSessionMode(sessionId: string): void;
   configuredEnvironmentOptions(): Array<{ value: string; label: string }>;
   currentToolPermissionMode(): ToolPermissionMode;
@@ -179,7 +192,7 @@ export declare function createRuntimeSelectionController(
   loadAgentMode(): Promise<boolean>;
   loadModels(): Promise<boolean>;
   loadPreferences(): void;
-  rememberModelSelection(): void;
+  rememberModelSelection(options?: { explicit?: boolean }): void;
   renderAgentMode(): void;
   renderAgentPicker(): void;
   renderEnvironmentOptions(): void;

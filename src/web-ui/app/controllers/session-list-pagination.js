@@ -95,6 +95,7 @@ export function createSessionListPagination({ state, dom, client, sessions, sele
     const input = query();
     const key = JSON.stringify(input);
     if (more && !canContinueOrdinaryPage(key)) return state.sessions;
+    void sessions.refreshActivity?.();
     if (!more && !ordinaryOnly) {
       revision += 1;
       ordinaryResetRequired = false;

@@ -173,16 +173,18 @@ describe("model gateway embeddings", () => {
     expect(result.dimensions).toBe(3);
   });
 
-  test("normalizes the Ollama model discovery endpoint", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(
-      async () =>
-        new Response(
-          JSON.stringify({ models: [{ name: "nomic-embed-text" }] }),
-          {
-            status: 200,
-          },
-        ),
-    );
+  test("lists only Ollama models declaring embedding support and separates missing capability metadata", async () => {
+    const names = ["dual", "chat", "legacy", "unavailable", "chat"];
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      if (url === "http://ollama.test/api/tags")
+        return Response.json({ models: names.map((name) => ({ name })) });
+      expect(url).toBe("http://ollama.test/api/show");
+      expect(init?.method).toBe("POST");
+      const { model } = JSON.parse(String(init?.body));
+      if (model === "unavailable") return new Response(null, { status: 404 });
+      if (model === "legacy") return Response.json({});
+      return Response.json({ capabilities: model === "dual" ? ["completion", "embedding"] : ["completion"] });
+    });
 
     await expect(
       discoverEmbeddingModels({
@@ -197,9 +199,50 @@ describe("model gateway embeddings", () => {
       }),
     ).resolves.toEqual({
       supported: true,
-      models: ["nomic-embed-text"],
+      models: ["dual"],
+      unverifiedModels: ["legacy", "unavailable"],
     });
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://ollama.test/api/tags");
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+  });
+
+  test("cancels model metadata inspection before starting another batch", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).endsWith("/api/tags"))
+        return Response.json({ models: Array.from({ length: 12 }, (_, i) => ({ name: `m${i}` })) });
+      controller.abort();
+      init?.signal?.throwIfAborted();
+      throw new Error("request cancellation was not propagated");
+    });
+    await expect(discoverEmbeddingModels({
+      providerId: "local",
+      modelPolicy: { providers: { local: { type: "ollama" } } },
+      abortSignal: controller.signal, fetchImpl,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl.mock.calls.length).toBeLessThan(13);
+  });
+
+  test("preserves installed IDs as unverified after the shared metadata deadline", async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    const names = Array.from({ length: 6 }, (_, index) => `m${index}`);
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).endsWith("/api/tags"))
+        return Response.json({ models: names.map((name) => ({ name })) });
+      deadline.abort(new DOMException("Metadata timed out", "TimeoutError"));
+      init?.signal?.throwIfAborted();
+      return Response.json({ capabilities: ["embedding"] });
+    });
+    try {
+      await expect(discoverEmbeddingModels({
+        providerId: "local",
+        modelPolicy: { providers: { local: { type: "ollama" } } },
+        abortSignal: new AbortController().signal, fetchImpl,
+      })).resolves.toEqual({ supported: true, models: [], unverifiedModels: names });
+      expect(fetchImpl.mock.calls.length).toBeLessThan(names.length + 1);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   test("includes the effective Ollama endpoint in the vector fingerprint", async () => {

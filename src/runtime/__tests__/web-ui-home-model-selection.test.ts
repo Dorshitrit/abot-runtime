@@ -74,7 +74,7 @@ describe("web ui Home model and permission scope", () => {
   test("saves Home selections to its draft without changing the active Chat", () => {
     const { state, controller } = createSelectionHarness();
 
-    controller.rememberModelSelection();
+    controller.rememberModelSelection({ explicit: true });
     controller.setToolPermissionMode("ask");
 
     expect(state.currentSessionId).toBe("existing-chat");
@@ -92,7 +92,7 @@ describe("web ui Home model and permission scope", () => {
 
   test("restores each workspace selection and checks image support by explicit model", () => {
     const harness = createSelectionHarness();
-    harness.controller.rememberModelSelection();
+    harness.controller.rememberModelSelection({ explicit: true });
     expect(harness.controller.selectedModelSupportsImageInput()).toBe(false);
     expect(harness.controller.selectedModelSupportsImageInput("vision")).toBe(true);
 

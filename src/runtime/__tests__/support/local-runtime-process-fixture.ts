@@ -91,10 +91,12 @@ export async function startLocalRuntimeChild(config: RuntimeConfig) {
       return Promise.reject(new Error("local_runtime_child_disconnected"));
     const id = String(++sequence);
     return new Promise<T>((resolve, reject) => {
+      // The first call also waits for a fresh Node process to load the Runtime.
+      const timeoutMs = method === "init" ? 30_000 : 10_000;
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`local_runtime_child_timeout:${method}:${stderr}`));
-      }, 10_000);
+      }, timeoutMs);
       pending.set(id, {
         resolve: (value) => resolve(value as T),
         reject,

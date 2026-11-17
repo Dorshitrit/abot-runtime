@@ -17,6 +17,7 @@ describe("web ui session read response ordering", () => {
     const controller = createSessionController({
       state,
       dom: {},
+      selectedEnvironmentId: () => "dev",
       confirmAction: vi.fn(),
       copyText: vi.fn(),
     });

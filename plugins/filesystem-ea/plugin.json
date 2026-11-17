@@ -1,0 +1,271 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "filesystem-ea",
+  "version": "0.1.0",
+  "description": "Execution Agent-only bounded file reading and exact editing.",
+  "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": [
+        "linux",
+        "darwin",
+        "win32"
+      ]
+    },
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "executionPolicies": ["execution-agent-v1"],
+      "requiresRequestBinding": true,
+      "catalogGroups": [
+        "read"
+      ],
+      "settings": {
+        "defaults": {
+          "enabled": true
+        }
+      },
+      "capabilities": {
+        "read_text": {
+          "description": "Read exact UTF-8 text without line prefixes. Without a selector, read lines 1-120 or EOF; max_bytes alone caps that preview. Line bounds are one-based. For an explicit UTF-8 byte window, set start_byte and optionally max_bytes; use next_byte to continue. Complete selected windows return range_ref; truncated line/default reads do not. Byte controls cannot combine with explicit line/locator controls.",
+          "catalogGroups": [
+            "read"
+          ],
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": [
+            "inspect",
+            "verify"
+          ],
+          "controlsRefinement": "mechanical_when_complete",
+          "runtimePathBindings": [
+            {
+              "operationId": "read_text",
+              "param": "path",
+              "base": "worker_working_directory"
+            }
+          ],
+          "eventPresentation": {
+            "metadata": {
+              "path": {
+                "param": "path",
+                "kind": "string"
+              }
+            }
+          },
+          "skills": [],
+          "operations": {
+            "read_text": {
+              "summary": "Read exact UTF-8 text without line prefixes. Without a selector, read lines 1-120 or EOF; max_bytes alone caps that preview. Line bounds are one-based. For an explicit UTF-8 byte window, set start_byte and optionally max_bytes; use next_byte to continue. Complete selected windows return range_ref; truncated line/default reads do not. Byte controls cannot combine with explicit line/locator controls.",
+              "outputChannels": {
+                "text": "content",
+                "data": "metadata"
+              },
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "start_byte": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576,
+                    "description": "Zero-based UTF-8 byte offset for an explicit byte window. Must be a character boundary, at or before EOF. Cannot combine with line or locator controls. Use returned next_byte to continue."
+                  },
+                  "max_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 24000,
+                    "description": "Maximum UTF-8 bytes, default 24000. Without a selector, caps the default first-120-line preview; with start_byte, caps that byte window. Cannot combine with explicit line/locator controls. Ends back off to character boundaries. Explicit byte windows fail if one character cannot fit; end_byte is exclusive."
+                  },
+                  "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "end_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "locator": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "context_lines": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "selectionControlIds": [
+                "path"
+              ],
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "create_text": {
+          "description": "Create a new UTF-8 file, including missing parent directories. Select the path and describe the desired content in operationObjective. One isolated raw author produces its content; existing files are never overwritten.",
+          "catalogGroups": [
+            "write"
+          ],
+          "routingCapability": "filesystem_mutation",
+          "developmentRoles": [
+            "establish"
+          ],
+          "controlsRefinement": "mechanical_when_complete",
+          "runtimePathBindings": [
+            {
+              "operationId": "create_text",
+              "param": "path",
+              "base": "worker_working_directory"
+            }
+          ],
+          "eventPresentation": {
+            "metadata": {
+              "path": {
+                "param": "path",
+                "kind": "string"
+              }
+            }
+          },
+          "skills": [],
+          "payloadChannelSpec": {
+            "params": [
+              "payload"
+            ],
+            "outputParam": "payload",
+            "generationMode": "raw_text",
+            "targetParam": "path",
+            "targetRole": "operation_target",
+            "contextScope": "standard"
+          },
+          "operations": {
+            "create_text": {
+              "summary": "Create a new UTF-8 file, including missing parent directories. Select the path and describe the desired content in operationObjective. One isolated raw author produces its content; existing files are never overwritten.",
+              "outputChannels": {
+                "text": "metadata",
+                "data": "metadata"
+              },
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "selectionControlIds": [
+                "path"
+              ],
+              "effect": "mutating",
+              "approval": "request_policy",
+              "payload": {
+                "kind": "raw_text",
+                "param": "payload",
+                "instructions": "Author only the requested file content using the prepared source contract. No commentary or markdown wrapping.",
+                "minBytes": 0,
+                "maxBytes": 2097152
+              }
+            }
+          }
+        },
+        "edit_text": {
+          "description": "Replace one observed range in an existing file. Select path and the range_ref returned by read_text, then describe the change in operationObjective. The author receives that exact range and returns its complete replacement as plain text. Content outside the selected range stays unchanged.",
+          "catalogGroups": [
+            "write"
+          ],
+          "routingCapability": "filesystem_mutation",
+          "developmentRoles": [
+            "mutate"
+          ],
+          "controlsRefinement": "mechanical_when_complete",
+          "runtimePathBindings": [
+            {
+              "operationId": "edit_text",
+              "param": "path",
+              "base": "worker_working_directory"
+            }
+          ],
+          "eventPresentation": {
+            "metadata": {
+              "path": {
+                "param": "path",
+                "kind": "string"
+              }
+            }
+          },
+          "skills": [],
+          "payloadChannelSpec": {
+            "params": [
+              "payload"
+            ],
+            "outputParam": "payload",
+            "generationMode": "raw_text",
+            "targetParam": "path",
+            "targetRole": "operation_target",
+            "contextScope": "standard"
+          },
+          "operations": {
+            "edit_text": {
+              "summary": "Replace one observed range in an existing file. Select path and the range_ref returned by read_text, then describe the change in operationObjective. The author receives that exact range and returns its complete replacement as plain text. Content outside the selected range stays unchanged.",
+              "outputChannels": {
+                "text": "metadata",
+                "data": "metadata"
+              },
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "range_ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "path",
+                  "range_ref"
+                ]
+              },
+              "selectionControlIds": [
+                "path",
+                "range_ref"
+              ],
+              "effect": "mutating",
+              "approval": "request_policy",
+              "payload": {
+                "kind": "raw_text",
+                "param": "payload",
+                "instructions": "Author only the requested file content using the prepared source contract. No commentary or markdown wrapping.",
+                "minBytes": 0,
+                "maxBytes": 2097152
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

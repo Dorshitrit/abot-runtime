@@ -1,10 +1,23 @@
 import { validateEffectiveRuntimeModelConfig } from "../../runtime/config/effective-model-config-validation.js";
 import { buildRuntimeModelConfiguration } from "../../runtime/config/builders.js";
-import type { InspectedRuntimeConfigFile } from "../../runtime/config/loader.js";
+import { InvalidRuntimeConfigJsonError, type InspectedRuntimeConfigFile } from "../../runtime/config/loader.js";
 import { isRecord } from "../../runtime/config/utils.js";
 import { validateRuntimeConfigFile } from "../../runtime/config/validation.js";
 import { readConfiguredSetupRunner } from "./runtime-setup-provider.js";
 import type { RuntimeSetupRequirement } from "./contracts.js";
+
+/** Read-only setup endpoints can describe a broken file. Mutation paths keep using the strict loader. */
+export function inspectSetupSource(read: () => InspectedRuntimeConfigFile) {
+  try {
+    return { source: read() } as const;
+  } catch (error) {
+    if (!(error instanceof InvalidRuntimeConfigJsonError)) throw error;
+    return { requirement: {
+      status: "setup_required", code: "runtime_configuration_required",
+      recovery: "configuration_file", message: error.message,
+    } satisfies RuntimeSetupRequirement } as const;
+  }
+}
 
 function hasExistingSetupProfiles(source: InspectedRuntimeConfigFile): boolean {
   const models = isRecord(source.config.models) ? source.config.models : {};

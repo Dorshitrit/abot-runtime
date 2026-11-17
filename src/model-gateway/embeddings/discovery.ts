@@ -32,13 +32,18 @@ export async function discoverEmbeddingModels(params: {
     providerId,
     providerConfig,
     fetchImpl: bindAbortSignal(params.fetchImpl ?? fetch, params.abortSignal),
+    abortSignal: params.abortSignal,
   });
+  params.abortSignal.throwIfAborted();
   if (result.kind === "error") {
     throw new EmbeddingProviderRequestError(result.statusCode, result.message);
   }
   return Object.freeze({
     supported: true,
     models: Object.freeze(normalizeModelIds(result.models)),
+    ...(result.unverifiedModels?.length
+      ? { unverifiedModels: Object.freeze(normalizeModelIds(result.unverifiedModels)) }
+      : {}),
   });
 }
 
@@ -58,7 +63,10 @@ function bindAbortSignal(
   fetchImpl: typeof fetch,
   abortSignal: AbortSignal,
 ): typeof fetch {
-  return (input, init) => fetchImpl(input, { ...init, signal: abortSignal });
+  return (input, init) => fetchImpl(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([abortSignal, init.signal]) : abortSignal,
+  });
 }
 
 function normalizeModelIds(models: readonly string[]): readonly string[] {

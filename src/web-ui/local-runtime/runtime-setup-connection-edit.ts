@@ -106,8 +106,9 @@ export async function editRuntimeSetupConnection(params: {
           const options = { ...setupConfigMap(saved.options) };
           if (!sameModel) delete options.temperature;
           const generation = setupConfigMap(saved.generation);
-          if (sameModel && Object.hasOwn(generation, "temperature"))
-            modelTemplate.generation = { ...setupConfigMap(modelTemplate.generation), temperature: generation.temperature };
+          const retainsSavedGeneration = sameModel && Object.hasOwn(saved, "generation");
+          if (retainsSavedGeneration)
+            modelTemplate.generation = { ...setupConfigMap(modelTemplate.generation), ...generation };
           const modelConfig = buildModelConfig(
             { ...modelTemplate, options: { ...setupConfigMap(modelTemplate.options), ...options } },
             providerId,
@@ -117,7 +118,6 @@ export async function editRuntimeSetupConnection(params: {
               : undefined,
             params.input,
             undefined,
-            !sameModel,
           );
           const memory = setupConfigMap(source.config.longTermMemory);
           const retained = retainSetupConnectionProviders({
@@ -185,9 +185,11 @@ export async function editRuntimeSetupConnection(params: {
                 async () => {
                   await modelTransaction.write(modelConfig, {
                     expectedConfig: params.draft.modelConfig,
+                    backup: false,
                   });
                   await configTransaction.write(config, {
                     expectedConfig: source.config,
+                    backup: false,
                   });
                   await writeRuntimeSetupDraft(nextDraft);
                   await credentials.write();

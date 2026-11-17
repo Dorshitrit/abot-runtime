@@ -15,6 +15,7 @@ import { projectSupervisorProcedureRecall } from "./procedure-recall.js";
 import { projectSupervisorProcedureMemory } from "./procedure-memory.js";
 import { SUPER_SKILL_GUIDANCE_INSTRUCTION } from "../supervisor-skill-instructions.js";
 import { SUPERVISOR_HISTORY_INSTRUCTIONS } from "./history-instructions.js";
+import { buildSupervisorMemoryAvailabilityInstructions } from "./prompt.js";
 
 export type SupervisorProcedureGateDecision = Readonly<
   | { requiresProcedure: true }
@@ -122,6 +123,7 @@ export function buildSupervisorProcedureGateInput(request: RequestExecutionScope
   });
   const context = projectRequestContext({
     instructions: [PROCEDURE_GATE_INSTRUCTIONS,
+      ...buildSupervisorMemoryAvailabilityInstructions(request.longTermMemory),
       ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION] : []),
       ...(memory ? [memory.instructions] : [])].join("\n"), format,
     prompt: request.prompt, budget,

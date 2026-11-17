@@ -1,4 +1,4 @@
-# Memory Lookup Skill
+# Memory Lookup Tool Instructions
 
 Use `memory_get` or `memory_search` for explicit user-specific remembered facts
 or preferences. When a saved personal fact is requested without a literal

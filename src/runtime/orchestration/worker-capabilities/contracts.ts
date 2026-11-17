@@ -22,6 +22,7 @@ import type {
   WorkerCapabilityApprovalWait,
 } from "./approval-contracts.js";
 import type { ToolApprovalRequest } from "../../ports.js";
+import type { ToolInputDocumentation } from "../../../capabilities/normal-invocation/input-documentation.js";
 
 export const WORKER_CAPABILITY_ID_MAX_LENGTH = ROLE_CAPABILITY_ID_MAX_LENGTH;
 /** Client-facing capability narration; never an execution objective or payload. */
@@ -128,17 +129,25 @@ export const EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA: WorkerCapabilityControlsSc
     required: Object.freeze([]),
   });
 
+export type WorkerCapabilityControlDocumentation = Readonly<
+  Record<string, ToolInputDocumentation>
+>;
+
 export type WorkerCapabilityDescriptor = Readonly<{
   capabilityId: string;
   summary: string;
   effect: WorkerCapabilityEffect;
   controls: WorkerCapabilityControlsSchema;
+  /** Plugin-owned argument reference; never execution inputs or defaults. */
+  controlDocumentation?: WorkerCapabilityControlDocumentation;
   /** Manifest-declared controls whose values use runtime path semantics. */
   runtimePathControlIds?: readonly string[];
   /** Controls selected and frozen with capability identity before refinement. */
   selectionControlIds?: readonly string[];
   /** Allows mechanical execution only when selection owns every control. */
   controlsRefinement?: "mechanical_when_complete";
+  /** Adapter captures an exact source before single-stage authoring. */
+  preparedPayloadSource?: true;
   /** Manifest-owned routing metadata projected only in capability selection. */
   catalogGroups?: readonly ToolCatalogGroup[];
   /** Manifest-owned semantic routing class for this capability. */

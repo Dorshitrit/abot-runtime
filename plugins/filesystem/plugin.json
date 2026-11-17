@@ -11,6 +11,7 @@
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
+      "executionPolicies": ["supervisor-worker-v1"],
       "catalogGroups": ["read"],
       "capabilities": {
         "dev_view": {

@@ -7,6 +7,7 @@ import { redactSecretText } from "../security/secret-text.js";
 import { createNativePermissionHandlers } from "./native-permissions.js";
 import { MACOS_PERMISSION_CAPABILITY } from "./permission-protocol.js";
 import { nativeLoopbackSocketOptions } from "./native-loopback-lookup.js";
+import { createNativeResultBudget, nativeResultEnvelope } from "./native-result-budget.js";
 import { DESKTOP_NOTIFICATION_CAPABILITY } from "./notification-protocol.js";
 import {
   createNativeNotificationSession,
@@ -180,8 +181,8 @@ export async function connectNativeHost(
       socket.send(JSON.stringify(value));
     }
     function sendResult(id: string, result: ToolImplementationOutput): void {
-      const envelope = { type: "result", id, result };
-      if (Buffer.byteLength(JSON.stringify(envelope)) <= HOST_WIRE_MAX_BYTES) {
+      const envelope = nativeResultEnvelope(id, result);
+      if (createNativeResultBudget(id).assess(result).fits) {
         send(envelope);
         return;
       }
@@ -262,7 +263,10 @@ export async function connectNativeHost(
       void Promise.resolve()
         .then(() => {
           controller.signal.throwIfAborted();
-          return handler(message.params, { abortSignal: controller.signal });
+          return handler(message.params, {
+            abortSignal: controller.signal,
+            resultBudget: createNativeResultBudget(message.id),
+          });
         })
         .then(
           (result) => sendResult(message.id, result),

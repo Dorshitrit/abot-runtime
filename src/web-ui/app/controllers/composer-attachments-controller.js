@@ -3,6 +3,11 @@ import {
   resolveComposerAttachmentMimeType,
 } from "../lib/attachment-policy.js";
 import { escapeHtml, textOf } from "../lib/text-format.js";
+import { ComposerSubmissionRefused } from "./composer-submission-lifecycle.js";
+
+function isComposerImageAttachment(attachment) {
+  return attachment.kind === "image" || isImageAttachmentMimeType(attachment.mimeType);
+}
 
 export function createComposerAttachmentsController({
   getDraft,
@@ -74,6 +79,14 @@ export function createComposerAttachmentsController({
 
   function activeUploadCount() { return getDraft().uploading; }
 
+  function assertCompatibleForSubmission() {
+    if (selectedModelSupportsImageInput()) return;
+    if (!getDraft().attachments.some(isComposerImageAttachment)) return;
+    throw new ComposerSubmissionRefused(
+      "The selected model does not support images. Choose an image-capable model or remove the images. Your draft was kept.",
+    );
+  }
+
   function render() {
     if (!isComposerVisible()) return;
     const available = isComposerAvailable();
@@ -105,11 +118,7 @@ export function createComposerAttachmentsController({
 
   function removeUnsupportedImages() {
     if (selectedModelSupportsImageInput()) return;
-    const unsupported = getDraft().attachments.filter(
-      (attachment) =>
-        attachment.kind === "image" ||
-        isImageAttachmentMimeType(attachment.mimeType),
-    );
+    const unsupported = getDraft().attachments.filter(isComposerImageAttachment);
     if (unsupported.length === 0) return;
     const unsupportedIds = new Set(
       unsupported.map((attachment) => attachment.id),
@@ -128,12 +137,6 @@ export function createComposerAttachmentsController({
     const attachments = draft.clearAttachments();
     render();
     if (options.cleanup !== false) cleanup(attachments);
-  }
-
-  function canRetainUploadedAttachment(draft, imageAttachment) {
-    if (!imageAttachment) return true;
-    if (draft !== getDraft()) return true;
-    return selectedModelSupportsImageInput();
   }
 
   async function upload(file) {
@@ -167,10 +170,6 @@ export function createComposerAttachmentsController({
         sessionId: uploadSessionId,
         environment: uploadEnvironmentId,
       };
-      if (!canRetainUploadedAttachment(draft, imageAttachment)) {
-        void deletePending(attachment);
-        return;
-      }
       if (!draft.acceptUpload(uploadGeneration, attachment)) {
         void deletePending(attachment);
         return;
@@ -184,6 +183,7 @@ export function createComposerAttachmentsController({
 
   return {
     activeUploadCount,
+    assertCompatibleForSubmission,
     clear,
     cleanup,
     deletePending,

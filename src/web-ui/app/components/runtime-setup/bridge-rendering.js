@@ -96,7 +96,7 @@ export function renderBridgeSetup(state, availability, commandMode) {
         ? "Connect the external runtime"
         : "Finish setup on the runtime host",
     description:
-      "This Web UI connects through a Bridge. Configure its runtime, then check model availability again.",
+      "This Web UI connects through a Bridge. Configure its runtime, then reload the model catalog.",
     content:
       (state.step === 0
         ? connectionMarkup(state)

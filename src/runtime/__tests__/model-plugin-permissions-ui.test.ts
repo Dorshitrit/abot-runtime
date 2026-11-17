@@ -245,6 +245,35 @@ describe("model plugin restrictions", () => {
     });
   });
 
+  test("changing the route draft refreshes availability without changing saved deny rules", async () => {
+    const payload = dashboard([model("alpha", { plugins: { deny: ["unknown-rule"] } })]);
+    const routedCatalog = { plugins: catalog.plugins.map((plugin) => ({
+      ...plugin, executionPolicies: ["execution-agent-v1"],
+    })) };
+    const { workspace, configDashboard, saveFile } = harness({
+      loadDashboard: async () => payload,
+      loadModelPlugins: async () => routedCatalog,
+    });
+    await workspace.load();
+    expect(configDashboard.innerHTML).not.toContain('data-model-plugin-active="true"');
+    const route = {
+      ...action("field", "alpha", {
+        path: JSON.stringify(["execution", "policy"]), valueType: "execution-policy",
+      }),
+      value: "execution-agent-v1",
+      matches: () => true,
+      closest: (selector: string): unknown => selector === "[data-config-execution-route]" ? null : route,
+    };
+    configDashboard.dispatch("change", route);
+    expect(workspace.hasUnsavedChanges()).toBe(true);
+    expect(configDashboard.innerHTML).toContain('data-model-plugin-active="true"');
+    configDashboard.dispatch("click", action("save-file", "alpha"));
+    await vi.waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(saveFile.mock.calls[0]![0].config).toMatchObject({
+      execution: { policy: "execution-agent-v1" }, plugins: { deny: ["unknown-rule"] },
+    });
+  });
+
   test("ignores stale catalog responses and blocks editing during a new environment load", async () => {
     const pending = deferred<typeof catalog>();
     const loadDashboard = vi

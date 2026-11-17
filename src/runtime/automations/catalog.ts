@@ -1,11 +1,14 @@
 import { supportsModelReasoningBudget } from "../../shared/model-reasoning.js";
+import { stripToolInputDocumentation } from "../../capabilities/normal-invocation/input-documentation.js";
 import type { ToolNormalInvocationInput, ToolNormalInvocationPayload, ToolNormalInvocationOperation } from "../../capabilities/normal-invocation/contracts.js";
 import type { ToolNormalInvocationAttachmentInput } from "../../capabilities/normal-invocation/contracts.js";
 import type { ToolCatalogGroup } from "../../capabilities/tool-types.js";
+import type { RequestExecutionPolicyId } from "../../shared/request-execution-policy.js";
 import type { RuntimeConfig, ToolRegistry } from "../ports.js";
 import type { OperationRef } from "./definition-contracts.js";
 import type { AutomationPersistence } from "./persistence.js";
 import { currentAutomationGrant, permitsAutomationOperation } from "./permission-grants.js";
+import { discoverToolOperations } from "../capabilities/tool-operation-discovery.js";
 
 export type AutomationCatalogOperation = Readonly<{
   toolName: string;
@@ -16,6 +19,8 @@ export type AutomationCatalogOperation = Readonly<{
   pluginName?: string;
   catalogGroups: readonly ToolCatalogGroup[];
   toolDescription?: string;
+  executionPolicies?: readonly RequestExecutionPolicyId[];
+  requiresRequestBinding?: true;
   permissionMode: "full_access" | "full_plus";
   effect: "read_only" | "mutating" | "mixed";
   approval: "request_policy" | "always";
@@ -35,12 +40,12 @@ export async function readAutomationCatalog(input: {
   tools: ToolRegistry;
   persistence: AutomationPersistence;
 }) {
-  const prepared = await input.tools.prepareRequest?.() ?? input.tools;
+  const discovered = await discoverToolOperations(input.tools);
   const state = await input.persistence.read();
   const grant = currentAutomationGrant(state.grants, input.environmentId, input.automationId);
   const grantableOperations: AutomationCatalogOperation[] = [];
   const operations: AutomationCatalogOperation[] = [];
-  for (const registration of prepared.listNormalInvocations?.() ?? []) {
+  for (const registration of discovered) {
     if (EXCLUDED_RUNNING_TOOLS.has(registration.toolName)) continue;
     const permissionMode = registration.definition.requiredPermissionMode ?? "full_access";
     for (const operation of registration.contract.operations) {
@@ -57,10 +62,14 @@ export async function readAutomationCatalog(input: {
         ...(registration.definition.description
           ? { toolDescription: registration.definition.description }
           : {}),
+        ...(registration.definition.executionPolicies
+          ? { executionPolicies: registration.definition.executionPolicies }
+          : {}),
+        ...(registration.definition.requiresRequestBinding ? { requiresRequestBinding: true } : {}),
         permissionMode,
         effect: operation.effect,
         approval: operation.approval,
-        input: operation.input,
+        input: stripToolInputDocumentation(operation.input),
         ...(operation.fixedParams ? { fixedParams: operation.fixedParams } : {}),
         ...(operation.payload ? { payload: operation.payload } : {}),
         ...(operation.attachmentInput

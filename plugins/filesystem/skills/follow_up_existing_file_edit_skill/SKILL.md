@@ -1,4 +1,4 @@
-# Existing File Change Skill
+# Existing File Change Tool Instructions
 
 - Treat the latest turn as a requested delta over existing project state.
 - Preserve unrelated existing content.

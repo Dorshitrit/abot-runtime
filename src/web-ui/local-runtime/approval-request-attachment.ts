@@ -17,6 +17,7 @@ type ApprovalAttachmentInput = {
   activeRequests: Map<string, ActiveRequest>;
   toolApprovals: PendingToolApprovals;
   publish(data: string): void;
+  onRelease?(request: ActiveRequest): void;
 };
 
 function hasMatchingRequestView(
@@ -78,6 +79,7 @@ export async function attachApprovalRequest(
       .catch((error: unknown) => {
         if (createdProjection && activeRequests.get(requestId) === projection) {
           const removed = activeRequests.delete(requestId);
+          input.onRelease?.(projection);
           traceWebProjection(
             "projection.removed",
             requestId,
@@ -101,6 +103,7 @@ export async function attachApprovalRequest(
         if (!projection.finalState) return;
         if (activeRequests.get(requestId) === projection) {
           const removed = activeRequests.delete(requestId);
+          input.onRelease?.(projection);
           traceWebProjection(
             "projection.removed",
             requestId,

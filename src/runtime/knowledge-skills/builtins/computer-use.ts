@@ -3,15 +3,10 @@ import type { KnowledgeSkillDocument } from "../store.js";
 export const COMPUTER_USE_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "computer-use",
   name: "Desktop GUI Interaction",
-  description: "Observe and operate desktop interfaces using screenshots, mouse and keyboard.",
+  description: "Use when the task requires observing a graphical desktop or operating visible application controls. General tool use or file operations alone does not qualify.",
   content: `# Desktop GUI Interaction
 
 Use this reference when completing the task requires observing the current graphical desktop or operating its visible controls. This includes inspecting screen content, locating controls and windows, clicking, typing, scrolling, and checking the resulting interface state. The workflow is to observe the interface, identify the target, perform a bounded action when needed, and observe the result. SYSTEM computer tools provide desktop discovery, observation and interaction for this workflow. It is procedural documentation under the user's request, your assigned objective and existing permissions. It does not make a desktop available or authorize additional actions. Use the currently offered tool schemas for exact inputs and supported operations.
-
-## Obtain approval before computer access
-Before discovering an interactive desktop, observing its screen, or operating its interface, briefly explain the intended desktop access and obtain the user's explicit approval for the target and task. Do not try a computer tool, inspect the screen, connect or act just to check whether access is available. A request that could be completed through the desktop does not by itself authorize computer access.
-
-Reuse explicit approval already given for this target and task; otherwise ask and wait. Reading this Skill does not require approval. Tool availability and a ready connection do not substitute for the user's approval.
 
 ## Choose and inspect the target
 Identify the intended computer, desktop, application and document before acting. The runtime host and the execution target may differ. Use the available discovery and observation operations to establish what is actually connected and visible. A running process or successful launch does not prove that the intended window is visible.

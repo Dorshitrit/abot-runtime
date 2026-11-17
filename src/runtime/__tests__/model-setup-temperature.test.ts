@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { buildModelConfig } from "../../../scripts/runtime-setup-files.js";
 
-test.each(["llamacpp", "ollama"])("%s defaults only the profile temperature", provider => {
+test.each(["llamacpp", "ollama"])("%s preserves explicit sampling without manufacturing defaults", provider => {
   const template = {
     generation: { topP: 0.9 },
     calibration: { "execution.decision": { generation: { temperature: 0.4 } } },
@@ -9,7 +9,7 @@ test.each(["llamacpp", "ollama"])("%s defaults only the profile temperature", pr
   const original = structuredClone(template);
   const profile = buildModelConfig(template, provider, "local-model");
 
-  expect(profile.generation).toEqual({ topP: 0.9, temperature: 0 });
+  expect(profile.generation).toEqual({ topP: 0.9 });
   expect(profile.calibration).toMatchObject(original.calibration);
   expect(template).toEqual(original);
 });
@@ -29,7 +29,7 @@ test.each([0, 0.7])("Ollama retains native options.temperature %s", temperature 
   expect(profile).not.toHaveProperty("generation.temperature");
 });
 
-test.each(["openai", "openai-chatgpt", "future-adapter"])("%s leaves sampling to the configured provider", provider => {
+test.each(["llamacpp", "ollama", "openai", "openai-chatgpt", "future-adapter"])("%s leaves sampling to the configured provider", provider => {
   expect(buildModelConfig({}, provider, "model")).not.toHaveProperty("generation.temperature");
   const generation = { temperature: 0.6 };
   expect(buildModelConfig({ generation }, provider, "model").generation).toEqual(generation);

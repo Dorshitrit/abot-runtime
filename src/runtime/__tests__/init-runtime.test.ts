@@ -70,7 +70,7 @@ describe("init-runtime", () => {
         },
       },
       "none",
-      { format: "json", generation: { temperature: 0, reasoningEffort: "none" } },
+      { format: "json" },
     ],
     [
       "openai",
@@ -143,7 +143,7 @@ describe("init-runtime", () => {
         "execution.response",
       ]);
       expect(modelConfig).toMatchObject({ label: model, provider, model });
-      expect(modelConfig.generation).toEqual(provider === "ollama" ? { temperature: 0 } : undefined);
+      expect(modelConfig.generation).toBeUndefined();
       if (provider === "openai") {
         expect(modelConfig.execution).toEqual({
           policy: "execution-agent-v1",

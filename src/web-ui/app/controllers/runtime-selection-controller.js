@@ -3,6 +3,9 @@ import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 import { createReasoningModeController } from "./reasoning-mode-controller.js";
 import { createToolPermissionModeController } from "./tool-permission-mode-controller.js";
+import { createSessionRunSelection } from "./session-run-selection.js";
+import { ensureRecordedModelOption, renderRunSelectionBadge, runControlsPresentationKey } from "./session-run-selection-presentation.js";
+import { sessionRunReasoningDisplay } from "./session-run-reasoning.js";
 
 export { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 
@@ -17,6 +20,9 @@ export function createRuntimeSelectionController({
   recordControlEvent,
   onAttachmentPolicyChange,
   getComposerSessionId = () => state.currentSessionId,
+  getComposerIsHome = () => false,
+  hasUnsentDraft = () => true,
+  getSubmissionScopes = () => [],
   onModelCatalogLoading = () => {},
   onModelCatalogLoaded = () => {},
   onModelCatalogUnavailable = () => {},
@@ -24,6 +30,7 @@ export function createRuntimeSelectionController({
 }) {
   let modelCatalogEnvironmentId = null;
   let modelCatalogLoadRevision = 0;
+  let renderedRunControlsKey;
 
   function configuredEnvironmentOptions(config = state.config) {
     const raw = Array.isArray(config?.environments)
@@ -102,8 +109,20 @@ export function createRuntimeSelectionController({
       .join("");
   }
 
-  const selectedModelPreference = () =>
-    dom.modelSelect.value ? { profileId: dom.modelSelect.value } : null;
+  const runSelection = createSessionRunSelection({
+    getScope: () => ({ environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId, viewVersion: state.sessionViewVersion }),
+    getComposerScope: () => ({ environmentId: selectedEnvironmentId(), sessionId: getComposerSessionId() }),
+    isHome: getComposerIsHome,
+    getRequestGeneration: (requestId) => state.requestLifecycles?.get(requestId)?.generation,
+    hasUnsentDraft,
+    getSubmissionScopes,
+  });
+  function selectedModelPreference() {
+    const profileId = dom.modelSelect.value;
+    const recorded = [...dom.modelSelect.options].find((option) => option.value === profileId);
+    if (recorded?.dataset?.recordedRun === "true") throw new Error("This run's model is no longer available. Select an available model.");
+    return profileId ? { profileId } : null;
+  }
   const selectedModelProfile = (profileId = dom.modelSelect.value) =>
     state.modelProfiles.find(
       (profile) => profile.id === textOf(profileId),
@@ -135,9 +154,11 @@ export function createRuntimeSelectionController({
       state.sessionModels,
       state.lastModelByEnvironment,
     );
-  const preferredModel = () =>
-    textOf(state.sessionModels[getComposerSessionId()]) ||
-    textOf(state.lastModelByEnvironment[selectedEnvironmentId()]);
+  const preferredModel = () => textOf(state.lastModelByEnvironment[selectedEnvironmentId()]);
+  const fallbackModel = () => {
+    if (getComposerIsHome()) return preferredModel();
+    return textOf(state.sessionModels[getComposerSessionId()]) || preferredModel();
+  };
 
   function clearStaleModelExecutionPolicies() {
     if (!hasModelCatalogFromAnotherEnvironment()) return;
@@ -147,18 +168,15 @@ export function createRuntimeSelectionController({
   function syncModelSelector() {
     clearStaleModelExecutionPolicies();
     modelSelector.sync();
+    renderRunSelectionBadge(dom.modelSelectButton, runSelection.run(), dom.modelSelect.value);
+    renderedRunControlsKey = currentRunControlsKey();
   }
 
-  function applyModelSelection() {
-    if (!dom.modelSelect.options.length) {
-      syncModelSelector();
-      renderAgentMode();
-      return;
-    }
-    const target =
-      preferredModel() ||
-      state.defaultModelProfileId ||
-      dom.modelSelect.options[0]?.value;
+  function applyModelSelection({ notifyAttachmentPolicy = true } = {}) {
+    const previousProfileId = dom.modelSelect.value;
+    const target = runSelection.selectedProfileId(fallbackModel()) ||
+      state.defaultModelProfileId || dom.modelSelect.options[0]?.value;
+    ensureRecordedModelOption(dom.modelSelect, runSelection.run(), target);
     if (!target) return;
     if (
       [...dom.modelSelect.options].some((option) => option.value === target)
@@ -167,6 +185,7 @@ export function createRuntimeSelectionController({
     }
     syncModelSelector();
     renderAgentMode();
+    if (notifyAttachmentPolicy && previousProfileId !== dom.modelSelect.value) onAttachmentPolicyChange();
   }
 
   function hasModelCatalogFromAnotherEnvironment() {
@@ -174,14 +193,20 @@ export function createRuntimeSelectionController({
     return modelCatalogEnvironmentId !== selectedEnvironmentId();
   }
 
-  function rememberModelSelection() {
+  function rememberModelSelection({ explicit = false } = {}) {
     if (hasModelCatalogFromAnotherEnvironment()) return;
     const profileId = textOf(dom.modelSelect.value);
     if (!profileId) return;
+    if (!explicit) {
+      if (getComposerIsHome()) state.sessionModels[getComposerSessionId()] = profileId;
+      return;
+    }
+    runSelection.remember({ profileId });
     state.lastModelByEnvironment[selectedEnvironmentId()] = profileId;
     if (getComposerSessionId())
       state.sessionModels[getComposerSessionId()] = profileId;
     saveModelPreferences();
+    syncModelSelector();
     renderAgentMode();
   }
 
@@ -197,6 +222,11 @@ export function createRuntimeSelectionController({
     getScope: () => ({ environmentId: selectedEnvironmentId(), sessionId: getComposerSessionId() }),
     selectedModelProfile: () => hasModelCatalogFromAnotherEnvironment() ? null : selectedModelProfile(),
     reloadModels: onReasoningConfigurationApplied || loadModels, recordControlEvent,
+    getSelectedAgentMode: () => runSelection.selectedAgentMode(state.agentMode),
+    getRunReasoningDisplay: () => sessionRunReasoningDisplay(runSelection.reasoningRun(dom.modelSelect.value)),
+    getSelectedReasoningPreference: (fallback) => runSelection.selectedReasoningPreference(dom.modelSelect.value, fallback),
+    onAgentModeSelected: (agentMode) => { runSelection.remember({ agentMode }); renderedRunControlsKey = currentRunControlsKey(); },
+    onReasoningPreferenceSelected: (reasoningPreference) => { runSelection.remember({ reasoningPreference }); renderedRunControlsKey = currentRunControlsKey(); },
   });
 
   function initializeSessionMode(sessionId) {
@@ -217,8 +247,8 @@ export function createRuntimeSelectionController({
       option.value = "";
       option.textContent = "No models configured";
       dom.modelSelect.appendChild(option);
-      syncModelSelector();
-      renderAgentMode();
+      applyModelSelection({ notifyAttachmentPolicy: false });
+      onAttachmentPolicyChange();
       return;
     }
     for (const model of modelSelectorOptions(state.modelProfiles)) {
@@ -233,7 +263,7 @@ export function createRuntimeSelectionController({
     }
     if (state.defaultModelProfileId)
       dom.modelSelect.value = state.defaultModelProfileId;
-    applyModelSelection();
+    applyModelSelection({ notifyAttachmentPolicy: false });
     onAttachmentPolicyChange();
   }
 
@@ -276,8 +306,44 @@ export function createRuntimeSelectionController({
     return true;
   }
 
+  function currentRunControlsKey() {
+    const profileId = runSelection.selectedProfileId(fallbackModel()) || state.defaultModelProfileId || dom.modelSelect.options[0]?.value;
+    const scope = { environmentId: selectedEnvironmentId(), sessionId: getComposerSessionId() };
+    return runControlsPresentationKey({
+      profileId, agentMode: runSelection.selectedAgentMode(state.agentMode),
+      preference: runSelection.selectedReasoningPreference(profileId, preferences.loadReasoningPreference?.(scope, profileId)),
+      reasoning: sessionRunReasoningDisplay(runSelection.reasoningRun(profileId)),
+      run: runSelection.run(), configured: Boolean(selectedModelProfile(profileId)),
+    });
+  }
+  function applySessionSnapshot(payload, scope) {
+    if (!runSelection.applySnapshot(payload, scope)) return false;
+    if (renderedRunControlsKey === currentRunControlsKey()) return false;
+    applyModelSelection();
+    return true;
+  }
+  function observeRunEvent(message) {
+    if (!runSelection.observeEvent(message)) return false;
+    if (renderedRunControlsKey === currentRunControlsKey()) return false;
+    applyModelSelection();
+    return true;
+  }
+  function pruneEmptyDraftSelections(scope) {
+    if (!runSelection.pruneEmptyDraftSelections(scope)) return false;
+    if (renderedRunControlsKey === currentRunControlsKey()) return false;
+    applyModelSelection();
+    return true;
+  }
   return {
     applyModelSelection,
+    applySessionSnapshot, observeRunEvent,
+    pruneEmptyDraftSelections,
+    retireSessionSelection: runSelection.retireSessionSelection,
+    clearRunSelection: () => { runSelection.pruneEmptyDraftSelections(); runSelection.clear(); applyModelSelection(); },
+    selectedAgentMode: () => runSelection.selectedAgentMode(state.agentMode),
+    modelProfileIdForSession: (sessionId) => runSelection.profileIdForSession(
+      { environmentId: selectedEnvironmentId(), sessionId },
+      textOf(state.sessionModels[sessionId]) || preferredModel() || state.defaultModelProfileId),
     clearSessionMode,
     configuredEnvironmentOptions,
     currentToolPermissionMode,
@@ -287,7 +353,7 @@ export function createRuntimeSelectionController({
     loadModels,
     loadPreferences,
     rememberModelSelection,
-    renderAgentMode,
+    renderAgentMode: () => { renderAgentMode(); renderedRunControlsKey = currentRunControlsKey(); },
     renderAgentPicker,
     renderEnvironmentOptions,
     renderModels,

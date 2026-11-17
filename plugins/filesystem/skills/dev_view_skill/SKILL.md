@@ -1,4 +1,4 @@
-# Dev View Skill
+# Dev View Tool Instructions
 
 - `path` identifies one file or directory. For a file, choose numeric `start_line` / `end_line` for a bounded window, or `locator` for one exact literal substring in the bounded scan.
 - A locator is not a keyword or regular-expression search: it must identify one occurrence. It takes precedence over numeric lines. When no unique observed substring is known, use numeric lines without a locator.

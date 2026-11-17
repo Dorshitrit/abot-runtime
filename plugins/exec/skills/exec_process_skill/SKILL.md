@@ -1,4 +1,4 @@
-# Exec Process Skill
+# Exec Process Tool Instructions
 
 - Use `exec_wait` only after `exec` reports that the command is still running.
 - Copy the latest `process_id` and `cursor` exactly and continue the same process without restarting its command.

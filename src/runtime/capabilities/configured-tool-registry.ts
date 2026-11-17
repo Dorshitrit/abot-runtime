@@ -8,10 +8,12 @@ import type {
 import type { RuntimeConfig, ToolRegistry } from "../ports.js";
 import { createRuntimeToolPathResolver } from "./runtime-target-path.js";
 import { prepareRequestToolModules } from "./request-module-preparation.js";
+import { discoverToolModules } from "./tool-operation-discovery.js";
 
 export function createConfiguredToolRegistry(
   config: RuntimeConfig | undefined,
   modules: readonly ToolModuleDeclaration[],
+  availability: "configured" | "prepared" = "configured",
 ): ToolRegistry {
   const baseRegistry = createToolRegistryInstance({ modules });
   const getImplementations = () => baseRegistry.getImplementations();
@@ -35,12 +37,19 @@ export function createConfiguredToolRegistry(
       : { ...sharedState };
 
   return {
+    discoverOperations: async () => {
+      const discovered = availability === "prepared"
+        ? baseRegistry
+        : createToolRegistryInstance({ modules: await discoverToolModules(modules) });
+      return discovered.getNormalInvocations().map(({ adapter: _adapter, ...metadata }) => metadata);
+    },
     ...(modules.some((module) => module.prepareRequest)
       ? {
           prepareRequest: async (context) =>
             createConfiguredToolRegistry(
               config,
               await prepareRequestToolModules(modules, context),
+              "prepared",
             ),
         }
       : {}),

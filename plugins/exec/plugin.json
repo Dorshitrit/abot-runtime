@@ -28,7 +28,7 @@
               "command": {
                 "param": "command",
                 "kind": "string",
-                "maxLength": 8192,
+                "maxLength": 24576,
                 "preserveWhitespace": true
               },
               "cwd": {
@@ -51,7 +51,7 @@
                   "command": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 8192
+                    "maxLength": 24576
                   },
                   "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 }
                 },

@@ -24,6 +24,7 @@ export function presentFailedResponseHistory(messages, requests) {
     const persisted = terminal.details?.stoppedResponse;
     for (const message of messages) {
       if (!canPresentFailedResponse(message, request.requestId)) continue;
+      message.failedResponse = true;
       if (typeof persisted === "string" && persisted.trim()) {
         message.text = failureResponseText(terminal);
         continue;

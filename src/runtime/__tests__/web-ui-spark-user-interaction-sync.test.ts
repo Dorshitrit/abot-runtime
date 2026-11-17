@@ -3,8 +3,10 @@ import { describe, expect, test, vi } from "vitest";
 import { createSparkChatSync, mergeSparkSnapshotMessages } from "../../web-ui/app/controllers/spark-chat-sync.js";
 import { projectApprovalContinuations } from "../../web-ui/app/lib/request-lifecycle-view.js";
 import { projectUserInteractionEvent } from "../../web-ui/app/lib/user-interaction-event.js";
+import { createMessageLinkPreviews } from "../../web-ui/app/components/message-link-previews.js";
+import { ContextElement } from "./support/composer-context-window-dom.js";
 
-type Message = { id: string; role: string; requestId: string; text: string; createdAt: string; kind?: string; streaming?: boolean; persistedMessageId?: string };
+type Message = { id: string; role: string; requestId: string; text: string; createdAt: string; kind?: string; streaming?: boolean; persistedMessageId?: string; failedResponse?: boolean };
 const at = (second: number) => "2026-10-27T12:00:" + String(second).padStart(2, "0") + ".000Z";
 function message(id: string, role: string, second = 0, requestId = "request-1"): Message {
   return { id, role, requestId, text: id, createdAt: at(second), persistedMessageId: id };
@@ -98,6 +100,55 @@ describe("SPARK interaction snapshot reconciliation", () => {
     await sync.refresh({ wait: true });
     expect(state.messages).toContain(update);
     expect(state.requestMessages.has("request-1")).toBe(false);
+  });
+
+  test.each([false, true])("projects failures in refreshed display copies with a retained window=%s", (hasNewer) => {
+    const messages = [message("failed", "assistant"), message("user", "user"),
+      { ...message("approval", "assistant"), kind: "tool_approval_request" },
+      { ...message("progress", "assistant"), kind: "user_interaction" },
+      message("completed", "assistant", 0, "completed"), message("cancelled", "assistant", 0, "cancelled")];
+    const source = { messages, requests: [
+      { requestId: "request-1", status: "failed", finalState: { error: "model_provider_failure", details: { stoppedResponse: "Published failure response" } } },
+      { requestId: "completed", status: "completed" },
+      { requestId: "cancelled", status: "failed", finalState: { error: "request_cancelled" } },
+    ], newerCursor: null };
+    const original = structuredClone(source);
+    const merged: Message[] = mergeSparkSnapshotMessages(source, messages, hasNewer);
+    expect(merged.find((entry) => entry.id === "failed")).toMatchObject({ failedResponse: true, text: "Published failure response" });
+    for (const entry of merged.filter((entry) => entry.id !== "failed")) {
+      expect(entry.failedResponse).toBeUndefined();
+      expect(entry.text).toBe(entry.id);
+    }
+    expect(source).toEqual(original);
+  });
+
+  test("repeated settled SPARK refreshes keep failure links out of preview requests without reopening", async () => {
+    const text = "Check https://example.com/model";
+    const failure = { ...message("failed", "assistant"), text, failedResponse: true };
+    const state = { messages: [failure], currentSessionId: "spark", composerSending: false, activeRequestId: "",
+      requestMessages: new Map<string, string>(), requestLifecycles: new Map() };
+    const result = { sessionId: "spark", modelProfileId: "model", snapshot: {
+      messages: [{ ...message("failed", "assistant"), text }], newerCursor: null,
+      requests: [{ requestId: "request-1", status: "failed", finalState: { error: "model_provider_failure", details: { stoppedResponse: text } } }],
+    } };
+    const original = structuredClone(result);
+    const previewClient = { get: vi.fn(async () => null), cancelQueued: vi.fn() };
+    const previews = createMessageLinkPreviews({ client: previewClient, viewport: {} as Window,
+      documentRoot: { baseURI: "http://localhost/", createElement: (tag: string) => new ContextElement(tag) } as unknown as Document });
+    const conversation = { state, session: { openSession: vi.fn(async () => {}), history: { hasNewer: () => false, refresh() {} } },
+      render: vi.fn(() => expect(previews.createNode(state.messages[0]!)).toBeNull()), update: vi.fn() };
+    const onError = vi.fn();
+    const sync = createSparkChatSync({ conversation, getEnvironmentId: () => "dev", isAvailable: () => true,
+      client: { loadSparkChat: async () => result, listModels: async () => ({ profiles: [{ id: "model" }] }) },
+      onConfiguration() {}, onReadState() {}, onSnapshot() {}, onError });
+    await sync.refresh({ wait: true });
+    for (let index = 0; index < 2; index++) await sync.refresh({ wait: true });
+    expect(onError).not.toHaveBeenCalled();
+    expect(conversation.session.openSession).toHaveBeenCalledOnce();
+    expect(conversation.render).toHaveBeenCalledTimes(2);
+    expect(state.messages).toEqual([expect.objectContaining({ failedResponse: true, text })]);
+    expect(previewClient.get).not.toHaveBeenCalled();
+    expect(result).toEqual(original);
   });
 });
 

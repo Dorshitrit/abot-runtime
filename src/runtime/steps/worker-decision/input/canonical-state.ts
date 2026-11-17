@@ -26,6 +26,7 @@ import {
   type WorkerDecisionDiagnosticContext,
 } from "../contracts.js";
 import { projectEffectiveWorkerSelectionControlIds } from "../runtime-path-refinement.js";
+import { normalizeWorkerCapabilityControlDocumentation } from "../../../orchestration/worker-capabilities/control-documentation.js";
 import type {
   PreparedWorkerCanonicalState,
   WorkerDecisionCapabilityBinding,
@@ -172,13 +173,14 @@ export function projectCapabilities(
       descriptor === null ||
       !Object.isFrozen(descriptor) ||
       descriptorKeys.length < 5 ||
-      descriptorKeys.length > 9 ||
+      descriptorKeys.length > 10 ||
       descriptorKeys.some(
         (key) =>
           key !== "capabilityId" &&
           key !== "summary" &&
           key !== "effect" &&
           key !== "controls" &&
+          key !== "controlDocumentation" &&
           key !== "selectionControlIds" &&
           key !== "runtimePathControlIds" &&
           key !== "controlsRefinement" &&
@@ -210,6 +212,13 @@ export function projectCapabilities(
       descriptor.controls,
     );
     if (!controls.ok) {
+      throw new Error("worker_capability_binding_projection_invalid");
+    }
+    const documentation = normalizeWorkerCapabilityControlDocumentation(
+      descriptor.controlDocumentation,
+      controls.value,
+    );
+    if (!documentation.ok) {
       throw new Error("worker_capability_binding_projection_invalid");
     }
     const controlsPartition = partitionWorkerCapabilityControlsSchema(
@@ -245,6 +254,9 @@ export function projectCapabilities(
       summary: descriptor.summary,
       effect: descriptor.effect,
       controls: controls.value,
+      ...(documentation.value
+        ? { controlDocumentation: documentation.value }
+        : {}),
       ...(effectiveSelectionControlIds.length > 0
         ? {
             selectionControlIds: effectiveSelectionControlIds,

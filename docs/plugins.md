@@ -232,10 +232,10 @@ The root runtime config only enables or filters installed packages:
   installed catalog.
 - `deny` accepts the same selectors and is applied after `allow`.
 
-There are no plugin paths, factories, tool declarations, implementation
-options, or skill lists in `runtime.config.json`. Installing or changing a
-plugin means changing its package under `plugins/`; runtime config only decides
-whether that installed capability is available.
+Runtime config filters installed packages; implementations and declarations stay in plugins.
+In `ai.abot.runtime`, optional `executionPolicies` accepts a non-empty, unique list
+of `execution-agent-v1` (EA) and/or `supervisor-worker-v1` (SUPER); omission allows both.
+All capabilities inherit it. Model-route availability and saved permission rules both apply.
 
 ## Runtime Platform Compatibility
 
@@ -331,7 +331,9 @@ executable contract under `extensions.ai.abot.runtime`:
                   "query": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 1024
+                    "maxLength": 1024,
+                    "description": "The text to look up in the available records.",
+                    "example": "release notes"
                   }
                 },
                 "required": ["query"]
@@ -354,6 +356,29 @@ principal. A capability owns its skill bindings, and each operation owns its
 input, effect, and approval. Optional capability metadata such as client event
 presentation, payload authoring, development roles, and selection grounding
 belongs here as well—not in runtime orchestration.
+
+Each top-level `input.properties` argument may declare a `description` (non-empty,
+at most 512 characters) and one optional `example`. An example must satisfy that
+argument's schema and serialize to at most 1,024 JSON characters. Scalar and
+array examples are supported; array-item schemas do not carry documentation.
+These fields are optional so existing plugins remain compatible. Types, bounds,
+enum choices, and requiredness continue to come from the same input schema.
+
+SUPER presents this input reference only when authoring remaining controls
+for an already selected invocation. It includes only that invocation's remaining
+arguments, including separate bindings for repeated invocations in a batch.
+Selection catalogs, response schemas, payload authoring, and execution parameters
+do not acquire the documentation. Existing plugins receive the structural
+reference even without descriptions or examples. EA, SPARK HOME, and automation
+catalogs retain their existing structural-only projections.
+
+In the model's controls response, `null` means to omit an optional argument before
+calling the plugin. It is not passed as a plugin value, and required arguments
+cannot be null. Describe any plugin-specific behavior on omission in the
+argument's `description`; the Runtime does not infer defaults from settings or
+examples. Examples illustrate valid values and never supply missing arguments,
+change the user's objective, or grant permission. The reference is bounded by
+the existing argument limits and context admission; it is never silently cut.
 
 An operation may declare `outputChannels` alongside `summary`, for example
 `{"text":"content","data":"metadata"}`. Both fields are required when declared:
@@ -510,16 +535,16 @@ Run `npm run typecheck:plugins` while developing. Run
 `npm run build:plugins` to regenerate every public `src/index.cjs`; CI uses
 `npm run check:plugin-build` to reject stale or hand-edited generated output.
 
-Plugins may export an asynchronous `prepareRequest(selectedModules)` hook alongside
-`handlers` and `adapters`. The host invokes it once per plugin for each request,
-after configuration selection and before projecting any model catalog. It receives
-detached frozen contracts and may remove tools or operations, narrow input enums,
-update operation summaries, and bind request-local implementations/adapters.
-Names, definitions, effects, approval policy, fixed parameters, and the remaining
-input contract cannot change. Disabled tools are never passed to the hook and
-cannot be returned. A preparation failure fails the request; it does not silently
-restore the unprepared catalog. Prepared state is not cached across requests.
-
+Plugins may export `prepareRequest(selectedModules, context)` alongside handlers/adapters.
+After configuration selection, it receives frozen contracts once per request. It may
+remove tools/operations, narrow enums, update summaries and bind request-local handlers.
+Names, definitions, effects, approvals, fixed parameters and other input constraints
+cannot change; failures never restore the unprepared catalog. No cross-request cache.
+Plugins needing captured request authority declare `requiresRequestBinding: true` in
+`ai.abot.runtime` and export both `prepareRequest` and `discoverCapabilities(selected)`.
+Discovery receives metadata only and returns selected capability names; it must honor
+settings such as `enabled`. Automation Agents/grants can discover these capabilities,
+but standalone Tool steps cannot use them. Other plugins keep existing preparation.
 A call adapter may provide `executionBinding(call, context)`, synchronously or
 asynchronously. The host supplies the captured `toolPermissionMode`, optional
 `sessionId`, and cancellation signal in `context`; none come from tool arguments.

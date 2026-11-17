@@ -134,6 +134,17 @@ test("command feedback stays between prior history and subsequent turns, includi
   expect(restored.messagesList.querySelector(".conversation-command-status")?.textContent).toContain("compacted");
 });
 
+test.each([undefined, 10])("renders no-change events on replay with saved retention limit %s", (limit) => {
+  const f = fixture();
+  f.controller.recordEvent({
+    ...completed, outcome: "no_change", reason: "no_eligible_sources",
+    ...(limit ? { protectedTurnLimit: limit } : {}),
+  });
+  f.view.render();
+  const label = f.messagesList.querySelector(".conversation-command-status")?.textContent;
+  expect(label).toContain(limit ? "latest 10 completed turns" : "No saved history is eligible");
+});
+
 test("a later command is hidden in an older history window and restored on return", () => {
   const f = fixture();
   f.messages.push(message("before", -1000));

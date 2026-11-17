@@ -27,6 +27,7 @@ import type {
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
 import { createRequestRuntimeToolRegistry } from "../capabilities/request-runtime-tool-registry.js";
+import { routeFilePayloadAuthor } from "./execution-file-payload/author.js";
 import {
   projectAvailableTools,
   type ToolAvailabilitySource,
@@ -63,10 +64,12 @@ export function createRequestWorkerCapabilityProvider(
   let requestSkillProvider: SkillProvider | undefined;
 
   function getRequestToolRegistry(): ToolRegistry {
-    requestToolRegistry ??= createRequestRuntimeToolRegistry({
+    if (requestToolRegistry) return requestToolRegistry;
+    const registryInput = {
       request: params.request,
       requestWorkingDirectory: params.requestWorkingDirectory,
       toolPermissionMode: params.request.toolPermissionMode,
+      executionPolicy: params.executionPolicyAuthority?.id,
       ...(params.modelPlugins ? { modelPlugins: params.modelPlugins } : {}),
       ...(params.requestAttachments
         ? { requestAttachments: params.requestAttachments }
@@ -75,7 +78,8 @@ export function createRequestWorkerCapabilityProvider(
       ...(params.toolRegistryOverride
         ? { toolRegistryOverride: params.toolRegistryOverride }
         : {}),
-    });
+    };
+    requestToolRegistry ??= createRequestRuntimeToolRegistry(registryInput);
     return requestToolRegistry;
   }
 
@@ -122,12 +126,7 @@ export function createRequestWorkerCapabilityProvider(
               toolApprovalController: params.request.toolApprovalController,
             }
           : {}),
-        payloadAuthor: createRequestWorkerCapabilityPayloadAuthor(
-          params.request,
-          params.executionPolicyAuthority?.capabilityAuthorities,
-          params.filesystemScope,
-          params.executionPolicyAuthority,
-        ),
+        payloadAuthor: selectPayloadAuthor(),
         loadActionSkillContext: (toolName) =>
           getRequestSkillProvider().getActionContext(toolName),
         nextApprovalId: () => `approval:${randomUUID()}`,
@@ -137,6 +136,17 @@ export function createRequestWorkerCapabilityProvider(
           : {}),
       },
     );
+
+  function selectPayloadAuthor() {
+    const legacy = createRequestWorkerCapabilityPayloadAuthor(
+      params.request,
+      params.executionPolicyAuthority?.capabilityAuthorities,
+      params.filesystemScope,
+      params.executionPolicyAuthority,
+    );
+    if (params.executionPolicyAuthority?.rootContractId !== "execution_agent") return legacy;
+    return routeFilePayloadAuthor(params.request, legacy, params.executionPolicyAuthority);
+  }
   const getAvailableTools = () =>
     projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.());
   const candidates = createInformationBasketCandidateSource({

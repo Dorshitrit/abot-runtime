@@ -128,7 +128,6 @@ describe("additive Web model setup", () => {
       expect(profile.calibration["context.compact"]).toEqual(type === "ollama"
         ? {
             format: "json",
-            generation: { temperature: 0, reasoningEffort: "none" },
           }
         : { format: "json", timeoutMs: 300_000 });
       expect(profile.calibration["toolPayload.raw"].timeoutMs).toBe(

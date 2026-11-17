@@ -3,6 +3,7 @@ import { createChatgptAccountRequests } from "./runtime-web-client/chatgpt-accou
 import { createInformationBasketRequests } from "./runtime-web-client/information-basket.js";
 import { createSkillRequests } from "./runtime-web-client/skills.js";
 import { createStepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
+import { createModelParameterRequests } from "./runtime-web-client/model-parameters.js";
 import { createNotificationRequests } from "./runtime-web-client/notifications.js";
 import { createSparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import { createSparkHomeRequests } from "./runtime-web-client/spark-home.js";
@@ -385,6 +386,7 @@ export function createRuntimeWebClient({
     ...createConfigurationRequests({ requestApi, environmentQuery }),
     ...createChatgptAccountRequests({ requestApi, getConfig }),
     ...createStepTimeoutRequests({ requestApi, getConfig }),
+    ...createModelParameterRequests({ requestApi, getConfig, getEnvironmentId }),
     ...createSystemHostRequests({ requestApi, getConfig, getEnvironmentId }),
     ...longTermMemoryRequests,
     ...createPassiveLearningRequests({

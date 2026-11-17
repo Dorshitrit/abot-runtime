@@ -1,4 +1,4 @@
-# JSON Inspector Skill
+# JSON Inspector Tool Instructions
 
 Use `inspect_json` when a JSON artifact or configuration is central to the
 task. Validate its syntax and inspect its bounded shape before relying on or

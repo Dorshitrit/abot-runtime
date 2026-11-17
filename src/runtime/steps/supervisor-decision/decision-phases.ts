@@ -136,6 +136,7 @@ export async function runWorkingDirectoryPhase(params: {
         captureAcceptedPhase(
           parseSupervisorWorkingDirectoryOutput(text, {
             diagnostic: params.diagnostic,
+            filesystemScope: params.request.workerCapabilities.filesystemScope,
           }),
           params.requestSteering,
         ),

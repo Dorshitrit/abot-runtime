@@ -17,6 +17,7 @@ import { emitNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
 import { prepareNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
 import { restoreNormalInvocation } from "./execution/prepared-snapshot.js";
 import { prepareNormalInvocationRejectionEvent } from "./execution/rejection-event.js";
+import { bindPayloadPreparation } from "./payload/source.js";
 
 /**
  * Captures one selected ToolRegistry snapshot and executes its ordinary
@@ -58,9 +59,11 @@ export function createRegisteredToolNormalInvocationExecutor(
             ...(stagedPayloadPlan ? { stagedPayloadPlan } : {}),
           }),
         );
+        const preparePayload = bindPayloadPreparation(operationByHandle.get(handle)!, params);
         return Object.freeze({
           handle,
           operation,
+          ...(preparePayload ? { preparePayload } : {}),
           ...(runtimePathBindings.length > 0 ? { runtimePathBindings } : {}),
           ...(payloadContextPlan ? { payloadContextPlan } : {}),
           ...(stagedPayloadPlan ? { stagedPayloadPlan } : {}),

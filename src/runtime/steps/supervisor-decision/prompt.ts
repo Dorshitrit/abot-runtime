@@ -7,6 +7,7 @@ import {
   type SupervisorWorkerCapabilityAffordance,
 } from "./contracts.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
+import type { LongTermMemoryService } from "../../long-term-memory/contracts.js";
 import { SUPERVISOR_RESPONSE_RECOMMENDATION_MAX_LENGTH } from "./response-recommendation.js";
 import { buildSupervisorRoleGuidance, buildSupervisorDelegationGuidance } from "./role-guidance.js";
 
@@ -132,10 +133,13 @@ export function buildSupervisorDecisionInstructions(
   ].join("\n");
 }
 
-/** SUPER decision-time wording; uses the existing core-memory availability. */
-export function buildSupervisorMemoryAvailabilityInstructions(memoryEnabled: boolean): readonly string[] {
-  if (!memoryEnabled) return [];
-  return ["When core memory is enabled, explicit saves use terminal memory authoring without an external tool. Do not claim storage or future recall before confirmation."];
+/** SUPER decision-time wording; advertises only the active terminal save mechanism. */
+export function buildSupervisorMemoryAvailabilityInstructions(
+  memory: Pick<LongTermMemoryService, "enabled" | "learning"> | undefined,
+): readonly string[] {
+  if (!memory?.enabled) return [];
+  if (!memory.learning) return [];
+  return ["Core long-term memory saving is available for this request through terminal memory authoring without an external tool. A request only to remember information can use the direct-response path; assess any other requested work normally. Availability is not confirmation of a completed save or a guarantee of future recall."];
 }
 
 export function buildSupervisorArtifactPathInstructions(): string {

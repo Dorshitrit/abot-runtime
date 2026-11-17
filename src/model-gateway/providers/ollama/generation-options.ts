@@ -1,5 +1,7 @@
 import type { ResolvedModelInvocation } from "../../types.js";
 import { estimateProviderEnvelopeInputTokens } from "../envelope-budget.js";
+import type { ResolvedModelParameters } from "../../../shared/model-parameters.js";
+import { projectResolvedModelParameters } from "../parameter-projection.js";
 
 const DEFAULT_OLLAMA_KEEP_ALIVE = "3m";
 
@@ -30,6 +32,7 @@ export function buildOllamaOptions(params: {
   };
   contextWindowTokens: number;
   derivedNumPredict: number;
+  parameters?: ResolvedModelParameters;
 }): Record<string, unknown> {
   const options: Record<string, unknown> = {
     ...params.baseOptions,
@@ -46,6 +49,7 @@ export function buildOllamaOptions(params: {
   if (numPredict !== undefined) {
     options.num_predict = numPredict;
   }
+  projectResolvedModelParameters({ options }, "ollama", params.parameters);
   return options;
 }
 

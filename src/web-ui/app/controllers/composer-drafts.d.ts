@@ -44,6 +44,7 @@ export interface ComposerDraft {
 }
 
 export interface ComposerDrafts {
+  hasUnsentDraft(scope: ComposerScope): boolean;
   resetSessionData(scope: ComposerScope): void;
   clearAttachments(scope: ComposerScope): ComposerAttachment[];
   open(scope: ComposerScope): ComposerDraft;

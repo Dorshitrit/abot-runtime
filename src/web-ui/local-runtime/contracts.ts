@@ -43,7 +43,7 @@ export type RuntimeSetupRequirement = {
   status: "setup_required";
   code: "runtime_configuration_required";
   message: string;
-  recovery?: "configuration";
+  recovery?: "configuration" | "configuration_file";
 };
 
 export type RuntimeAvailability =

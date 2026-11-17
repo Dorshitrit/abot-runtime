@@ -12,10 +12,6 @@ export function sparkMessageStatus(text) {
   return ROUTINE_STATUS.has(value) ? "" : value;
 }
 
-export function sparkWorkingStatus() {
-  return null;
-}
-
 export function sparkConversationMessages(messages) {
   return messages.filter(isSparkConversationMessage);
 }

@@ -9,6 +9,7 @@ import {
 import {
   executeHostOperation,
   readHostStatus,
+  projectSystemApplicationResultForBudget,
 } from "../../../src/plugin-sdk/computer-access.js";
 import {
   HOST_OPERATIONS,
@@ -83,13 +84,16 @@ function boundOperation(
         });
       if (operation === "system_command")
         return await executeCompanionCommand({ ...input, route, params, context });
-      return await input.connection.executeHostOperation(input.rootDir, {
+      const result = await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
         connectionId: route.connectionId,
         operation,
         params,
         ...(context?.abortSignal ? { abortSignal: context.abortSignal } : {}),
       });
+      return operation === "system_applications"
+        ? projectSystemApplicationResultForBudget(result, context?.resultBudget)
+        : result;
     } catch (error) {
       if (error instanceof SystemOperationError)
         return failureResult({ errorCode: error.code, message: redactSecretText(error.message) });

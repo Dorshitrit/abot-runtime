@@ -30,6 +30,7 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
     const fixture = await filesystemScopeFixture(
       "execution-agent-v1",
       capacity,
+      ["filesystem-ea.create_text"],
     );
     const root = fixture.config.paths.agentWorkDir;
     await mkdir(join(root, "LUNA"));
@@ -96,12 +97,12 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           step: "execution.decision",
           output: decision({
             action: "invoke_capability",
-            capabilityId: "write_complete_file",
+            capabilityId: "create_text",
             operationObjective: `Write exactly ${JSON.stringify(body)}.`,
             selectionControls: { path: "index.html" },
           }),
         },
-        { step: "tool_payload.raw", output: body },
+        { step: "execution.file_payload.raw", output: body },
         { step: "execution.decision", output: decision({ action: "respond" }) },
         {
           step: "execution.response",
@@ -123,13 +124,18 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
               expect.objectContaining({ capabilityId: "run_system_command" }),
             ],
           });
-        } else if (
-          (input.modelStep === "execution.decision" && executionTurn >= 4) ||
-          input.modelStep === "tool_payload.raw"
-        ) {
+        } else if (input.modelStep === "execution.decision" && executionTurn >= 4) {
           assertFilesystemScope(input, root, "LUNA", false, {
-            write_complete_file: ["path"],
+            create_text: ["path"],
           });
+        } else if (input.modelStep === "execution.file_payload.raw") {
+          expect(capsules(input, "execution_file_assignment_v1")).toEqual([
+            expect.objectContaining({ path: "LUNA/index.html", mode: "create" }),
+          ]);
+          const source = capsules(input, "execution_file_source_v1");
+          expect(source).toEqual([expect.objectContaining({ path: "LUNA/index.html", mode: "create" })]);
+          expect(source[0]).not.toHaveProperty("sourceText");
+          expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
         } else {
           expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
         }

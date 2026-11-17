@@ -20,7 +20,7 @@ export async function prepareModelSetupProfile(
       "examples/models/default.config.json",
     ),
   );
-  const buildProfile = (applyCreationTemperature: boolean) => ({
+  const buildProfile = (applyCreationTemperature = false, applyLegacyCompactionDefaults = false) => ({
     ...buildModelConfig(
       template,
       String(provider.config.type),
@@ -29,16 +29,18 @@ export async function prepareModelSetupProfile(
       input,
       undefined,
       applyCreationTemperature,
+      applyLegacyCompactionDefaults,
     ),
     provider: provider.id,
   });
-  const profile = buildProfile(true);
+  const profile = buildProfile();
   return {
     profile,
     matchesSaved(saved: Record<string, unknown>) {
       if (isDeepStrictEqual(saved, profile)) return true;
-      // Profiles created before the sampling default must match that entire earlier shape.
-      return isDeepStrictEqual(saved, buildProfile(false));
+      // Compare complete historical shapes; never rewrite a saved profile on retry.
+      if (isDeepStrictEqual(saved, buildProfile(true, true))) return true;
+      return isDeepStrictEqual(saved, buildProfile(false, true));
     },
   };
 }

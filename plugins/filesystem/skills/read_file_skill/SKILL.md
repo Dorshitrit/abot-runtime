@@ -1,4 +1,4 @@
-# Read File Skill
+# Read File Tool Instructions
 
 - Use `read_file` / `read_one_file` for one source-code or text file, including JS, TS, Python, HTML and CSS. The result is complete within the declared read budget; larger files return an explicit bounded head/tail view.
 - Treat truncation metadata as authoritative. Do not infer facts from omitted content.

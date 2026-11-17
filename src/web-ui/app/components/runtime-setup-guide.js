@@ -189,7 +189,7 @@ export function createRuntimeSetupGuide({
       const payload = await loadSetup();
       if (!operationIsCurrent(operationRevision, operationEnvironment)) return;
       if (requiresConfigurationRecovery(payload?.setup))
-        availability = { ...availability, recovery: "configuration", message: payload.setup.message };
+        availability = { ...availability, recovery: payload.setup.recovery, message: payload.setup.message };
       state.providers = (payload?.setup?.providers || []).filter((provider) =>
         normalizeProvider(provider.id),
       );
@@ -288,7 +288,7 @@ export function createRuntimeSetupGuide({
     } catch {
       if (!operationIsCurrent(operationRevision, operationEnvironment)) return;
       state.error = activated
-        ? "Connection applied. Check model availability again."
+        ? "Connection applied. Reload the model catalog."
         : "Could not apply your saved connection. Try again when your agent is idle.";
     } finally {
       if (operationIsCurrent(operationRevision, operationEnvironment)) {

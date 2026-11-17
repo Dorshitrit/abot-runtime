@@ -14,7 +14,7 @@ import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harn
 function fullLengthText(prefix: string, length = 4096): string {
   return prefix + "x".repeat(length - prefix.length - 2) + " \t";
 }
-const command = fullLengthText("  printf '<unsafe>'\n", 8192);
+const command = fullLengthText("  printf '<unsafe>'\n", 24576);
 const cwd = fullLengthText(" /outside configured roots/project ");
 const processId = "exec_" + "p".repeat(123);
 const cases: {
@@ -66,7 +66,7 @@ describe("sensitive EXEC exact action approval display", () => {
           commandTruncated: false,
           cwdTruncated: false,
         });
-        expect(command).toHaveLength(8192);
+        expect(command).toHaveLength(24576);
         expect(cwd).toHaveLength(4096);
       }
       const event = {

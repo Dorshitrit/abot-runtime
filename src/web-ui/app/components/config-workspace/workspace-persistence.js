@@ -1,4 +1,5 @@
 import { configRepairSaveIsConfirmed } from "./raw-config-repair.js";
+import { modelParameterInputValidationError } from "./model-parameter-input-drafts.js";
 import { textOf } from "../../lib/text-format.js";
 import { loadModelPluginCatalog } from "./model-plugin-permissions.js";
 import {
@@ -13,6 +14,7 @@ export function createConfigWorkspacePersistence({
   loadDashboard,
   loadModelPlugins,
   saveFile,
+  refreshParameterPreview = () => {},
   memorySetup,
   memoryManagement,
   pluginManagement,
@@ -168,7 +170,13 @@ export function createConfigWorkspacePersistence({
 
   async function saveConfigFile(kind, id) {
     const file = findConfigFile(kind, id);
-    if (!file || !isFileDirty(file)) return;
+    if (!file) return;
+    const parameterError = modelParameterInputValidationError(file.config);
+    if (parameterError) {
+      setWorkspaceStatus(parameterError, "error-text");
+      return false;
+    }
+    if (!isFileDirty(file)) return;
     const key = configFileKey(file);
     const configToSave = cloneConfig(file.config);
     const contextWindowError =
@@ -221,6 +229,7 @@ export function createConfigWorkspacePersistence({
       }
       state.baselinesByKey.set(key, cloneConfig(configToSave));
       state.savedKeys.add(key);
+      void refreshParameterPreview();
       recordControlEvent({
         type: "control",
         name: "Config saved",

@@ -16,6 +16,8 @@ import {
   createSupervisorWorkingDirectoryFormat,
 } from "../steps/supervisor-decision/working-directory.js";
 import { createMemoryRecallHarness } from "./support/memory-recall-runner.js";
+import { createInMemoryLongTermMemoryRepository } from "../adapters/long-term-memory/in-memory-repository.js";
+import { createLongTermMemoryService } from "../long-term-memory/service.js";
 
 const modelStep = "supervisor.decision" as const;
 const installationConfig = loadRequestRunnerConfig({ configPath: resolve("examples/request-runner.config.example.json") });
@@ -132,7 +134,13 @@ test.each(roleSets.map((allowedRoleIds) => ({ allowedRoleIds })))(
 );
 
 test("keeps memory availability local to instructions and recall availability in the schema", () => {
-  const request = createRequest();
+  const request = {
+    ...createRequest(),
+    longTermMemory: createLongTermMemoryService({
+      repository: createInMemoryLongTermMemoryRepository(),
+      enabled: true, emitClientEvents: false, embeddings: { embed: vi.fn() },
+    }),
+  };
   const enabled = buildSupervisorDecisionInput(request, { toolResults });
   const disabled = buildSupervisorDecisionInput({
     ...request, longTermMemory: { ...request.longTermMemory!, enabled: false },

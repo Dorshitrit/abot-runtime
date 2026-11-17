@@ -1,5 +1,6 @@
 import { buildRemovedEmbeddingProfile, buildSavedEmbeddingProfile } from "./saved-profiles.js";
 import type { ModelGatewayPolicyConfig } from "../../../model-gateway/types.js";
+import type { ModelProviderEmbeddingModelCatalog } from "../../../model-gateway/index.js";
 import { buildModelConfig } from "../../config/builders.js";
 import { validateRuntimeConfigFile } from "../../config/validation.js";
 import {
@@ -30,7 +31,7 @@ export function createLongTermMemoryOnboardingService(dependencies: {
       modelPolicy: ModelGatewayPolicyConfig;
       abortSignal: AbortSignal;
     }>,
-  ): Promise<Readonly<{ supported: boolean; models: readonly string[] }>>;
+  ): Promise<ModelProviderEmbeddingModelCatalog>;
 }): LongTermMemoryOnboardingService {
   return Object.freeze({
     async status() {

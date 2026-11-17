@@ -11,7 +11,7 @@ export type SessionMessageMetadata = Pick<SessionSnapshotMessage, "id" | "role" 
 
 /** Derived data only. User read cursors stay in the Web UI's existing store. */
 export type SessionMetadata = {
-  version: 1;
+  version: 1 | 2;
   source: string;
   interactive: boolean;
   updatedAt: string;
@@ -21,7 +21,7 @@ export type SessionMetadata = {
 
 export function projectSessionMetadata(session: SessionRecord, source: string): SessionMetadata {
   return {
-    version: 1,
+    version: 2,
     source,
     interactive: !hasAutomationSessionOrigin(session),
     updatedAt: session.updatedAt,
@@ -46,7 +46,7 @@ export function isCurrentSessionMetadata(
 ): value is SessionMetadata {
   if (!value || typeof value !== "object") return false;
   const record = value as SessionMetadata;
-  if (record.version !== 1) return false;
+  if (record.version !== 1 && record.version !== 2) return false;
   if (record.source !== source) return false;
   if (typeof record.interactive !== "boolean") return false;
   if (typeof record.updatedAt !== "string") return false;
@@ -56,7 +56,10 @@ export function isCurrentSessionMetadata(
   if (!Number.isFinite(record.summary.createdAt)) return false;
   if (!Number.isFinite(record.summary.updatedAt)) return false;
   if (!Array.isArray(record.messages)) return false;
-  return record.messages.every(isMessageMetadata);
+  if (!record.messages.every(isMessageMetadata)) return false;
+  // Older summaries with a named conversation or no user message already have the same title.
+  if (record.version === 2 || (record.summary.title.trim() && record.summary.title !== sessionId)) return true;
+  return !record.messages.some((message) => message.role === "user");
 }
 
 /** Stable ordering is owned here so future paging need not change callers' storage knowledge. */

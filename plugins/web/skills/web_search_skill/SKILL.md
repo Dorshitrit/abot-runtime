@@ -1,4 +1,4 @@
-# Web Search Skill
+# Web Search Tool Instructions
 
 - Use `web_search` for current or external information.
 - The plugin uses Brave when `BRAVE_SEARCH_API_KEY` is configured; otherwise it

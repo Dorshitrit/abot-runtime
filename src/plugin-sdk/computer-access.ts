@@ -42,6 +42,7 @@ export {
   type SystemTargetId,
 } from "../computer-access/contracts.js";
 export { createSystemHandlers } from "../computer-access/handlers.js";
+export { projectSystemApplicationResultForBudget } from "../computer-access/application-result-budget.js";
 export {
   type SystemTargetObservation,
   observeSystemTargets,

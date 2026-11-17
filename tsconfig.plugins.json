@@ -12,6 +12,7 @@
     "plugins/document-reader/source/**/*.ts",
     "plugins/exec/source/**/*.ts",
     "plugins/filesystem/source/**/*.ts",
+    "plugins/filesystem-ea/source/**/*.ts",
     "plugins/json-inspector/source/**/*.ts",
     "plugins/local-search/source/**/*.ts",
     "plugins/memory/source/**/*.ts",

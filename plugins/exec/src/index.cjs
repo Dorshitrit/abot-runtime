@@ -2251,7 +2251,7 @@ function createExecProcessManager(store = createExecOutputStore({
 var DEFAULT_EXEC_HARD_TIMEOUT_MS = 6e5;
 var DEFAULT_EXEC_YIELD_AFTER_MS = 15e3;
 var DEFAULT_EXEC_IDLE_TIMEOUT_MS = 12e4;
-var EXEC_COMMAND_MAX_CHARS = 8192;
+var EXEC_COMMAND_MAX_CHARS = 24576;
 function readExecSettings(config) {
   return Object.freeze({
     outputRetentionMs: readBoundedInteger(config?.outputRetentionMs, {

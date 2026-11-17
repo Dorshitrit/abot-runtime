@@ -6,16 +6,25 @@ import type {
 } from "../../capabilities/tool-types.js";
 import type { ToolRegistry } from "../ports.js";
 import type { RuntimeModelPluginConfig } from "../config/model-plugin-config.js";
+import { discoverToolOperations } from "./tool-operation-discovery.js";
 
 /** Captures user authority once; all discovery and execution use the same gate. */
 export function restrictToolRegistryToRequestMode(
   registry: ToolRegistry,
   mode: ToolPermissionMode,
   modelPlugins?: RuntimeModelPluginConfig,
+  executionPolicy?: string,
 ): ToolRegistry {
-  const catalog = captureRequestPermissionCatalog(registry, mode, modelPlugins);
+  const catalog = captureRequestPermissionCatalog(registry, mode, modelPlugins, executionPolicy);
   const isRequestToolAvailable = catalog.isRequestToolAvailable;
   const rejectUnavailableTool = (tool: string) => {
+    if (catalog.isRequestToolBlockedForRoute(tool)) {
+      const message = "This tool does not support the selected request execution route.";
+      return {
+        ok: false, tool, output: message, producedNewInformation: false,
+        error: message, errorCode: "tool_execution_policy_denied",
+      };
+    }
     const blockedForModel = catalog.isRequestToolBlockedForModel(tool);
     const message = blockedForModel
       ? "This tool is blocked for the selected request model profile."
@@ -53,6 +62,8 @@ export function restrictToolRegistryToRequestMode(
       });
   }
   return Object.freeze({
+    discoverOperations: async () => (await discoverToolOperations(registry))
+      .filter((entry) => isRequestToolAvailable(entry.toolName)),
     listDefinitions: catalog.listDefinitions,
     ...(registry.listNormalInvocations
       ? {

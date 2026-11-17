@@ -208,7 +208,7 @@ export class HostConnection {
         if (!this.pending.delete(id)) return;
         clearTimeout(deadline);
         input.abortSignal?.removeEventListener("abort", cancel);
-        resolve(attachHostEvidence(result, host.hostId, host.identity));
+        resolve(attachHostEvidence(result, host.hostId, host.identity, input.operation));
       };
       const cancel = () => {
         if (client.readyState === WebSocket.OPEN)

@@ -18,38 +18,11 @@ import { REQUEST_INVOKED_STEP_IDS } from "../runtime/config/runner/contracts.js"
 import { assertSupportedRequestRunnerConfigVersion } from "../runtime/config/runner/schema-version.js";
 import { parseRequestRunnerConfig } from "../runtime/config/runner/versioned-config.js";
 import { isRecord, resolveRuntimePath } from "../runtime/config/utils.js";
+import type { ConfigDashboardSnapshot, ConfigFileDescriptor, ConfigFileKind } from "./config-dashboard-contracts.js";
+import { buildConfigModelParameterPresentations } from "./model-parameter-presentation.js";
+export type { ConfigDashboardSnapshot, ConfigFileKind } from "./config-dashboard-contracts.js";
 
 type JsonRecord = Record<string, unknown>;
-
-export type ConfigFileKind = "runtime" | "requestRunner" | "model";
-
-type ConfigFileDescriptor = {
-  kind: ConfigFileKind;
-  id: string;
-  label: string;
-  path: string;
-  exists: boolean;
-  revision: string;
-  config: JsonRecord;
-  registered?: boolean;
-  invalidJson?: ConfigFileSnapshot["invalidJson"];
-  source?: {
-    type: "inlineModelProfile";
-    runtimeConfigPath: string;
-    profileId: string;
-  };
-};
-
-export type ConfigDashboardSnapshot = {
-  rootDir: string;
-  configDir: string;
-  modelSteps: string[];
-  files: {
-    runtime: ConfigFileDescriptor;
-    requestRunner: ConfigFileDescriptor | null;
-    models: ConfigFileDescriptor[];
-  };
-};
 
 function resolveMainConfigPath(rootDir: string, configPath?: string): string {
   return configPath
@@ -231,7 +204,7 @@ async function readDescriptor(params: {
 }
 
 export async function getConfigDashboardSnapshot(
-  params: { rootDir: string; configPath?: string },
+  params: { rootDir: string; configPath?: string; includeModelParameters?: boolean },
   lockedRuntimeSnapshot?: ConfigFileSnapshot,
 ): Promise<ConfigDashboardSnapshot> {
   const mainConfigPath = resolveMainConfigPath(
@@ -261,7 +234,7 @@ export async function getConfigDashboardSnapshot(
     runtimeConfig,
   });
 
-  return {
+  const snapshot: ConfigDashboardSnapshot = {
     rootDir: params.rootDir,
     configDir: safeRelativePath(params.rootDir, configDir),
     modelSteps: [...REQUEST_INVOKED_STEP_IDS],
@@ -293,6 +266,9 @@ export async function getConfigDashboardSnapshot(
       ),
     },
   };
+  if (params.includeModelParameters !== false)
+    snapshot.modelParameters = buildConfigModelParameterPresentations(snapshot, mainConfigPath);
+  return snapshot;
 }
 
 /** Outcome reconciliation waits for writes; ordinary reads require no write access. */
@@ -341,6 +317,10 @@ function validateDashboardRequestRunnerCandidate(
   if (snapshot.exists && !snapshot.invalidJson)
     assertSupportedRequestRunnerConfigVersion(snapshot.config, filePath);
   parseRequestRunnerConfig(candidate, filePath);
+}
+
+function shouldPreserveMalformedConfigBackup(snapshot: ConfigFileSnapshot): boolean {
+  return snapshot.invalidJson !== undefined;
 }
 
 export async function saveConfigDashboardFile(params: {
@@ -417,6 +397,7 @@ export async function saveConfigDashboardFile(params: {
         );
         const result = await transaction.write(candidate, {
           expectedRevision: params.expectedRevision,
+          backup: shouldPreserveMalformedConfigBackup(transaction.snapshot),
         });
         const file = await readDescriptor({
           rootDir: params.rootDir,

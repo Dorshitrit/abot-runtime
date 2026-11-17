@@ -7,7 +7,11 @@ import {
 import { buildSessionArtifactPathsMessage } from "../../../context/session-artifact-paths.js";
 import { resolveModelContextBudget } from "../../../model/model-context-budget.js";
 import { hasSuperContextContract } from "../../../context/super-context-policy.js";
-import type { WorkerCapabilityDescriptor } from "../../../orchestration/worker-capabilities/index.js";
+import {
+  partitionWorkerCapabilityControlsSchema,
+  type WorkerCapabilityDescriptor,
+} from "../../../orchestration/worker-capabilities/index.js";
+import { projectCapabilityControlsInputReference } from "./controls-input-reference.js";
 import {
   buildWorkerCapabilityExecutionInstructions,
   buildWorkerDecisionInstructions,
@@ -172,11 +176,14 @@ export function projectWorkerDecisionContext(
       : baseReferenceMessages),
   ]);
   // Reuse original message objects so evidence provenance survives every phase.
+  const sharedPrompt = capabilityExecutionPending
+    ? buildWorkerAssignmentPrompt(session, "evidence_context")
+    : prompt;
   const sharedContextMessages =
     options.evidenceAssessment?.contextMessages ??
     Object.freeze([
       ...referenceMessages,
-      Object.freeze({ role: "user" as const, content: prompt }),
+      Object.freeze({ role: "user" as const, content: sharedPrompt }),
       ...continuationMessages,
     ].map((message) => Object.freeze(message)));
   const context = projectRequestContext({
@@ -204,10 +211,13 @@ export function projectWorkerDecisionContext(
 
 export function buildWorkerAssignmentPrompt(
   session: PreparedWorkerDecisionSession,
+  purpose: "current_model_call" | "evidence_context" = "current_model_call",
 ): string {
   const { callIdentity, objective, options } = session;
+  const includeControlsReference = canProjectSuperControlsReference(session, purpose);
   const { dependencyResults, operationSupervision } = session.canonicalState;
   const {
+    capabilities,
     pendingCapabilitySelection,
     pendingCapabilityBatchSelection,
     executionPending: capabilityExecutionPending,
@@ -255,6 +265,8 @@ export function buildWorkerAssignmentPrompt(
             pendingCapabilitySelection:
               projectPendingCapabilityExecutionAssignment(
                 pendingCapabilitySelection,
+                capabilities,
+                includeControlsReference,
               ),
           }
         : {}),
@@ -262,7 +274,10 @@ export function buildWorkerAssignmentPrompt(
         ? {
             pendingCapabilityBatchSelection:
               pendingCapabilityBatchSelection.map(
-                projectPendingCapabilityExecutionAssignment,
+                (pending, index) => projectPendingCapabilityExecutionAssignment(
+                  pending, capabilities, includeControlsReference,
+                  `invocation_${index + 1}`,
+                ),
               ),
           }
         : {}),
@@ -281,12 +296,11 @@ export function buildWorkerAssignmentPrompt(
 
 function projectPendingCapabilityExecutionAssignment(
   pending: WorkerPendingCapabilitySelection,
-): Readonly<{
-  capabilityId: string;
-  authoringObjective?: string;
-  selectionControls?: WorkerPendingCapabilitySelection["selectionControls"];
-}> {
-  return Object.freeze({
+  capabilities: readonly WorkerCapabilityDescriptor[],
+  includeControlsReference: boolean,
+  slot?: string,
+) {
+  const assignment = {
     capabilityId: pending.capabilityId,
     ...(pending.authoringObjective
       ? { authoringObjective: pending.authoringObjective }
@@ -294,7 +308,33 @@ function projectPendingCapabilityExecutionAssignment(
     ...(pending.selectionControls
       ? { selectionControls: pending.selectionControls }
       : {}),
+  };
+  if (!includeControlsReference) return Object.freeze(assignment);
+  const descriptor = capabilities.find(
+    ({ capabilityId }) => capabilityId === pending.capabilityId,
+  );
+  if (!descriptor) throw new Error("worker_controls_reference_capability_missing");
+  const partition = partitionWorkerCapabilityControlsSchema(
+    descriptor.controls, descriptor.selectionControlIds,
+  );
+  if (!partition.ok) throw new Error("worker_controls_reference_partition_invalid");
+  return Object.freeze({
+    ...assignment,
+    ...(slot ? { slot } : {}),
+    ...projectCapabilityControlsInputReference(
+      partition.value.remainingSchema, descriptor.controlDocumentation,
+    ),
   });
+}
+
+function canProjectSuperControlsReference(
+  session: PreparedWorkerDecisionSession,
+  purpose: "current_model_call" | "evidence_context",
+): boolean {
+  if (purpose !== "current_model_call") return false;
+  const authority = session.canonicalState.canonicalSource?.head.policy.authority;
+  if (!authority) return false;
+  return hasSuperContextContract(authority, "delegated.worker");
 }
 
 function phaseAuthorsRuntimePathControl(

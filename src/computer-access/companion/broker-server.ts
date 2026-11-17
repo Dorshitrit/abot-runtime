@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import type { HostConnection } from "./connection.js";
+import { projectSystemApplicationResultForBudget } from "../application-result-budget.js";
+import { brokerResultBudget } from "./broker-result-budget.js";
 import { serveObservationSubscription } from "./observation-broker.js";
 import {
   createBrokerLocation,
@@ -45,15 +47,18 @@ async function dispatchBrokerRequest(
   if (!isHostWireOperation(input.operation))
     return brokerFailure("invalid_host_operation");
   if (!isHostRecord(input.params)) return brokerFailure("invalid_host_params");
+  const result = await connection.execute({
+    hostId: input.hostId,
+    connectionId: input.connectionId,
+    operation: input.operation,
+    params: input.params,
+    abortSignal: signal,
+  });
   return {
     ok: true,
-    result: await connection.execute({
-      hostId: input.hostId,
-      connectionId: input.connectionId,
-      operation: input.operation,
-      params: input.params,
-      abortSignal: signal,
-    }),
+    result: input.operation === "system_applications"
+      ? projectSystemApplicationResultForBudget(result, brokerResultBudget)
+      : result,
   };
 }
 function serveBrokerSocket(

@@ -1,4 +1,5 @@
 import { createSystemCommandPathAdapter } from "./command-working-directory.js";
+import { systemRequestTargetGuidance } from "./system-command-guidance.js";
 import type {
   RuntimeToolPathResolver,
   ToolCallAdapter,
@@ -120,7 +121,11 @@ function projectSystemRequestModule(
   resolver?: RuntimeToolPathResolver,
 ): ToolModuleDeclaration {
   const targets = Object.freeze(snapshot.map(routeTargetId));
-  const availability = ` Available targets for this request: ${targets.join(", ")}.`;
+  const availability = systemRequestTargetGuidance(
+    module.definition.name,
+    snapshot,
+    resolver !== undefined,
+  );
   return Object.freeze({
     ...module,
     normalInvocation: {

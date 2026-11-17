@@ -9,7 +9,10 @@ export function createSetupEmbeddingConfigRepository(params: {
   rootDir: string;
   configPath?: string;
 }): LongTermMemoryOnboardingConfigRepository {
-  const repository = createFileLongTermMemoryOnboardingConfigRepository(params);
+  const repository = createFileLongTermMemoryOnboardingConfigRepository({
+    ...params,
+    backup: false,
+  });
   return Object.freeze({
     read: () => repository.read(),
     write(config, expectedConfig) {

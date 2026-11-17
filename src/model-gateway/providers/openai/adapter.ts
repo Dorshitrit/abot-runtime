@@ -1,4 +1,5 @@
 import type { ModelProviderAdapter } from "../contracts.js";
+import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
 import { emitOpenAISchemaDiagnostics } from "./diagnostics.js";
 import { countOpenAIInputTokens } from "./input-token-count.js";
 import {
@@ -11,6 +12,7 @@ import { invokeOpenAIResponses } from "./responses-invocation.js";
 export function createOpenAIProviderAdapter(): ModelProviderAdapter {
   return Object.freeze({
     type: "openai",
+    parameterCapabilities: getProviderParameterCapabilities("openai"),
     supportsImageInput: true,
     embed: embedWithOpenAI,
     countInputTokens: countOpenAIInputTokens,

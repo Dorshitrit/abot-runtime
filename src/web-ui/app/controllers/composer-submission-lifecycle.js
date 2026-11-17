@@ -82,6 +82,9 @@ export function createComposerSubmissionLifecycle({ drafts, onChange = () => {} 
     },
     submitCaptured,
     hasPendingScope,
+    *ownedScopes() {
+      for (const attempt of attempts.values()) yield attempt.payload.scope;
+    },
     restoreForManualReview,
     paused: (scope) => [...attempts.values()].filter((attempt) =>
       attempt.phase === "uncertain" && scopeKey(attempt.payload.scope) === scopeKey(scope)),

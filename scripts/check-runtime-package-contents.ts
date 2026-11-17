@@ -46,6 +46,12 @@ for (const path of paths) {
 }
 
 const requiredPaths = [
+  ...["runtime/model/invocation-reasoning-presentation", "runtime/request/model-selection-presentation",
+    "sessions/model-selection", "sessions/request-kind", "shared/session-model-selection"]
+    .flatMap(path => [`dist/src/${path}.js`, `dist/src/${path}.d.ts`]),
+  ...["session-run-reasoning.js", "session-run-selection-evidence.js", "session-run-selection-presentation.js",
+    "session-run-selection.js", "session-run-selection.d.ts"]
+    .map(file => `dist/src/web-ui/app/controllers/${file}`),
   ...[
     "runtime/commands/catalog", "runtime/commands/contracts", "runtime/commands/model-context",
     "runtime/commands/run", "runtime/commands/compact", "runtime/model/bound-invocation",
@@ -331,6 +337,9 @@ const requiredPaths = [
   "dist/src/web-ui/app/services/runtime-web-client/projects.d.ts",
   "dist/src/web-ui/app/styles/13-projects.css",
   "plugins/system/skills/system_actions/SKILL.md",
+  "plugins/system/skills/system_commands/SKILL.md",
+  "plugins/system/skills/system_applications/SKILL.md",
+  "plugins/system/skills/computer_desktop/SKILL.md",
   "docs/projects-and-full-plus.md",
   "dist/src/capabilities/file-output-presentation.js",
   "dist/src/capabilities/file-output-presentation.d.ts",
@@ -769,8 +778,12 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Shared SPARK chat admission and its Bridge adapter add three module/declaration pairs.
 // Provider-default reasoning fallback adds one module/declaration pair.
 // Bounded structured-output repair adds two module/declaration pairs.
-const maxFileCount = 5_075;
-const maxUnpackedSizeBytes = 15_170_000;
+// QA fixes add the Supervisor path resolver pair and shared embedding feedback.
+// Plugin input references and schema validation owners add seven module/declaration pairs.
+// Session model selection adds five module/declaration pairs and five browser assets.
+// SYSTEM executable evidence and scoped guidance add 23 packaged files.
+const maxFileCount = 5_233;
+const maxUnpackedSizeBytes = 15_740_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

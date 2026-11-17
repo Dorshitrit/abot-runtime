@@ -103,6 +103,12 @@ export function createComposerDrafts() {
 
   return {
     open,
+    hasUnsentDraft(scope) {
+      const draft = records.get(scopeKey(scope));
+      if (!draft) return false;
+      if (draft.uploading) return true;
+      return !draft.isEmpty();
+    },
     restore: (captured) => open(captured.scope).restore(captured),
     clearAttachments: (scope) => records.get(scopeKey(scope))?.clearAttachments() ?? [],
     resetSessionData(scope) {

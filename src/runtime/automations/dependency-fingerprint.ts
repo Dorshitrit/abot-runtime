@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { stripToolInputDocumentation } from "../../capabilities/normal-invocation/input-documentation.js";
 import type { RuntimeConfig } from "../ports.js";
 import type { AutomationCatalogOperation } from "./catalog.js";
 import type { AgentNode, AutomationRevision, OperationRef } from "./definition-contracts.js";
@@ -24,10 +25,11 @@ function executionContract(operation: AutomationCatalogOperation | undefined) {
     toolName: operation.toolName,
     operationId: operation.operationId,
     contractVersion: operation.contractVersion,
+    ...(operation.requiresRequestBinding ? { requiresRequestBinding: true } : {}),
     permissionMode: operation.permissionMode,
     effect: operation.effect,
     approval: operation.approval,
-    input: operation.input,
+    input: stripToolInputDocumentation(operation.input),
     ...(hasFixedExecutionParameters ? { fixedParams: operation.fixedParams } : {}),
     payload: operation.payload ?? null,
     attachmentInput: operation.attachmentInput ?? null,
@@ -60,6 +62,6 @@ export function fingerprintAutomationDependencies(input: {
   }));
   return createHash("sha256").update(stableJson({
     contracts,
-    models: projectAutomationModelDependencies(input.config, agents),
+    models: projectAutomationModelDependencies(input.config, agents, input.operations),
   })).digest("hex");
 }

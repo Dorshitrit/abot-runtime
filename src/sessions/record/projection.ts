@@ -103,9 +103,13 @@ export function getRequestFinalState(
       };
     }
     if (event.type === "failed") {
+      const details = event.payload.details;
+      const stoppedResponse = details && typeof details === "object" && "stoppedResponse" in details
+        ? details.stoppedResponse : undefined;
       return {
         status: "failed",
         error: event.payload.error,
+        ...(typeof stoppedResponse === "string" && stoppedResponse.trim() ? { details: { stoppedResponse } } : {}),
         completedAt: toEpochMs(event.timestamp),
       };
     }
@@ -272,6 +276,15 @@ export function normalizeSessionTitle(title: string): string {
   return title.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
+/** Display-only title for sessions that did not reach their title author. */
+export function projectConversationTitle(session: SessionRecord, visibleMessages: SessionRecord["messages"]): string {
+  if (session.title.trim() && session.title !== session.id) return session.title;
+  const firstUser = visibleMessages.find((message) =>
+    message.role === "user" && messageSource(message) === "user" && message.content.trim(),
+  );
+  return firstUser ? normalizeSessionTitle(firstUser.content) : session.title;
+}
+
 export function toSessionListItem(session: SessionRecord) {
   const visibleMessages = clientVisibleMessages(session.messages);
   const lastMessage = visibleMessages.at(-1) ?? null;
@@ -282,7 +295,7 @@ export function toSessionListItem(session: SessionRecord) {
     id: session.id,
     ...(session.kind ? { kind: session.kind } : {}),
     ...(session.project ? { project: session.project } : {}),
-    title: session.title,
+    title: projectConversationTitle(session, visibleMessages),
     createdAt: toEpochMs(session.createdAt),
     updatedAt: toEpochMs(session.updatedAt),
     lastMessagePreview: lastMessage ? previewMessage(lastMessage.content) : "",

@@ -2,7 +2,7 @@ import { resolvePluginPlatformCompatibility } from "../runtime/plugins/platform-
 import { readPluginConfigurationStore } from "../runtime/plugins/configuration-store.js";
 import { hasConfigurablePluginValues } from "./plugin-configuration-view.js";
 import { installedPluginPackage } from "../runtime/plugins/installation/installed-package.js";
-import { ABOT_RUNTIME_EXTENSION } from "../plugin-contract/manifest.js";
+import { ABOT_RUNTIME_EXTENSION, type AbotRuntimePluginExtension } from "../plugin-contract/manifest.js";
 import type { RuntimePluginConfig } from "../runtime/ports.js";
 import type { DiscoveredAgentPluginManifest } from "../runtime/plugins/discovered-manifest.js";
 import {
@@ -29,6 +29,7 @@ export type RuntimePluginSnapshot = {
     id: string;
     description?: string;
     version?: string;
+    executionPolicies?: AbotRuntimePluginExtension["executionPolicies"];
     pluginEnabled: boolean;
     compatibility: ReturnType<typeof resolvePluginPlatformCompatibility>;
     removable: boolean;
@@ -93,6 +94,7 @@ export function projectPluginSnapshot(
     selection,
     plugins: manifests.map((plugin) => {
       const manifest = plugin.manifest;
+      const executionPolicies = manifest.extensions[ABOT_RUNTIME_EXTENSION].executionPolicies;
       const capabilities = projectPluginCapabilities(plugin, selection);
       const capabilityCount = capabilities.length;
       const selectedCapabilityCount = capabilities.filter(
@@ -100,6 +102,7 @@ export function projectPluginSnapshot(
       ).length;
       return {
         id: manifest.name,
+        ...(executionPolicies ? { executionPolicies: [...executionPolicies] } : {}),
         compatibility: resolvePluginPlatformCompatibility(
           manifest,
           runtimePlatform,

@@ -1,0 +1,208 @@
+/* Model controls share a grid independently of the surrounding profile form. */
+.config-model-parameters {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 18px;
+  min-width: 0;
+  padding-top: 8px;
+  container-type: inline-size;
+}
+
+.config-model-parameter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.config-model-parameter-toolbar > button {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+.config-model-parameter-toolbar > small,
+.config-model-parameters > .muted {
+  margin: 0;
+  color: var(--config-faint);
+  font-size: var(--font-size-xs);
+}
+
+.config-model-parameter-group {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.config-model-parameter-group > h4 {
+  margin: 0;
+  color: var(--config-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.config-model-parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.config-model-parameter,
+.config-model-parameter-grid > label {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--config-line);
+  border-radius: 8px;
+  background: var(--config-surface);
+}
+
+.config-model-parameter-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 20px;
+  min-width: 0;
+}
+
+.config-model-parameter-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--config-copy);
+  font-size: var(--font-size-sm);
+}
+
+.config-model-parameter-source {
+  flex: none;
+  max-width: 48%;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--config-control);
+  color: var(--config-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.config-model-parameter-inputs {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 8px;
+}
+
+.config-model-parameter-inputs > :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Keep native menus and number steppers, with room inside model controls. */
+.config-workspace-panel .config-dashboard .config-model-editor select {
+  appearance: none;
+  padding-inline: 12px 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m2 2 4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 12px 8px;
+  background-position: right 12px center;
+}
+
+.config-workspace-panel .config-dashboard .config-model-editor select:dir(rtl) {
+  background-position: left 12px center;
+}
+
+.config-workspace-panel .config-dashboard .config-model-editor input[type="number"] {
+  padding-inline: 12px;
+}
+
+.config-workspace-panel .config-dashboard .config-model-editor input[type="number"]::-webkit-inner-spin-button {
+  margin-inline-start: 6px;
+  margin-inline-end: 0;
+}
+
+@media (forced-colors: active) {
+  .config-workspace-panel .config-dashboard .config-model-editor select {
+    appearance: auto;
+    padding-inline-end: 12px;
+    background-image: none;
+  }
+}
+
+.config-model-parameter-info > summary {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--config-line);
+  border-radius: 50%;
+  color: var(--config-muted);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  cursor: pointer;
+  list-style: none;
+}
+
+.config-model-parameter-info > summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-model-parameter-info > summary:focus-visible,
+.config-model-parameter-notes > summary:focus-visible,
+.config-model-parameter-advanced > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.config-model-parameter-help {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  inset-inline: 0;
+  padding: 10px;
+  border: 1px solid var(--config-line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.config-model-parameter-help p,
+.config-model-parameter-notes p {
+  margin: 0;
+  color: var(--config-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.config-model-parameter-help p + p {
+  margin-top: 7px;
+}
+
+.config-model-parameter-notes > summary,
+.config-model-parameter-advanced > summary {
+  color: var(--config-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.config-model-parameter-notes[open] {
+  flex-basis: 100%;
+}
+
+.config-model-parameter-notes p,
+.config-model-parameter-advanced > .config-model-parameter-grid {
+  margin-top: 10px;
+}
+
+.config-model-parameter-warning {
+  margin: 0;
+  color: var(--amber);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+@container (max-width: 560px) {
+  .config-model-parameter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -9,7 +9,25 @@ const SENSITIVE_TARGET = "Target unavailable because its shell identity contains
 
 function protectApplication(application: SystemApplication): SystemApplication | undefined {
   if (redactSecretText(application.id) !== application.id) return undefined;
+  const resolution = application.executableResolution;
+  if (isSensitiveResolvedExecutable(resolution))
+    return {
+      ...application,
+      name: redactSecretText(application.name),
+      executableResolution: {
+        status: "unresolved",
+        source: resolution.source,
+        reason: "sensitive_executable_withheld",
+      },
+    };
   return { ...application, name: redactSecretText(application.name) };
+}
+
+function isSensitiveResolvedExecutable(
+  resolution: SystemApplication["executableResolution"],
+): resolution is Extract<NonNullable<SystemApplication["executableResolution"]>, { status: "resolved" }> {
+  if (resolution?.status !== "resolved") return false;
+  return redactSecretText(resolution.path) !== resolution.path;
 }
 
 function protectCatalog(catalog: SystemApplicationCatalog): SystemApplicationCatalog {

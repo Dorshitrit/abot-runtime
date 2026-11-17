@@ -2,20 +2,22 @@ import {
   enforcePluginResultByteBudget,
   type ToolImplementationOutput,
 } from "../plugin-sdk/index.js";
-import { isHostRecord, type HostIdentity } from "./companion/protocol.js";
+import { isHostRecord, type HostIdentity, type HostOperation } from "./companion/protocol.js";
+import { projectSystemApplicationResultForBudget } from "./application-result-budget.js";
 
 /** Preserve execution provenance without publishing private connection identity. */
 export function attachHostEvidence(
   result: ToolImplementationOutput,
   _hostId: string,
   identity: HostIdentity,
+  operation?: HostOperation,
 ): ToolImplementationOutput {
   const data = modelSafeHostResultData(result.data ?? {});
   const output = describeCompanionProcessNamespace(
     result.output,
     data.spawnedProcess,
   );
-  return enforcePluginResultByteBudget({
+  const receipt: ToolImplementationOutput = {
     ...result,
     output: [
       `Execution transport: host_companion; OS target: ${identity.os}.`,
@@ -37,7 +39,10 @@ export function attachHostEvidence(
           }
         : {}),
     },
-  });
+  };
+  return enforcePluginResultByteBudget(operation === "system_applications"
+    ? projectSystemApplicationResultForBudget(receipt)
+    : receipt);
 }
 
 function modelSafeHostResultData(

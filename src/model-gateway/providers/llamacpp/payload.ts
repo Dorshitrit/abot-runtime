@@ -3,6 +3,7 @@ import { resolveModelGatewayFormat } from "../../structured-output/format-contra
 import type { ModelProviderInvocationParams } from "../contracts.js";
 import { projectLlamaCppMessages } from "./message-projection.js";
 import { projectLlamaCppFormat } from "./schema-format.js";
+import { projectResolvedModelParameters } from "../parameter-projection.js";
 
 function nativeReasoningBudgetTokens(budget: ModelReasoningBudget): number {
   if (budget.mode === "server-default") return -1;
@@ -29,6 +30,7 @@ export function buildLlamaCppChatPayload(
   if (typeof generation.topP === "number" && Number.isFinite(generation.topP)) {
     payload.top_p = generation.topP;
   }
+  projectResolvedModelParameters(payload, "llamacpp", invocation.parameters);
   const format = projectLlamaCppFormat(resolveModelGatewayFormat(requestBody.format, invocation.format));
   if (format) payload.response_format = format;
   if (invocation.think !== undefined) {
@@ -37,7 +39,7 @@ export function buildLlamaCppChatPayload(
   }
   const thinkingIsDisabled = invocation.think === "none";
   if (thinkingIsDisabled) {
-    payload.reasoning_budget_tokens = 0;
+    if (invocation.parameters?.controls.thinking_budget?.mode !== "omit") payload.reasoning_budget_tokens = 0;
     return payload;
   }
   if (invocation.reasoningBudget) {

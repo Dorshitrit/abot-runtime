@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { ToolModuleDeclaration } from "../../capabilities/tool-types.js";
@@ -6,6 +7,7 @@ import { successResult } from "../../plugin-sdk/index.js";
 import { resolveModelInvocation } from "../../model-gateway/invocation-policy.js";
 import { isRegisteredModelStepInLane } from "../../shared/model-step-registry.js";
 import type { SessionRecord } from "../../sessions/types.js";
+import type { ModelParameterProfileCatalog } from "../../shared/model-parameters.js";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
 import { createLocalRuntimeOwner } from "../local-host/app-owner.js";
 import type { LocalRuntimeOwner } from "../local-host/contracts.js";
@@ -14,17 +16,18 @@ import type { RuntimeConfig } from "../ports.js";
 import { resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createExecApprovalScript } from "./support/exec-sensitive-approval-script.js";
 import { makeOwnerControlPeer } from "./support/local-runtime-owner-peer.js";
+import * as lifecycleEvents from "../../sessions/request-lifecycle/record-operations.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const release of cleanup.splice(0).reverse()) await release();
+  vi.restoreAllMocks();
   resetDebugLoggerConfig();
 });
 
-async function fixture(policy: "execution-agent-v1" | "supervisor-worker-v1") {
-  const artifacts = join(process.cwd(), ".codex", "artifacts", "llamacpp-reasoning-lifecycle");
-  await mkdir(artifacts, { recursive: true });
-  const rootDir = await mkdtemp(join(artifacts, "approval-"));
+async function fixture(policy: "execution-agent-v1" | "supervisor-worker-v1", actionCount = 1,
+  parameterProfiles?: ModelParameterProfileCatalog) {
+  const rootDir = await mkdtemp(join(tmpdir(), "reasoning-approval-"));
   cleanup.push(() => rm(rootDir, { recursive: true, force: true }));
   const configPath = join(rootDir, "runner.json");
   await writeFile(configPath, JSON.stringify({
@@ -43,15 +46,18 @@ async function fixture(policy: "execution-agent-v1" | "supervisor-worker-v1") {
       compiledDir: join(rootDir, "compiled"), traceFile: join(rootDir, "trace.jsonl"),
     },
     models: {
+      ...(parameterProfiles ? { parameterProfiles } : {}),
       providers: { native: { type: "llamacpp", baseUrl: "http://unused.invalid:8080" } },
       profiles: { gemma: { provider: "native", model: "fixture", contextWindowTokens: 64000,
-        supportsThinking: true, generation: { reasoningEffort: "none" } } },
+        supportsThinking: true, generation: { reasoningEffort: "none",
+          ...(parameterProfiles ? { parameters: { temperature: { mode: "inherit" as const } } } : {}) } } },
       invocationProfiles: { alias: { profileId: "gemma" } },
       defaults: { profileId: "gemma" },
     },
     modelExecutionPolicies: { gemma: { policy } },
   };
-  const models = createExecApprovalScript(policy, [{ capabilityId: "record_effect", controls: {} }], "approval_fixture");
+  const models = createExecApprovalScript(policy,
+    Array.from({ length: actionCount }, () => ({ capabilityId: "record_effect", controls: {} })), "approval_fixture");
   const execute = vi.fn(async () => successResult({ output: "The approved fixture action completed." }));
   const module: ToolModuleDeclaration = {
     definition: { name: "reasoning_approval", routingCapability: "semantic_mutation", catalogGroups: ["approval_fixture"] },
@@ -132,3 +138,79 @@ async function expectCompleted(owner: LocalRuntimeOwner, peer: ReturnType<typeof
     expect(session.messages.filter((message) => message.requestId === "budget-request" && message.role === "user")).toHaveLength(1);
   });
 }
+
+test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
+  "%s resumes with its captured parameter profile after configuration changes", async policy => {
+    const catalog: ModelParameterProfileCatalog = {
+      schemaVersion: 1, revision: "original", diagnostics: [], profiles: [{
+        schemaVersion: 1, id: "fixture-tuning", priority: 0,
+        match: [{ kind: "exact", pattern: "fixture", provider: "llamacpp" }],
+        defaults: { temperature: 0.6 },
+      }],
+    };
+    const f = await fixture(policy, 1, catalog);
+    const result = await f.owner.call("request.run", [{ type: "run_request",
+      requestId: "budget-request", sessionId: "session", text: "Perform one fixture action.",
+      toolPermissionMode: "ask", agentMode: "reasoning", modelPreference: { profileId: "gemma" },
+    }, { durableApprovals: true, approvalAvailable: true }], f.peer);
+    expect(result).toMatchObject({ kind: "awaiting_approval" });
+    expect(f.execute).not.toHaveBeenCalled();
+    const callsBeforeRestart = f.models.invoke.mock.calls.length;
+    await f.owner.stop(); await f.owner.whenIdle?.();
+    f.config.models!.parameterProfiles = { ...catalog, revision: "replacement",
+      profiles: [{ ...catalog.profiles[0]!, defaults: { temperature: 0.1 } }] };
+    const restarted = await f.start();
+    const [approval] = await restarted.call("request.approvals", ["session"], f.peer) as LocalPendingToolApproval[];
+    expect(approval).toBeDefined();
+    expect(await restarted.call("request.approval.decide", [{ sessionId: "session",
+      requestId: "budget-request", approvalId: approval!.request.approvalId,
+      ...approval!.wait!, commandId: "approve-captured-catalog", approved: true,
+    }], f.peer)).toEqual({ accepted: true });
+    await restarted.whenIdle?.();
+    await expectCompleted(restarted, f.peer);
+    expect(f.execute).toHaveBeenCalledOnce();
+    const resumed = f.models.invoke.mock.calls.slice(callsBeforeRestart);
+    expect(resumed.length).toBeGreaterThan(0);
+    for (const [input] of resumed) {
+      expect(input.modelPolicy?.parameterProfiles?.revision).toBe("original");
+      expect(resolveModelInvocation(input).parameters?.values.temperature).toBe(0.6);
+    }
+  }, 20000,
+);
+
+test.each((["execution-agent-v1", "supervisor-worker-v1"] as const).flatMap((policy) =>
+  [false, true].map((legacy) => ({ policy, legacy }))))(
+  "$policy persists selection once across two saved resumes (legacy: $legacy)",
+  async ({ policy, legacy }) => {
+    const append = vi.spyOn(lifecycleEvents, "appendLifecycleEvent");
+    const f = await fixture(policy, 2);
+    await f.owner.call("request.run", [{ type: "run_request", requestId: "budget-request", sessionId: "session",
+      text: "Perform both fixture actions.", toolPermissionMode: "ask", agentMode: "fast",
+      modelPreference: { profileId: "gemma" } }, { durableApprovals: true, approvalAvailable: true }], f.peer);
+    const selectionAppends = () => append.mock.calls.filter(([, , payload]) => payload.name === "request.model.selected").length;
+    expect(selectionAppends()).toBe(1);
+    const sessionPath = join(f.config.paths.sessionsDir, "session.json");
+    await f.owner.stop(); await f.owner.whenIdle?.();
+    if (legacy) {
+      const saved = JSON.parse(await readFile(sessionPath, "utf8")) as SessionRecord;
+      for (const request of saved.requests ?? []) request.events = request.events.filter((event) => event.payload.name !== "request.model.selected");
+      await writeFile(sessionPath, JSON.stringify(saved));
+    }
+    const restarted = await f.start();
+    for (let index = 0; index < 2; index += 1) {
+      const pending = await restarted.call("request.approvals", ["session"], f.peer) as LocalPendingToolApproval[];
+      expect(pending).toHaveLength(1);
+      const approval = pending[0]!;
+      expect(await restarted.call("request.approval.decide", [{ sessionId: "session", requestId: "budget-request",
+        approvalId: approval.request.approvalId, ...approval.wait!, commandId: `approve-${index}`, approved: true }], f.peer))
+        .toEqual({ accepted: true });
+      await restarted.whenIdle?.();
+      expect(selectionAppends()).toBe(1);
+      const persisted = JSON.parse(await readFile(sessionPath, "utf8")) as SessionRecord;
+      expect(persisted.requests?.[0]?.events.filter((event) => event.payload.name === "request.model.selected"))
+        .toHaveLength(legacy ? 0 : 1);
+    }
+    await expectCompleted(restarted, f.peer);
+    expect(f.execute).toHaveBeenCalledTimes(2);
+  }, 20000,
+);

@@ -96,6 +96,7 @@ describe("web ui message link previews", () => {
       client,
     });
     expect(component.createNode({ text: source, streaming: true })).toBeNull();
+    expect(component.createNode({ text: source, failedResponse: true })).toBeNull();
     expect(component.createNode({ text: "No link here" })).toBeNull();
     expect(component.createNode({ text: `\`${source}\`` })).toBeNull();
     expect(client.get).not.toHaveBeenCalled();

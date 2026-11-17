@@ -11,6 +11,9 @@ import {
 } from "./model-plugin-selection.js";
 
 export function createConfigWorkspaceEvents({
+  parameterEdits,
+  invalidateParameterPreview = () => {},
+  refreshParameterPreview = () => {},
   modelPluginViewState,
   state,
   dom,
@@ -69,7 +72,12 @@ export function createConfigWorkspaceEvents({
     if (description) description.textContent = route.description;
   }
 
-  function handleFieldMutation(element) {
+  function shouldRefreshPluginAvailability(element) {
+    return element.dataset.kind === "model" && element.dataset.valueType === "execution-policy";
+  }
+
+  function handleFieldMutation(element, { commit = true } = {}) {
+    if (element.validity?.badInput) return;
     const action = element.dataset.configAction;
     const path = parseConfigPath(element.dataset.path);
     const file = findConfigFile(element.dataset.kind, element.dataset.id);
@@ -88,16 +96,25 @@ export function createConfigWorkspaceEvents({
     });
     if (activatedGeneration)
       syncActivatedReasoningBudget(dom.configDashboard, file, state.configDashboard, activatedGeneration);
+    if (commit) void refreshParameterPreview();
     syncExecutionRouteDescription(element);
+    if (!commit) return;
+    if (shouldRefreshPluginAvailability(element)) {
+      renderConfigDashboard();
+      return;
+    }
     if (shouldRefreshReasoningBudgetFields(file, path, element.dataset.valueType)) renderConfigDashboard();
   }
 
   function handleDashboardInput(event) {
     if (dashboardIsBusy()) return;
     const element = event.target?.closest?.("[data-config-action]");
-    if (!element || element.dataset.configAction !== "field") return;
+    if (!element) return;
     if (configFieldUsesChangeEvent(element)) return;
-    handleFieldMutation(element);
+    invalidateParameterPreview();
+    if (parameterEdits?.handle(element, { commit: false })) return;
+    if (element.dataset.configAction !== "field") return;
+    handleFieldMutation(element, { commit: false });
   }
 
   function handleDashboardChange(event) {
@@ -108,6 +125,7 @@ export function createConfigWorkspaceEvents({
     }
     const actionElement = element?.closest?.("[data-config-action]");
     if (!actionElement) return;
+    if (parameterEdits?.handle(actionElement)) return;
     const action = actionElement.dataset.configAction;
     if (action === "model-plugin-enabled") {
       mutateConfigFile(
@@ -144,7 +162,7 @@ export function createConfigWorkspaceEvents({
       handleFieldMutation(actionElement);
       return;
     }
-    if (action === "field" && configFieldUsesChangeEvent(actionElement)) {
+    if (action === "field") {
       handleFieldMutation(actionElement);
     }
   }
@@ -219,6 +237,7 @@ export function createConfigWorkspaceEvents({
     const kind = element.dataset.kind;
     const id = element.dataset.id;
     if (dashboardIsBusy()) return;
+    if (action === "model-parameters-recommended") { parameterEdits?.handle(element); return; }
     if (action === "edit-provider" || action === "delete-provider") {
       const files = state.configDashboard?.files;
       const connection = configuredProviderConnections(files?.runtime, files?.models || [])
@@ -238,6 +257,7 @@ export function createConfigWorkspaceEvents({
     if (action === "select-model") {
       state.selectedConfigModelId = element.dataset.modelId || "";
       renderConfigDashboard();
+      void refreshParameterPreview();
       return;
     }
     if (action === "save-file") {
@@ -246,10 +266,12 @@ export function createConfigWorkspaceEvents({
     }
     if (action === "reset-file") {
       resetConfigFile(kind, id);
+      void refreshParameterPreview();
       return;
     }
     if (action === "apply-raw") {
       applyRawDraft();
+      void refreshParameterPreview();
       return;
     }
     if (action === "save-raw") {
@@ -264,6 +286,7 @@ export function createConfigWorkspaceEvents({
         (config) => deleteConfigPathValue(config, path),
         { rerender: true },
       );
+      void refreshParameterPreview();
       return;
     }
     if (action === "add-step") {
@@ -272,6 +295,7 @@ export function createConfigWorkspaceEvents({
     }
     if (action === "add-calibration") {
       handleAddCalibrationAction(element, kind, id);
+      void refreshParameterPreview();
     }
   }
 

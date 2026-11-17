@@ -135,7 +135,10 @@ async function restoreSetupScaffoldConfig(
   candidate: Record<string, unknown>,
 ): Promise<void> {
   if (source.exists) {
-    await transaction.write(source.config, { expectedConfig: candidate });
+    await transaction.write(source.config, {
+      expectedConfig: candidate,
+      backup: false,
+    });
     return;
   }
   const current = await readConfigFileSnapshot(transaction.path);
@@ -339,6 +342,7 @@ async function saveRuntimeSetupScaffold(
     const commit = async () => {
       await transaction.write(runtimeConfig, {
         expectedConfig: params.source.config,
+        backup: false,
       });
       configWritten = true;
       return createRuntimeSetupDraft(

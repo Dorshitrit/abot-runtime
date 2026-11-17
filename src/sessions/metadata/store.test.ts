@@ -74,7 +74,7 @@ describe("persisted session metadata", () => {
 
   test("backfills once and reuses the disk index after module restart without reading source bodies", async () => {
     const directory = await fixture();
-    const record = session("legacy");
+    const record = { ...session("legacy"), title: "Named session" };
     await writeLegacy(directory, record);
     const original = await fs.readFile(join(directory, "legacy.json"), "utf8");
     const [first, concurrent] = await Promise.all([
@@ -99,6 +99,31 @@ describe("persisted session metadata", () => {
     expect(vi.mocked(fs.readFile).mock.calls.map(([path]) => String(path)))
       .toEqual([join(directory, ".metadata", "legacy.json")]);
     expect(await fs.readFile(join(directory, "legacy.json"), "utf8")).toBe(original);
+  });
+
+  test("reprojects only a legacy placeholder and leaves the original session title available for generation", async () => {
+    const directory = await fixture();
+    const record = session("unlabelled");
+    const first = record.messages[0]!;
+    record.messages.unshift(
+      { ...first, source: "cron", content: "Private job instruction" },
+      { ...first, grounding: "tool_observation", content: "Private observation" },
+    );
+    first.content = "  Real   question " + "x".repeat(100);
+    await saveSessionFile(directory, record);
+    const target = join(directory, ".metadata", "unlabelled.json");
+    const old = JSON.parse(await fs.readFile(target, "utf8"));
+    old.version = 1;
+    old.summary.title = record.id;
+    await fs.writeFile(target, JSON.stringify(old));
+    vi.clearAllMocks();
+    const list = await listSessionMetadata(directory);
+    expect(list[0]?.summary.title).toBe(("Real question " + "x".repeat(100)).slice(0, 80));
+    expect(sourceReads(directory)).toHaveLength(1);
+    vi.clearAllMocks();
+    expect(await listSessionMetadata(directory)).toEqual(list);
+    expect(sourceReads(directory)).toEqual([]);
+    expect(JSON.parse(await fs.readFile(join(directory, "unlabelled.json"), "utf8")).title).toBe(record.id);
   });
 
   test("resumes an interrupted backfill without rebuilding completed entries", async () => {
@@ -184,7 +209,7 @@ describe("persisted session metadata", () => {
     const directory = await fixture();
     await fs.writeFile(join(directory, ".metadata"), "unavailable index directory");
     const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => undefined);
-    const record = session("committed");
+    const record = { ...session("committed"), title: "Named session" };
     await expect(save(directory, record)).resolves.toBeUndefined();
     expect(JSON.parse(await fs.readFile(join(directory, "committed.json"), "utf8"))).toEqual(record);
     expect(warning).toHaveBeenCalledWith(expect.any(String), { code: "SESSION_METADATA_WRITE_FAILED" });

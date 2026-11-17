@@ -12,12 +12,14 @@ import {
   type RuntimeModelPluginConfig,
 } from "../config/model-plugin-config.js";
 import { matchesToolSelectionId } from "../../shared/tool-selection.js";
+import { supportsRequestExecutionPolicy } from "../../shared/request-execution-policy.js";
 
 /** One lazy registration snapshot; any declared restriction wins across projections. */
 export function captureRequestPermissionCatalog(
   registry: ToolRegistry,
   mode: ToolPermissionMode,
   modelPlugins?: RuntimeModelPluginConfig,
+  executionPolicy?: string,
 ) {
   const modelDeniedSelectors = captureModelPluginConfig(modelPlugins)?.deny ?? [];
   const definitions = Object.freeze([...registry.listDefinitions()]);
@@ -29,6 +31,9 @@ export function captureRequestPermissionCatalog(
   const registeredAllowedNames = new Set<string>();
   const registeredDeniedNames = new Set<string>();
   const registeredModelDeniedNames = new Set<string>();
+  const registeredRouteDeniedNames = new Set<string>();
+  const isDefinitionBlockedForRoute = (definition: ToolDefinition) =>
+    !supportsRequestExecutionPolicy(definition.executionPolicies, executionPolicy);
   const isDefinitionBlockedForModel = (definition: ToolDefinition) =>
     modelDeniedSelectors.some((selector) =>
       matchesToolSelectionId(
@@ -38,6 +43,7 @@ export function captureRequestPermissionCatalog(
       ),
     );
   const permitsDefinition = (definition: ToolDefinition) => {
+    if (isDefinitionBlockedForRoute(definition)) return false;
     if (isDefinitionBlockedForModel(definition)) return false;
     return permitsRequiredToolMode(mode, definition.requiredPermissionMode);
   };
@@ -58,6 +64,8 @@ export function captureRequestPermissionCatalog(
       return undefined;
     }
     for (const registration of source) {
+      if (isDefinitionBlockedForRoute(registration.definition))
+        registeredRouteDeniedNames.add(registration.toolName);
       if (isDefinitionBlockedForModel(registration.definition))
         registeredModelDeniedNames.add(registration.toolName);
       const names = permitsRegistration(registration)
@@ -82,7 +90,14 @@ export function captureRequestPermissionCatalog(
     const definition = definitionByName.get(name);
     return definition !== undefined && isDefinitionBlockedForModel(definition);
   }
+  function isRequestToolBlockedForRoute(name: string): boolean {
+    resolveRegistrations();
+    if (registeredRouteDeniedNames.has(name)) return true;
+    const definition = definitionByName.get(name);
+    return definition !== undefined && isDefinitionBlockedForRoute(definition);
+  }
   return Object.freeze({
+    isRequestToolBlockedForRoute,
     isRequestToolBlockedForModel,
     listDefinitions: () =>
       definitions.filter(({ name }) => isRequestToolAvailable(name)),

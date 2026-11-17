@@ -4,6 +4,7 @@
 @import url("./styles/10-shell-sessions.css");
 @import url("./styles/11-workspace-rail.css");
 @import url("./styles/12-conversation-sidebar.css");
+@import url("./styles/12-session-activity.css");
 @import url("./styles/13-projects.css");
 @import url("./styles/20-chat-composer.css");
 @import url("./styles/20-composer-commands.css");
@@ -34,6 +35,7 @@
 @import url("./styles/43-model-setup.css");
 @import url("./styles/44-model-provider-cards.css");
 @import url("./styles/47-config-controls.css");
+@import url("./styles/47-model-parameters.css");
 @import url("./styles/35-memory-onboarding.css");
 @import url("./styles/36-memory-management.css");
 @import url("./styles/39-memory-workspace.css");

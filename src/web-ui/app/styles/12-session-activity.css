@@ -1,0 +1,21 @@
+.session-working-indicator {
+  display: inline-block;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--line);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-radius: 50%;
+  animation: session-working-spin 900ms linear infinite;
+}
+
+.session-working-indicator[hidden] { display: none; }
+
+@keyframes session-working-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-working-indicator { animation: none; }
+}

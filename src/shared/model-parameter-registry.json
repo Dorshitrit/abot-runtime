@@ -1,0 +1,11 @@
+[
+  { "key": "temperature", "label": "Temperature", "group": "sampling", "type": "number", "min": 0, "step": 0.01, "description": "Sampling randomness; omission lets the server choose." },
+  { "key": "top_p", "label": "Top P", "group": "sampling", "type": "number", "min": 0, "max": 1, "step": 0.01, "description": "Cumulative probability threshold." },
+  { "key": "top_k", "label": "Top K", "group": "sampling", "type": "int", "min": 0, "step": 1, "description": "Candidate token count; zero disables the filter where supported." },
+  { "key": "min_p", "label": "Min P", "group": "sampling", "type": "number", "min": 0, "max": 1, "step": 0.01, "description": "Minimum token probability relative to the most likely token." },
+  { "key": "max_output_tokens", "label": "Max output tokens", "group": "reasoning", "type": "int", "min": 1, "step": 1, "description": "Total generation allowance, including reasoning where the provider shares it." },
+  { "key": "repeat_penalty", "label": "Repeat penalty", "group": "sampling", "type": "number", "min": 0, "step": 0.01, "description": "Repetition penalty; one is neutral." },
+  { "key": "reasoning_effort", "label": "Reasoning effort", "group": "reasoning", "type": "enum", "values": ["none", "minimal", "low", "medium", "high", "xhigh"], "description": "Model reasoning effort; supported levels depend on the model." },
+  { "key": "thinking_budget", "label": "Thinking budget", "group": "reasoning", "type": "int", "min": 0, "max": 2147483647, "step": 1, "description": "Reasoning-only token budget; distinct from total output and physical context." },
+  { "key": "seed", "label": "Seed", "group": "sampling", "type": "int", "step": 1, "advanced": true, "description": "Provider sampling seed; reproducibility is not guaranteed." }
+]

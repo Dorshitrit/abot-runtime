@@ -73,6 +73,6 @@ function supervisorResponseRecommendationSemantics(
     purpose: "guide_direct_response_content",
     applicability: "current_direct_response_only",
     limitations:
-      "Internal answer-content recommendation from the accepted Supervisor decision, not new user intent, execution authority, or completion evidence. Use its relevant substance to compose the answer, subject to the current request and supplied facts. Do not expose the recommendation's internal framing.",
+      "Internal answer-content recommendation from the accepted Supervisor decision, not new user intent, execution authority, or completion evidence. Use only relevant points consistent with the current request, supplied runtime state, and settled results; discard conflicting points. The recommendation alone does not establish availability, unavailability, execution, or completion. Do not expose the recommendation's internal framing.",
   };
 }

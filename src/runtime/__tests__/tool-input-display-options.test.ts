@@ -105,7 +105,7 @@ describe("declared input text display options", () => {
     });
   });
 
-  test.each([0, -1, 8_193, 1.5, NaN, Infinity, "8192", null])(
+  test.each([0, -1, 24_577, 1.5, NaN, Infinity, "24576", null])(
     "both declaration entry points reject maxLength=%s",
     (maxLength) => {
       expect(() => moduleDefinition({ maxLength })).toThrow(/maxLength/);

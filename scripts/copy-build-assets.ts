@@ -3,6 +3,21 @@ import { dirname, join } from "node:path";
 import { buildHostCompanionBundle } from "./build-host-companion.js";
 
 const buildAssets = [
+  ...["llamacpp", "ollama", "openai", "openai-chatgpt"].map((provider) => ({
+    source: `src/model-gateway/providers/${provider}/parameter-capabilities.json`,
+    target: `dist/src/model-gateway/providers/${provider}/parameter-capabilities.json`,
+    recursive: false,
+  })),
+  {
+    source: "src/shared/model-parameter-registry.json",
+    target: "dist/src/shared/model-parameter-registry.json",
+    recursive: false,
+  },
+  {
+    source: "src/model-gateway/model-parameter-profiles/builtin",
+    target: "dist/src/model-gateway/model-parameter-profiles/builtin",
+    recursive: true,
+  },
   {
     source: "src/shared/model-step-registry-data.json",
     target: "dist/src/shared/model-step-registry-data.json",

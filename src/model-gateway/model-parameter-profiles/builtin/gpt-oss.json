@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "gpt-oss",
+  "priority": 0,
+  "match": [
+    { "kind": "exact", "pattern": "gpt-oss" },
+    { "kind": "glob", "pattern": "gpt-oss:*" },
+    { "kind": "regex", "pattern": "(^|/)(gpt-oss)(:|-)(20b|120b)([-:.].*)?$" }
+  ],
+  "defaults": {
+    "temperature": 1,
+    "top_p": 1,
+    "top_k": 0,
+    "min_p": 0,
+    "repeat_penalty": 1
+  },
+  "reasoning": {
+    "efforts": ["low", "medium", "high"],
+    "mappings": { "minimal": "low", "xhigh": "high", "none": null },
+    "canDisableThinking": false
+  },
+  "constraints": {
+    "temperature": {
+      "requires": {
+        "key": "reasoning_effort",
+        "values": ["low", "medium", "high"],
+        "allowMissing": true
+      }
+    },
+    "top_p": {
+      "requires": {
+        "key": "reasoning_effort",
+        "values": ["low", "medium", "high"],
+        "allowMissing": true
+      }
+    }
+  },
+  "notes": "Reasoning and content share the output-token limit; leave enough room for both. Temperature 1 and Top P 1 follow the model recommendation; the remaining preset values disable additional sampling filters and repetition penalty."
+}

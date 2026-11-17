@@ -8,6 +8,7 @@ import type {
 } from "../../capabilities/tool-types.js";
 import type { ToolRegistry } from "../ports.js";
 import { projectAvailableTools } from "./tool-availability.js";
+import { discoverToolOperations } from "./tool-operation-discovery.js";
 
 /**
  * Adds trusted request services to an already config-filtered Tool Registry.
@@ -48,6 +49,7 @@ export function bindRequestToolRegistry(
   }
 
   return Object.freeze({
+    discoverOperations: () => discoverToolOperations(registry),
     listDefinitions: () => registry.listDefinitions(),
     ...(registry.listNormalInvocations
       ? { listNormalInvocations: () => resolveNormalInvocations()! }

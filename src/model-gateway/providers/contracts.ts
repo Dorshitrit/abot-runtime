@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import type { ProviderContextOverflow } from "../protocol/provider-context-overflow.js";
 import type { ProviderUserErrorPresentation } from "../protocol/provider-user-error.js";
+import type { ProviderParameterCapabilities } from "./parameter-capabilities.js";
 
 export type ModelProviderEventSink = Readonly<{
   emit(event: ModelGatewayEvent): void;
@@ -72,17 +73,20 @@ export type ModelProviderEmbeddingParams = Readonly<{
 export type ModelProviderEmbeddingModelCatalog = Readonly<{
   supported: boolean;
   models: readonly string[];
+  /** Installed IDs whose provider metadata did not establish embedding support. */
+  unverifiedModels?: readonly string[];
 }>;
 
 export type ModelProviderEmbeddingModelDiscoveryParams = Readonly<{
   providerId: string;
   providerConfig: ModelGatewayProviderConfig;
   fetchImpl: typeof fetch;
+  abortSignal?: AbortSignal;
 }>;
 
 export type ModelProviderEmbeddingModelCatalogResult =
   | ModelProviderInvocationError
-  | Readonly<{ kind: "listed"; models: readonly string[] }>;
+  | (Omit<ModelProviderEmbeddingModelCatalog, "supported"> & Readonly<{ kind: "listed" }>);
 
 export type ModelProviderInvocationParams = Readonly<{
   endpoint: "chat" | "raw";
@@ -108,6 +112,7 @@ export type ModelProviderInputTokenCountParams = Readonly<{
  */
 export type ModelProviderAdapter = Readonly<{
   type: string;
+  parameterCapabilities?: ProviderParameterCapabilities;
   supportsImageInput: boolean;
   embed?(
     params: ModelProviderEmbeddingParams,

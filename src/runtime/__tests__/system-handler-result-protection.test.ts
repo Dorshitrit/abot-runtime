@@ -37,17 +37,25 @@ describe.each(systemProtectionOwners)("$owner protected handler receipts", ({ pr
       testSystemApplication(sensitiveText, "Hidden"),
       testSystemApplication("Safe.App", lateSensitiveText),
     ], lateSensitiveText));
-    const handlers = createSystemHandlers(vi.fn(), resolveTarget, undefined, protection);
+    const run = vi.fn<SystemProcessRunner>(async () => ({
+      status: "completed", exitCode: 0, stderr: "", outputTruncated: false,
+      stdout: JSON.stringify([{ id: "Safe.App", status: "resolved", path: "C:\\api_key=synthetic-private\\app.exe" }]),
+    }));
+    const handlers = createSystemHandlers(run, resolveTarget, undefined, protection);
     const receipt = await handlers.system_applications!({ target: "windows" });
+    expect(receipt.ok).toBe(true);
     expect(receipt.data).toMatchObject({
       catalogComplete: false, absenceConclusionSupported: false,
       catalogScope: { roots: ["[REDACTED]"] },
-      applications: [{ id: "Safe.App", name: "[REDACTED]", target: "windows" }],
+      applications: [{ id: "Safe.App", name: "[REDACTED]", target: "windows", executableResolution: {
+        status: "unresolved", source: "windows_apps_folder_target", reason: "sensitive_executable_withheld",
+      } }],
     });
     expect(JSON.stringify(receipt)).not.toContain("synthetic-private");
     expect(JSON.stringify(receipt)).not.toContain("ordinary context");
     const filtered = await handlers.system_applications!({ target: "windows", query: "synthetic-private" });
     expect(filtered.data).toMatchObject({ observedMatches: 0, applications: [] });
+    expect(run).toHaveBeenCalledOnce();
   });
 
   test.each([false, true])("launch receipt preserves dispatch evidence with sensitive identity=%s", async (sensitiveId) => {

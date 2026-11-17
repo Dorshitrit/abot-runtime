@@ -7,7 +7,8 @@ import {
   type ToolImplementation,
 } from "../plugin-sdk/index.js";
 import { readSystemApplications } from "./application-catalog.js";
-import { systemApplicationObservation } from "./application-observation.js";
+import { selectSystemApplications, systemApplicationResult } from "./application-observation.js";
+import { observeSystemApplicationExecutables } from "./application-executable-resolution.js";
 import { observeSystemTargets } from "./target-observation.js";
 import { launchSystemApplication } from "./application-launch.js";
 import { executeSystemCommand } from "./commands.js";
@@ -138,7 +139,8 @@ export function createSystemHandlers(
     if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
-  const applications: ToolImplementation = async (params) => {
+  const applications: ToolImplementation = async (params, context) => {
+    context?.abortSignal?.throwIfAborted();
     const target = await resolveTarget(readSystemTargetId(params.target));
     const query = (readOptionalString(params.query) ?? "").toLowerCase();
     const limit =
@@ -150,20 +152,24 @@ export function createSystemHandlers(
             maximum: 100,
           });
     const observed = await readSystemApplications(target, run);
+    context?.abortSignal?.throwIfAborted();
     const catalog = protection ? protectSystemResult(() => protection.protectCatalog(observed)) : observed;
-    const { output, data } = systemApplicationObservation(
+    const selection = selectSystemApplications(catalog, query, limit);
+    const enriched = {
+      ...catalog,
+      applications: await observeSystemApplicationExecutables(target, selection.applications, run, context?.abortSignal),
+    };
+    const protectedSelection = protection
+      ? protectSystemResult(() => protection.protectCatalog(enriched))
+      : enriched;
+    return systemApplicationResult(
       target,
       catalog,
       query,
       limit,
+      { ...selection, applications: protectedSelection.applications },
+      context?.resultBudget,
     );
-    return successResult({
-      output,
-      data: {
-        ...data,
-        observationMeta: { kind: "volatile_external", carryPolicy: "never" },
-      },
-    });
   };
   const launch: ToolImplementation = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));

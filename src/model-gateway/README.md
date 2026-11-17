@@ -132,8 +132,10 @@ Provider-specific request builders translate only the shared controls that the
 transport owns. `ResolvedModelInvocation.think` is exact: an adapter must map
 `none` to its native disabled form; only `undefined` permits initial omission.
 The OpenAI adapter may fall back to the provider default after an explicit
-unsupported-effort rejection, as described below. The shared `generation` contract has no output-cap field, so
-there is no configurable or calibrated per-step output cap. Ollama maps
+unsupported-effort rejection, as described below. Generic controls under
+`generation.parameters` support explicit omission, inheritance and values;
+`max_output_tokens` is an optional total output cap. Missing generic controls
+preserve the legacy defaults described here. Ollama maps
 `temperature` and `topP` to `options`. By default, it supplies a finite
 `num_predict` from the physical context remaining after estimating the final
 projected provider input. No model step or reasoning mode adds an automatic
@@ -174,11 +176,17 @@ and `reasoning_budget_tokens: 0` for disabled reasoning.
 select the requested effort. Without declared control support, the adapter leaves
 reasoning to the provider rather than claiming that it disabled it.
 For OpenAI profiles with declared reasoning controls, the gateway sends the resolved
-`reasoning.effort`, including explicit `none`, and omits `temperature`/`top_p`
-unless reasoning is disabled with `none`.
+`reasoning.effort`. The transport's conservative compatibility rule omits
+`temperature`/`top_p` while reasoning is active. A matching parameter profile may
+declare compatible effort values; the UI and payload share that rule. Model
+constraints restrict transport capabilities and cannot widen its supported ranges.
+Known profiles that cannot disable thinking suppress `none` and zero thinking
+budgets with a warning, including request and repair overrides. Stored preferences
+are preserved. New Off controls require a profile that declares this capability;
+legacy settings without a matching profile keep their previous behavior.
 OpenAI's `max_output_tokens` counts both reasoning and visible output. The
-gateway omits this parameter for all reasoning levels and model steps, including
-explicit `reasoning.effort=none`. LOW (wire value `fast`), REASONING and DEEP
+gateway omits this parameter unless a generic value is configured, including
+with explicit `reasoning.effort=none`. LOW (wire value `fast`), REASONING and DEEP
 select reasoning effort without adding a separate output cap. The provider enforces
 output capacity; the input context guard and configured sampling controls retain their existing
 semantics. This policy does not discover model capabilities or assume support
@@ -439,7 +447,9 @@ detects invalid JSON or a known schema violation. Schema-valid domain rejections
 keep ordinary repair. The marker never enters conversation history or saved
 preferences and does not add a retry. For an Ollama chat repair with a projected
 schema and explicitly active thinking, the adapter sends `think: false` for that
-attempt; initial calls, raw generation and other providers retain their settings.
+attempt only if the matched parameter profile permits disabling thinking (or
+there is no matched declaration). Initial calls, raw generation and other
+providers retain their settings.
 This compatibility fallback trades reasoning for format enforcement on the repair
 only. The original parser still decides acceptance. Projection diagnostics record
 requested/effective thinking and the override reason without copying model output.

@@ -1,4 +1,5 @@
 import { isConfigObject } from "./config-model.js";
+import { modelPluginRouteBlockReason, projectModelPluginAvailability } from "./model-plugin-availability.js";
 
 export function modelPluginRulesNeedRepair(config) {
   if (config.plugins === undefined) return false;
@@ -101,10 +102,11 @@ function modelPluginSelectionState(selectedCount, capabilityCount) {
 
 export function projectModelPluginSelection(config, plugin, plugins) {
   const denied = modelDeniedSelectors(config);
+  const routeBlockedReason = modelPluginRouteBlockReason(config, plugin);
   const capabilities = (plugin.capabilities || []).map((capability) => ({
     ...capability,
     enabled: modelCapabilityIsEnabled(config, plugin, capability, denied),
-    blockedReason: modelCapabilityControlBlockReason(
+    blockedReason: routeBlockedReason || modelCapabilityControlBlockReason(
       config,
       plugin,
       capability,
@@ -115,13 +117,16 @@ export function projectModelPluginSelection(config, plugin, plugins) {
   const selectedCapabilityCount = capabilities.filter(
     (capability) => capability.enabled,
   ).length;
+  const pluginEnabled = !modelPluginRulesNeedRepair(config) &&
+    !denied.includes("*") && !denied.includes(plugin.id);
   return {
     ...plugin,
     // The parent is configured separately from individual tools and global policy.
-    pluginEnabled:
-      !modelPluginRulesNeedRepair(config) &&
-      !denied.includes("*") &&
-      !denied.includes(plugin.id),
+    pluginEnabled,
+    ...projectModelPluginAvailability({
+      plugin, routeBlockedReason, modelEnabled: pluginEnabled, selectedCapabilityCount,
+      globalBlockedReason: modelPluginGlobalBlockReason(plugin),
+    }),
     capabilities,
     capabilityCount: capabilities.length,
     selectedCapabilityCount,
@@ -129,7 +134,7 @@ export function projectModelPluginSelection(config, plugin, plugins) {
       selectedCapabilityCount,
       capabilities.length,
     ),
-    controlBlockedReason: modelPluginControlBlockReason(
+    controlBlockedReason: routeBlockedReason || modelPluginControlBlockReason(
       config,
       plugin,
       plugins,
