@@ -88,8 +88,11 @@ describe.each(ROOT_OUTPUT_POLICIES)(
               meta: {},
             };
           }
-          if (phase === "response" && input.modelStep === policy.decisionStep)
-            return { text: rootRespondOutput(policy.policyId), meta: {} };
+          if (phase === "response" && input.modelStep === policy.decisionStep) {
+            const output = JSON.parse(rootRespondOutput(policy.policyId));
+            if (policy.policyId === "supervisor-worker-v1") output.decision.memoryCandidates = [rejectedMemory];
+            return { text: JSON.stringify(output), meta: {} };
+          }
           if (input.modelStep === "supervisor.response" && input.format)
             return {
               text: JSON.stringify({ memoryCandidates: [rejectedMemory] }),
@@ -172,7 +175,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             ([input]) => input.modelStep === "degraded.finalization",
           ),
         ).toHaveLength(0);
-        const expectedResponseAttempts = phase === "decision" ? 0 : 3;
+        const expectedResponseAttempts = phase === "decision" ? 0 : policy.responseAttempts;
         expect(
           invoke.mock.calls.filter(
             ([input]) => input.modelStep === policy.responseStep,

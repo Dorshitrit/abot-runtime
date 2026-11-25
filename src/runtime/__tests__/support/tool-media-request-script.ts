@@ -2,6 +2,7 @@ import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { readHandoffCapsule } from "./system-target-handoff-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 
 export const MEDIA_FINAL = "The two-pixel fixture was observed.";
 export type MediaPolicy = "execution-agent-v1" | "supervisor-worker-v1";
@@ -24,9 +25,8 @@ export function createMediaRequestScript(policy: MediaPolicy) {
     }
     if (step === "supervisor.decision") {
       if (turn === 1) return reply({ action: "invoke_role", roleId: "planner", objective: "Inspect the fixture.", acknowledgement: "I will inspect the fixture." });
-      if (turn === 2) return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
-      if (turn === 3) return reply({ action: "invoke_role", roleId: "reviewer" });
-      expect(turn).toBe(4);
+      if (turn === 2) return reply({ action: "invoke_role", roleId: "reviewer" });
+      expect(turn).toBe(3);
       return reply({ action: "respond" });
     }
     if (step === "planner.decision") {
@@ -35,16 +35,14 @@ export function createMediaRequestScript(policy: MediaPolicy) {
       expect(JSON.stringify(input.messages)).toContain(MEDIA_FINAL);
       return reply({ action: "return_result", result: MEDIA_FINAL });
     }
-    if (step === "worker.evidence") {
+    if (step === "worker.decision") {
       const assignment = readHandoffCapsule(input, "runtime_worker_evidence_assignment_v1");
-      if (turn === 1) return reply({ requiresExecution: true, established: "", remaining: "Observe the fixture.", evidenceRefs: [] });
+      if (turn === 1) return workerFusedReply(input, {
+        action: "invoke_capability", capabilityId: "capture_fixture", intent: "Observe the fixture.",
+      });
       expect(turn).toBe(2);
       expect(assignment.evidenceRefs).toHaveLength(1);
-      return reply({ requiresExecution: false, established: MEDIA_FINAL, remaining: "", evidenceRefs: assignment.evidenceRefs });
-    }
-    if (step === "worker.decision") {
-      expect(turn).toBe(1);
-      return reply({ action: "invoke_capability", capabilityId: "capture_fixture", intent: "Observe the fixture." });
+      return workerFusedReply(input, { action: "return_result" }, MEDIA_FINAL);
     }
     if (step === "reviewer.decision") {
       const audit = readHandoffCapsule(input, "runtime_reviewer_audit_v4");
@@ -54,7 +52,7 @@ export function createMediaRequestScript(policy: MediaPolicy) {
         completionAssessment: { status: "gap", evidenceRefs: audit.effects.map((effect: { evidenceRef: string }) => effect.evidenceRef), finding: "Original pixels were not delegated to this review." },
       }, gaps: [{ kind: "missing_evidence", subjectRefs: [], factRefs: [], evidenceRefs: [], summary: "Original pixels remain scoped to Worker." }] });
     }
-    if (["worker.result", "execution.response", "supervisor.response"].includes(step))
+    if (["execution.response", "supervisor.response"].includes(step))
       return { text: MEDIA_FINAL, meta: {} };
     throw new Error(`Unexpected media fixture model step: ${step}`);
   }));

@@ -70,12 +70,11 @@ export function projectReviewerDelegatedContext(
     });
     subjectBindings.push({ callId: producer.callId, subjectRef });
 
-    projectionComplete =
-      !isSummaryTruncated(dependency.summary) && projectionComplete;
     if (facts.length >= params.factCapacity) {
       projectionComplete = false;
       continue;
     }
+    const summary = boundedSummary(dependency.summary).trimEnd();
     facts.push({
       factRef: dependency.resultRef,
       kind: "role_result",
@@ -83,7 +82,10 @@ export function projectReviewerDelegatedContext(
         dependency.outcome === "completed" ? "informational" : "missing",
       subjectRefs: Object.freeze([subjectRef]),
       evidenceRefs: Object.freeze([]),
-      summary: boundedSummary(dependency.summary),
+      summary,
+      ...(isSummaryTruncated(dependency.summary)
+        ? { summaryContinuation: dependency.summary.trim().slice(summary.length) }
+        : {}),
     });
   }
 

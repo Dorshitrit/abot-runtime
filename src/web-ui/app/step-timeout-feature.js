@@ -21,5 +21,5 @@ export function createStepTimeoutFeature({ state, client, shell, getEnvironmentI
     render: notice.render,
   });
   shell.subscribeWorkspaceChange(controller.syncScope);
-  return { syncScope: controller.syncScope, handleEvent: controller.handle };
+  return { syncScope: controller.syncScope, handleEvent: controller.handle, review: controller.review };
 }

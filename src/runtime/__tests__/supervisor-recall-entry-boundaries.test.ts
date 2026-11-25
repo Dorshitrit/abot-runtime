@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -20,9 +20,9 @@ test("recall after a child with no tool results stays on evidence-aware routing"
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Explain the requested distinction." }),
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return childResult;
-      expect(supervisorFormatName(input)).toBe("supervisor_decision");
+      expect(supervisorFormatName(input)).toBe("supervisor_decision_with_memory_candidates");
       expect(JSON.stringify(input.messages)).toContain(childResult);
       if (++routing === 1) return { action: "recall_memory", query: RECALL_QUERY };
       expect(recallCapsules(input)).toEqual([expect.objectContaining({
@@ -32,7 +32,7 @@ test("recall after a child with no tool results stays on evidence-aware routing"
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate")).toHaveLength(1);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_fused_entry_with_memory_candidates")).toHaveLength(1);
   expect(routing).toBe(2);
   for (const [input] of f.gatewayInvoke.mock.calls.filter(([call]) => call.modelStep === "supervisor.response"))
     expect(JSON.stringify(input.messages)).toContain(childResult);
@@ -50,9 +50,9 @@ test("an initial recall still consumes the global limit on later post-child rout
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return "No external observation was available.";
-      expect(supervisorFormatName(input)).toBe("supervisor_decision");
+      expect(supervisorFormatName(input)).toBe("supervisor_decision_with_memory_candidates");
       expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
       return { action: "respond" };
     },
@@ -61,8 +61,7 @@ test("an initial recall still consumes the global limit on later post-child rout
   expect(f.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT, RECALL_QUERY]);
 });
 
-test.each(["retrieval", "gate", "delegation"] as const)("steering during recalled %s permits one fresh lookup without leaking the old receipt", async stage => {
-  let gates = 0;
+test.each(["retrieval", "routing"] as const)("steering during recalled %s permits one fresh lookup without leaking the old receipt", async stage => {
   let delegations = 0;
   let steered = false;
   const newQuery = "new preference";
@@ -80,17 +79,15 @@ test.each(["retrieval", "gate", "delegation"] as const)("steering during recalle
       if (stage === "retrieval" && query === RECALL_QUERY) steer();
       return { available: true, records: [{ ...MEMORY_RECORD, content: query === RECALL_QUERY ? oldFact : newFact }] };
     },
-    classifyProcedure(input) {
-      gates += 1;
-      if (gates === 2 && stage === "gate") steer();
-      if (steered && gates > 2) expect(JSON.stringify(input.messages)).not.toContain(oldFact);
-      if (JSON.stringify(input.messages).includes(newFact))
-        return { requiresProcedure: false, responseRecommendation: "Answer the new preference." };
-      return { requiresProcedure: true };
-    },
+    classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
       delegations += 1;
-      if (delegations === 2 && stage === "delegation") {
+      if (steered) expect(JSON.stringify(input.messages)).not.toContain(oldFact);
+      if (JSON.stringify(input.messages).includes(newFact)) {
+        expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
+        return { action: "respond", responseRecommendation: "Answer the new preference." };
+      }
+      if (delegations === 2 && stage === "routing") {
         expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
         steer();
         return { action: "invoke_role", roleId: "worker", objective: "Superseded task." };
@@ -132,9 +129,9 @@ test("steering cannot reset a recall budget already consumed by a superseded loo
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return "Current state remains unknown.";
-      expect(supervisorFormatName(input)).toBe("supervisor_decision");
+      expect(supervisorFormatName(input)).toBe("supervisor_decision_with_memory_candidates");
       expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
       expect(recallCapsules(input)).toEqual([]);
       return { action: "respond" };

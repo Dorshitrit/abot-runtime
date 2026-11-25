@@ -18,6 +18,7 @@ function fixture() {
     getEnvironmentId: () => environment,
     getSessionId: () => sessionId,
     getWorkspace: () => workspace,
+    getAgentId: () => "agent-a",
     isConnected: () => connected,
     send,
     documentRoot,
@@ -96,4 +97,13 @@ describe("notification viewing presence", () => {
     expect(f.send).toHaveBeenCalledTimes(2);
     f.presence.dispose();
   });
+});
+
+test("a focused Agent sends its own address and never reports an active ordinary session", () => {
+  vi.useFakeTimers();
+  const f = fixture(); f.setWorkspace("agents"); f.presence.bind();
+  expect(f.send).toHaveBeenLastCalledWith({ type: "notification_presence", environment: "prod", agentId: "agent-a", active: true });
+  f.setFocus(false); f.page.dispatchEvent(new Event("blur"));
+  expect(f.send.mock.lastCall?.[0].active).toBe(false);
+  f.presence.dispose();
 });

@@ -20,9 +20,9 @@ test.each(["first-system-only", "all-roles"] as const)(
     const evidenceRefs = ["capability-execution-1"];
     const invalid = { requiresExecution: true, remaining: "", established: rejectedSummary, evidenceRefs };
     const corrected = { requiresExecution: false, remaining: "", established: "Catalog observed.", evidenceRefs };
-    const result = "The catalog is available.";
     const gateway = createGateway(template, [
-      JSON.stringify({ decision: invalid }), JSON.stringify({ decision: corrected }), result,
+      JSON.stringify({ decision: { assessment: invalid, selection: { action: "return_result" } } }),
+      JSON.stringify({ decision: { assessment: corrected, selection: { action: "return_result" } } }),
     ]);
     const request = createTestRequestExecutionScope({
       ...base.request, runnerConfig: INVALID_OUTPUT_RUNNER_CONFIG, modelPolicy, modelGatewayClient: gateway.client,
@@ -32,13 +32,19 @@ test.each(["first-system-only", "all-roles"] as const)(
       requestId: request.requestId, ledger: base.ledger, callId: base.call.callId,
       invocationAttempt: base.call.activationCount, capabilities: Object.freeze([]),
     });
-    await expect(runWorkerDecision(request, {
+    const decision = await runWorkerDecision(request, {
       call: base.call, requestToolResults: base.view, capabilitySource: { ledger: base.ledger, head: base.head, binding },
-    })).resolves.toEqual({ action: "return_result", result });
+    });
+    expect(decision.action).toBe("return_result");
+    if (decision.action !== "return_result") throw new Error("Expected returned execution evidence");
+    expect(JSON.parse(decision.result)).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+      assessment: { ...corrected, authority: "accepted_model_judgment" },
+      executionOutcomes: [{ executionId: "capability-execution-1", outcome: "succeeded" }] });
+    expect(decision.result).toContain("Complete catalog evidence.");
     expect(base.ledger.current()).toBe(base.head);
 
     const sends = gateway.exchanges.filter(exchange => exchange.path === "/chat");
-    expect(sends.map(exchange => exchange.request.modelStep)).toEqual(["worker.evidence", "worker.evidence", "worker.result"]);
+    expect(sends.map(exchange => exchange.request.modelStep)).toEqual(["worker.decision", "worker.decision"]);
     const [first, repair] = sends;
     const evidence = first!.request.messages.filter(message => message.role !== "system");
     expect(JSON.stringify(evidence)).toContain("Complete catalog evidence.");
@@ -46,7 +52,8 @@ test.each(["first-system-only", "all-roles"] as const)(
     const validatorCode = "worker_evidence_assessment_invalid";
     for (const exchange of [first!, repair!]) {
       const counted = gateway.exchanges.find(candidate =>
-        candidate.path === "/input-tokens" && isDeepStrictEqual(candidate.request, exchange.request));
+        candidate.path === "/input-tokens" && isDeepStrictEqual(candidate.request.messages, exchange.request.messages)
+          && isDeepStrictEqual(candidate.request.format, exchange.request.format));
       const measured = counted?.upstream.find(hop => hop.path.endsWith("/input_tokens"))?.payload;
       const sent = exchange.upstream.find(hop => hop.path === "/v1/chat/completions")!.payload;
       expect(measured).toEqual(sent);

@@ -17,6 +17,8 @@ import {
   type RegisteredToolStagedPayloadPlan,
 } from "../registered-tool-payload-plan.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
+import { payloadAuthoringFailureMessage } from "./payload-authoring-failure.js";
+import { RegisteredToolPayloadTargetContextError } from "../registered-tool-payload-target-read.js";
 import { shouldPreserveFullBoundedTargetContext } from "./payload-target-context-policy.js";
 import {
   executionFreshnessRejection,
@@ -253,7 +255,11 @@ class PayloadStageRunner {
         ),
         ...(priorParams.value ? { materializedParams: priorParams.value } : {}),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RegisteredToolPayloadTargetContextError) {
+        return rejectPayloadLifecycle({ executor: this.params.executor, lifecycle,
+          code: error.code, message: error.message });
+      }
       targetContext = undefined;
     }
     if (stage.targetContext && !targetContext) {
@@ -433,7 +439,7 @@ class PayloadStageRunner {
         executor: this.params.executor,
         lifecycle,
         code: authored.code,
-        message: "The capability payload could not be prepared.",
+        message: payloadAuthoringFailureMessage(authored, "The capability payload could not be prepared."),
       });
     }
 

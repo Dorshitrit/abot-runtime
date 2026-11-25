@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type WebSocket from "ws";
 import type { RuntimeRequestOptions } from "../composition.js";
@@ -58,6 +61,7 @@ function fixture() {
     },
     requests: { handle: vi.fn() },
     services: {
+      config: { paths: { runtimeDir: join(tmpdir(), `web-empty-agents-${randomUUID()}`) } },
       sessions: {
         getRequestReplayById: vi.fn(async () => ({
           requestId: "request",

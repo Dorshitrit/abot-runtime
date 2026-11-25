@@ -1,4 +1,5 @@
 import { createConversationRoleHistory } from "./conversation-role-history.js";
+import { formatRoleReturnSummary } from "../lib/role-return-summary.js";
 
 export function createConversationRoleReturns({ documentRoot = document } = {}) {
   const history = createConversationRoleHistory({
@@ -14,7 +15,7 @@ export function createConversationRoleReturns({ documentRoot = document } = {}) 
       items: returns.map((receipt) => ({
         id: receipt.id,
         label: receipt.outcome === "failed" ? "Planner failed" : "Returned result",
-        text: receipt.summary,
+        text: formatRoleReturnSummary(receipt),
       })),
     });
   }

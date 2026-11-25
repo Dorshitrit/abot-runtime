@@ -47,7 +47,7 @@ export async function captureExecutionBinding(
   } catch (error) {
     executor.abortSignal.throwIfAborted();
     if (error instanceof Error && error.name === "AbortError") throw error;
-    return rejectExecutionBinding();
+    return rejectExecutionBinding(error);
   }
 }
 
@@ -84,12 +84,27 @@ async function waitForExecutionBinding(
   }
 }
 
-function rejectExecutionBinding() {
+function rejectExecutionBinding(error?: unknown) {
   return {
     ok: false as const,
     rejection: rejectNormalInvocation(
-      "normal_invocation_execution_binding_unavailable",
-      "The registered action could not bind its execution destination for this request.",
+      executionBindingFailureCode(error) ?? "normal_invocation_execution_binding_unavailable",
+      executionBindingFailureMessage(error) ??
+        "The registered action could not bind its execution destination for this request.",
     ),
   };
+}
+
+function executionBindingFailureCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (!("code" in error) || typeof error.code !== "string") return undefined;
+  if (!/^[a-z][a-z0-9_]{0,127}$/.test(error.code)) return undefined;
+  return error.code;
+}
+
+function executionBindingFailureMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (typeof error.message !== "string") return undefined;
+  if (!error.message.trim()) return undefined;
+  return error.message;
 }

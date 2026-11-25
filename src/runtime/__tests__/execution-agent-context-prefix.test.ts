@@ -32,21 +32,21 @@ function nativeMessages(messages: readonly ChatMessage[]): readonly ChatMessage[
   return messages.filter((message) => message.role === "tool" ||
     (message.role === "assistant" && message.toolCalls !== undefined));
 }
-const serializedMessages = (messages: readonly ChatMessage[]) => messages.map((message) => JSON.stringify(message)).sort();
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 describe("OpenAI API EA decision stable context prefix", () => {
-  test("retains exact evidence before changing activation state without changing admission or message authority", async () => {
+  test("retains exact evidence and authority with the stable contract budgeted before admission", async () => {
     const fixture = await createControlsEvidenceFixture({ modelPolicy: executionPrefixCachePolicy });
     await fixture.addResult('FIRST exact \"quoted\" body שלום');
     const legacy = buildInput(fixture, withProvider(fixture.request, "ollama"));
     const current = buildInput(fixture);
-    expect(current.context.budget).toEqual(legacy.context.budget);
+    for (const key of ["contextWindowTokens", "availableInputTokens", "outputReserveTokens", "safetyReserveTokens"] as const)
+      expect(current.context.budget[key]).toBe(legacy.context.budget[key]);
+    expect(current.context.budget.estimatedInputTokens).toBeGreaterThan(legacy.context.budget.estimatedInputTokens);
     expect(current.context.selectedHistoryMessageIds).toEqual(legacy.context.selectedHistoryMessageIds);
     expect(current.context.omittedHistoryMessageIds).toEqual(legacy.context.omittedHistoryMessageIds);
-    expect(serializedMessages(current.messages)).toEqual(serializedMessages(legacy.messages));
     expect(current.context.messages).toEqual(current.messages);
     validateModelGatewayMessages(current.messages);
     const promptIndex = current.messages.findIndex(({ content }) => content === fixture.request.prompt);
@@ -54,27 +54,31 @@ describe("OpenAI API EA decision stable context prefix", () => {
     const stateIndex = capsuleIndex(current.messages, "runtime_execution_state_v1");
     const catalogIndex = capsuleIndex(current.messages, "runtime_execution_capability_catalog_v1");
     const toolIndex = current.messages.findIndex(({ role }) => role === "tool");
-    expect(catalogIndex).toBeLessThan(promptIndex);
+    expect(current.messages[1]?.content).toMatch(/^Tool groups:/);
+    expect(catalogIndex).toBeLessThan(toolIndex);
     expect(promptIndex).toBeLessThan(toolIndex);
-    expect(toolIndex).toBeLessThan(stateIndex);
+    expect(stateIndex).toBeLessThan(toolIndex);
     const boundaryIndex = current.messages.indexOf(current.promptCacheBoundaryBeforeMessage!);
-    expect(boundaryIndex).toBeGreaterThan(toolIndex);
+    expect(boundaryIndex).toBeLessThan(toolIndex);
     expect(boundaryIndex).toBeLessThanOrEqual(stateIndex);
     expect(nativeMessages(current.messages)).toEqual(nativeMessages(legacy.messages));
     const head = fixture.ledger.current();
     expect(nativeMessages(current.messages)).toEqual(buildExecutionContinuationMessages(head, activeEvidenceCall(head)));
   });
 
-  test("keeps the settled prefix when another exact tool result advances the activation", async () => {
+  test("extends the older settled prefix while moving only the latest result after activation context", async () => {
     const fixture = await createControlsEvidenceFixture({ modelPolicy: executionPrefixCachePolicy });
     await fixture.addResult("FIRST body");
     const before = buildInput(fixture);
     await fixture.addResult("SECOND body", { failed: true });
     const after = buildInput(fixture);
-    const beforeLastResult = before.messages.map(({ role }) => role).lastIndexOf("tool");
-    expect(after.messages.slice(0, beforeLastResult + 1)).toEqual(before.messages.slice(0, beforeLastResult + 1));
+    const beforeBoundary = before.messages.indexOf(before.promptCacheBoundaryBeforeMessage!);
+    const afterBoundary = after.messages.indexOf(after.promptCacheBoundaryBeforeMessage!);
+    expect(after.messages.slice(0, beforeBoundary)).toEqual(before.messages.slice(0, beforeBoundary));
+    expect(afterBoundary).toBeGreaterThan(beforeBoundary);
+    expect(after.messages.slice(0, afterBoundary)).toContainEqual(nativeMessages(before.messages).at(-1));
     expect(nativeMessages(after.messages).slice(0, nativeMessages(before.messages).length)).toEqual(nativeMessages(before.messages));
-    expect(capsuleIndex(after.messages, "runtime_execution_state_v1")).toBeGreaterThan(
+    expect(capsuleIndex(after.messages, "runtime_execution_state_v1")).toBeLessThan(
       after.messages.map(({ role }) => role).lastIndexOf("tool"),
     );
     validateModelGatewayMessages(after.messages);

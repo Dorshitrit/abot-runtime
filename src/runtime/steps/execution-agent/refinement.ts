@@ -1,3 +1,4 @@
+import { collectDecisionMaxLengthConstraints, projectStrictControlsSchema } from "../../model/decision-schema.js";
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { invokeStructuredModelStep } from "../../model/invoke-structured-step.js";
 import {
@@ -12,7 +13,6 @@ import {
   CAPABILITY_CONTROLS_MODEL_STEP,
   materializeCapabilityControlsIfComplete,
   mergeCapabilityControls,
-  type CapabilityControl,
   type CapabilityControls,
   type CapabilityControlsSchema,
   type CapabilityDescriptor,
@@ -221,7 +221,7 @@ function createControlsRefinementFormat(
           slotId(index),
           exactObject({
             disposition: literal("execute"),
-            controls: projectControlsSchema(partition.remainingSchema),
+            controls: projectStrictControlsSchema(partition.remainingSchema),
           }),
         ]),
       ),
@@ -232,7 +232,7 @@ function createControlsRefinementFormat(
     type: "json_schema",
     name: "execution_capability_controls",
     strict: true,
-    postValidatedSchemaConstraints: collectMaxLengthConstraints(schema),
+    postValidatedSchemaConstraints: collectDecisionMaxLengthConstraints(schema),
     schema,
   };
 }
@@ -363,39 +363,6 @@ function executeOutcome(
   });
 }
 
-function projectControlsSchema(
-  schema: CapabilityControlsSchema,
-): Record<string, unknown> {
-  const required = new Set(schema.required);
-  return exactObject(
-    Object.fromEntries(
-      Object.entries(schema.properties).map(([controlId, control]) => [
-        controlId,
-        required.has(controlId)
-          ? projectControlSchema(control)
-          : { anyOf: [projectControlSchema(control), { type: "null" }] },
-      ]),
-    ),
-  );
-}
-
-function projectControlSchema(
-  control: CapabilityControl,
-): Record<string, unknown> {
-  if (control.type === "array") {
-    return {
-      type: "array",
-      items: projectControlSchema(control.items),
-      minItems: control.minItems,
-      maxItems: control.maxItems,
-    };
-  }
-  if (control.type === "string" && "enum" in control) {
-    return { type: "string", enum: [...control.enum] };
-  }
-  return { ...control };
-}
-
 function normalizeNullableOptionalControls(
   value: unknown,
   schema: CapabilityControlsSchema,
@@ -452,29 +419,4 @@ function refinementIssue(code: string, path: string) {
     path,
     message: "Capability controls are invalid.",
   });
-}
-
-function collectMaxLengthConstraints(
-  value: unknown,
-  path = "",
-): Array<Readonly<{ keyword: "maxLength"; path: string }>> {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      collectMaxLengthConstraints(entry, `${path}/${index}`),
-    );
-  }
-  const record = asRecord(value);
-  if (!record) return [];
-  return [
-    ...(Object.hasOwn(record, "maxLength")
-      ? [{ keyword: "maxLength" as const, path: `${path}/maxLength` }]
-      : []),
-    ...Object.entries(record).flatMap(([key, entry]) =>
-      collectMaxLengthConstraints(entry, `${path}/${escapeJsonPointer(key)}`),
-    ),
-  ];
-}
-
-function escapeJsonPointer(value: string): string {
-  return value.replaceAll("~", "~0").replaceAll("/", "~1");
 }

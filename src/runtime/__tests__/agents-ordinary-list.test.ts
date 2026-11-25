@@ -1,0 +1,32 @@
+import { afterEach, expect, test, vi } from "vitest";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createLocalServiceClients } from "../local-host/client-services.js";
+import { dispatchLocalServiceCall } from "../local-host/app-service-dispatch.js";
+import type { RuntimeEnvironmentServices } from "../composition.js";
+import { agentsWebBoundaryFixture } from "./support/agents-web-boundary-fixture.js";
+const fixtures: Awaited<ReturnType<typeof agentsWebBoundaryFixture>>[] = [];
+afterEach(async () => { for (const f of fixtures.splice(0)) await f.dispose(); });
+
+test("managed ordinary lists cross IPC as filtered summary pages and honor an injected owner store", async () => {
+  const f = await agentsWebBoundaryFixture();
+  fixtures.push(f);
+  await f.sessions.appendMessage("chat-new", "assistant", "Only this preview is visible");
+  const services = { config: f.environment.services.config } as RuntimeEnvironmentServices;
+  const clientCall = vi.fn((method: string, args: readonly unknown[]) => dispatchLocalServiceCall(services, method, args));
+  const client = createLocalServiceClients(clientCall).sessions;
+  const first = await client.listOrdinary!({ limit: 2 });
+  expect(first).toMatchObject({ sessions: [{ id:"chat-new" }, { id:"chat-middle" }], nextCursor: "2" });
+  expect(await client.listOrdinary!({ limit: 2, cursor: first.nextCursor })).toMatchObject({ sessions: [{ id: "chat-old" }], nextCursor: null });
+  expect(clientCall.mock.calls.map(([method]) => method)).toEqual(["sessions.listOrdinary", "sessions.listOrdinary"]);
+  expect(first.sessions[0]).toMatchObject({ lastMessagePreview: "Only this preview is visible" });
+  expect(first.sessions[0]).not.toHaveProperty("messages");
+  expect(first.sessions[0]).not.toHaveProperty("requests");
+  expect(JSON.stringify(first)).not.toContain("Result for chat-new");
+  const ordinary = (await f.sessions.getSessionById("chat-new"))!;
+  const injected = { getAllSessions: vi.fn(async () => [{ ...ordinary, id: "agent-new" }, { ...ordinary, id: "custom" }]) };
+  const custom = createLocalServiceClients((method,args) => dispatchLocalServiceCall(services, method, args, injected)).sessions;
+  expect(await custom.listOrdinary!({ limit: 1 })).toMatchObject({ sessions: [{ id: "custom" }], nextCursor: null });
+  await writeFile(join(f.root, "agents", "state.json"), "bad");
+  await expect(client.listOrdinary!()).rejects.toThrow("agent_session_index_unavailable");
+});

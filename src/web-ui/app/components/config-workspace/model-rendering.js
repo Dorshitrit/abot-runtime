@@ -1,4 +1,5 @@
 import { renderModelPromptCache } from "./prompt-cache.js";
+import { renderModelReasoningSummary } from "./reasoning-summary.js";
 import { isTokenBudgetModel, renderReasoningBudget, renderReasoningEffort } from "./reasoning-budget.js";
 import { renderReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import { configRequiresRawRepair } from "./raw-config-repair.js";
@@ -262,6 +263,7 @@ export function createConfigModelRendering({
             ${!parameters && isTokenBudgetModel(model, state.configDashboard) ? renderReasoningEffort(model, ["generation"], renderConfigInput) : ""}
             ${!parameters ? renderReasoningBudget(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard), dashboard: state.configDashboard }) : ""}
             ${!parameters ? modeBudgets : ""}
+            ${renderModelReasoningSummary(model, state.configDashboard)}
           </div>
           ${renderModelPromptCache(model, state.configDashboard)}
           ${renderExecutionRoute(model)}

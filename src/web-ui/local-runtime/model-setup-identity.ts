@@ -5,8 +5,9 @@ import {
   readJsonObject,
   resolveRuntimePackageRoot,
 } from "../../../scripts/runtime-setup-files.js";
-import type { ModelSetupInput } from "./model-setup-input.js";
+import { ModelSetupError, type ModelSetupInput } from "./model-setup-input.js";
 import type { planModelProvider } from "./model-setup-provider.js";
+import { requireSetupReasoningSummaryProvider } from "../../model-gateway/providers/openai/setup-reasoning-summary.js";
 
 type ModelProviderPlan = ReturnType<typeof planModelProvider>;
 
@@ -14,6 +15,9 @@ export async function prepareModelSetupProfile(
   provider: ModelProviderPlan,
   input: ModelSetupInput,
 ) {
+  try { requireSetupReasoningSummaryProvider(String(provider.config.type), input.reasoningSummary); } catch (error) {
+    throw new ModelSetupError("invalid_model_reasoning_summary", (error as Error).message);
+  }
   const template = await readJsonObject(
     join(
       resolveRuntimePackageRoot(import.meta.dirname),

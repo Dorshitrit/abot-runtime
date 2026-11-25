@@ -9,6 +9,7 @@ import {
   projectCanonicalCapabilityResultCompactionSources,
 } from "./capability-result-compaction-source.js";
 import { hasSuperContextContract } from "./super-context-policy.js";
+import { projectSelectedDependencyResultSources } from "./semantic-compaction/super-dependency-result-source.js";
 
 const SOURCE_BINDING = Symbol("superWorkerCompactionSources");
 
@@ -66,6 +67,7 @@ export function bindSuperWorkerCompactionSources<T extends object>(
     sources: Object.freeze([
       ...projectCanonicalCapabilityResultCompactionSources({ head, callId }),
       ...dependencyObservations.map(createCapabilityResultCompactionSource),
+      ...projectSelectedDependencyResultSources(head, call),
     ]),
   };
   Object.defineProperty(sidecarFields, "head", {

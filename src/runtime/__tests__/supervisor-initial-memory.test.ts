@@ -1,5 +1,5 @@
 import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { runRequestRunner } from "../request/runner.js";
 import { prepareInitialMemory } from "../long-term-memory/initial-context.js";
@@ -11,7 +11,7 @@ import { createRoleCallLedger, resolveRoleCallTransactions } from "../orchestrat
 import { captureRoleCallLedgerCheckpoint } from "../orchestration/role-calls/checkpoint.js";
 import { createRequestRoleCallPolicy } from "../request/role-call-policy.js";
 import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
-import { supervisorFormatName } from "./support/supervisor-model-phases.js";
+import { defaultSupervisorPresentation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   createMemoryRecallHarness, FINAL_RESPONSE, MEMORY_RECORD, modelMessages,
   RECALL_QUERY, REQUEST_PROMPT, recallCapsules, responseDecision,
@@ -26,11 +26,13 @@ function memoryHarness() {
   return createMemoryRecallHarness({
     policy: "supervisor-worker-v1",
     retrieve: async () => ({ available: true, records: [MEMORY_RECORD], message: initialMessage }),
-    decide: () => ({ ...responseDecision("supervisor-worker-v1"), acknowledgement: "I will answer." }),
+    decide: input => supervisorFormatName(input) === "supervisor_fused_entry_with_memory_candidates"
+      ? { requiresProcedure: false, responseRecommendation: "Explain the saved preference.", memoryCandidates: [], ...defaultSupervisorPresentation(input) }
+      : { ...responseDecision("supervisor-worker-v1"), acknowledgement: "I will answer." },
   });
 }
 
-test("SUPER retains startup facts for separate candidate and RAW authoring after the minimal gate", async () => {
+test("SUPER retains the complete startup reference for fused entry memory and separate RAW", async () => {
   const f = memoryHarness();
   const baseMemory = createLongTermMemoryService({
     enabled: true, repository: createInMemoryLongTermMemoryRepository(), emitClientEvents: false,
@@ -44,13 +46,12 @@ test("SUPER retains startup facts for separate candidate and RAW authoring after
   const invoke = f.invoke.getMockImplementation()!;
   f.invoke.mockImplementation(async input => {
     expect(f.memory.retrieve).toHaveBeenCalledOnce();
-    const gate = supervisorFormatName(input) === "supervisor_procedure_gate";
-    expect(modelMessages(input).filter(message => message.content === initialMessage.content)).toEqual(gate ? [] : [initialMessage]);
+    expect(modelMessages(input).filter(message => message.content === initialMessage.content)).toEqual([initialMessage]);
     expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     expect(modelMessages(input).filter(message => message.role === "user" && message.content === REQUEST_PROMPT)).toHaveLength(1);
     expect(recallCapsules(input)).toEqual([]);
     if (input.modelStep === "supervisor.decision") {
-      expect(prepare).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledOnce();
       expect(JSON.stringify(input.format)).not.toContain("recall_memory");
     } else expect(prepare).toHaveBeenCalledOnce();
     return invoke(input);
@@ -58,11 +59,10 @@ test("SUPER retains startup facts for separate candidate and RAW authoring after
   await expect(runRequestRunner(request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   const inputs = f.invoke.mock.calls.map(([input]) => input);
   expect(inputs.map(input => input.modelStep)).toEqual([
-    "supervisor.decision", "supervisor.response", "supervisor.response",
+    "supervisor.decision", "supervisor.response",
   ]);
   for (const input of inputs) {
-    const gate = supervisorFormatName(input) === "supervisor_procedure_gate";
-    expect(modelMessages(input).filter(entry => entry.content === initialMessage.content)).toEqual(gate ? [] : [initialMessage]);
+    expect(modelMessages(input).filter(entry => entry.content === initialMessage.content)).toEqual([initialMessage]);
     const reference = modelMessages(input).find(({ content }) => content.includes(MEMORY_RECORD.content))!;
     expect(isInvocationContextMessage(reference)).toBe(true);
     expect(isInvocationContextMessage({ ...reference })).toBe(false);
@@ -70,8 +70,8 @@ test("SUPER retains startup facts for separate candidate and RAW authoring after
     expect(modelMessages(input).filter(entry => entry.role === "user" && entry.content === REQUEST_PROMPT)).toHaveLength(1);
   }
   expect(isInvocationContextMessage(initialMessage)).toBe(false);
-  expect(inputs[1]!.format).toMatchObject({ name: "supervisor_memory_candidates" });
-  expect(inputs[2]).not.toHaveProperty("format");
+  expect(inputs[0]!.format).toMatchObject({ name: "supervisor_fused_entry_with_memory_candidates" });
+  expect(inputs[1]).not.toHaveProperty("format");
   expect(f.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT]);
 });
 
@@ -87,8 +87,10 @@ test("a model-selected recall replaces the initial reference for subsequent deci
       message: initialMessage,
     }),
     decide(input) {
+      if (supervisorFormatName(input) === "supervisor_fused_entry_with_memory_candidates")
+        return { requiresProcedure: true, ...defaultSupervisorPresentation(input) };
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return "The answer requires the user's stored formatting preference.";
       decisions += 1;
       if (decisions === 1) {
@@ -120,7 +122,7 @@ test("steering retains the startup reference without an automatic refresh", asyn
   const invoke = f.invoke.getMockImplementation()!;
   let decisions = 0;
   f.invoke.mockImplementation(async input => {
-    if (supervisorFormatName(input) === "supervisor_procedure_gate") expect(modelMessages(input)).not.toContainEqual(initialMessage);
+    if (supervisorFormatName(input) === "supervisor_fused_entry") expect(modelMessages(input)).not.toContainEqual(initialMessage);
     else expect(modelMessages(input)).toContainEqual(initialMessage);
     expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     if (input.modelStep === "supervisor.decision" && ++decisions === 1)

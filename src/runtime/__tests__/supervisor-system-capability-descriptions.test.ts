@@ -52,13 +52,14 @@ test.each([true, false])(
     expect(result.prepare).not.toHaveBeenCalled();
     expect(result.host.readHostStatus).not.toHaveBeenCalled();
     const inputs = result.model.invoke.mock.calls.map(([input]) => input);
-    const routing = inputs.find(
-      ({ format }) => typeof format === "object" && format?.name === "supervisor_procedure_gate",
+    const entry = inputs.find(
+      ({ format }) => typeof format === "object" && format?.name === "supervisor_fused_entry",
     )!;
-    expect(messages(routing).filter(isCapabilityBriefMessage)).toEqual([]);
+    expect(entry).toBeDefined();
+    expect(messages(entry).filter(isCapabilityBriefMessage)).toEqual([]);
     expect(result.offered).toEqual([]);
     expect(
-      messages(routing).filter(
+      messages(entry).filter(
         ({ role, content }) =>
           role === "user" && content === SYSTEM_BRIEF_PROMPT,
       ),

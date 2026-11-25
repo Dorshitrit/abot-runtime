@@ -115,12 +115,20 @@ test.each([
       }
     }
     expect(stages).toEqual([
-      "worker.evidence:warning",
       "worker.decision:warning",
       "capability.controls:warning",
-      "worker.evidence:intervention",
-      "worker.result:intervention",
+      "worker.decision:intervention",
     ]);
+    const handoff = f.calls.filter(({ step }) => step === "planner.decision")
+      .flatMap(({ messages }) => messages).flatMap(({ content }) => {
+        try { const capsule = JSON.parse(content); return capsule.kind === "runtime_child_result" ? [JSON.parse(capsule.summary)] : []; }
+        catch { return []; }
+      }).find(report => report.kind === "runtime_worker_execution_report_v1");
+    expect(handoff.evidence.operationSupervision.entries[0].notice.stage).toBe("intervention");
+    expect(handoff.evidence.operationSupervision.entries[0].evidence).toMatchObject({
+      kind: "compacted_capability_result_reference", sourceRef: "capability-execution-2",
+    });
+    expect(JSON.stringify(handoff)).not.toContain(STAGED_RAW_MARKER);
     expect(
       f.calls.filter(({ step }) => step === "capability.controls"),
     ).toHaveLength(3);
@@ -146,17 +154,11 @@ test.each([
     expect(chain).toEqual([
       "supervisor.decision",
       "supervisor.decision",
-      "supervisor.decision",
-      "supervisor.decision",
       "planner.decision",
-      "worker.evidence",
       "worker.decision",
-      "worker.evidence",
       "worker.decision",
-      "worker.evidence",
       "worker.decision",
-      "worker.evidence",
-      "worker.result",
+      "worker.decision",
       "planner.decision",
       "supervisor.decision",
       "reviewer.decision",
@@ -165,13 +167,11 @@ test.each([
     ]);
     expect(
       f.invoke.mock.calls
-        .slice(0, 4)
+        .slice(0, 2)
         .map(([input]) => supervisorFormatName(input)),
     ).toEqual([
-      "supervisor_presentation",
-      "supervisor_procedure_gate",
-      "supervisor_delegation",
-      "supervisor_working_directory",
+      "supervisor_fused_entry",
+      "supervisor_fused_routing",
     ]);
     expect(
       f.calls

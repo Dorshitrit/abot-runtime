@@ -24,7 +24,7 @@ import type {
   WorkerCapabilityControls,
 } from "../orchestration/worker-capabilities/index.js";
 import type { RequestRoleExecutionHandoff } from "./result.js";
-import type { RootAuthoredResponse } from "../long-term-memory/contracts.js";
+import type { MemoryCandidate, RootAuthoredResponse } from "../long-term-memory/contracts.js";
 
 export type RootContractCallIdentity = Readonly<{
   rootCallId: string;
@@ -110,6 +110,8 @@ export type RootContractDecisionOutcome = Readonly<{
   interaction?: UserInteractionProposal;
   decision: RootContractDecision;
   steeringVersion: number;
+  /** Ephemeral authoring bound to this accepted decision and steering version. */
+  memoryCandidates?: readonly MemoryCandidate[];
 }>;
 
 export type RootContractAdapter<TRequest> = Readonly<{
@@ -150,6 +152,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       responseRecommendation?: string;
       responseRecommendationOrigin?: "skill_authoring_no_save";
       directResponse?: RootAuthoredResponse;
+      memoryCandidates?: readonly MemoryCandidate[];
       call: RootContractCallIdentity;
       toolResults: RequestToolResultsView;
       resume?: RoleChildReturnContext;

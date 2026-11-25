@@ -1,6 +1,9 @@
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
+import { payloadAuthoringFailureMessage } from "./payload-authoring-failure.js";
 import { prepareOperationPayload } from "./payload-lifecycle.js";
 import { RUNTIME_ROOT_ROLE_ID } from "../../orchestration/roles.js";
+import { FilePayloadToolHandoff } from "../../capabilities/file-payload-tool-handoff.js";
+import { bindFilePayloadToolHandoff } from "./file-payload-tool-handoff.js";
 import {
   executionFreshnessRejection, payloadRejection, rejectPayloadLifecycle,
 } from "./payload-rejection.js";
@@ -50,7 +53,7 @@ async function prepareExecutionFilePayload(params: Preparation): Promise<Prepara
     }), contract.minBytes ?? 0, contract.maxBytes);
     const superseded = executionFreshnessRejection(params.executionFreshness);
     if (superseded) return reject(superseded.sourceIssueCode, superseded.result.summary);
-    if (authored.status === "failed") return reject(authored.code, "The file content could not be prepared.");
+    if (authored.status === "failed") return reject(authored.code, payloadAuthoringFailureMessage(authored, "The file content could not be prepared."));
     const body = source.bind(authored.body);
     const completed = params.executor.emitPayloadLifecycle({ ...lifecycle, phase: "completed" });
     if (completed.status === "rejected") return payloadRejection(completed.code, completed.message);
@@ -59,6 +62,9 @@ async function prepareExecutionFilePayload(params: Preparation): Promise<Prepara
     if (error instanceof Error && error.name === "AbortError") throw error;
     const superseded = executionFreshnessRejection(params.executionFreshness);
     if (superseded) return reject(superseded.sourceIssueCode, superseded.result.summary);
+    if (error instanceof FilePayloadToolHandoff) {
+      return bindFilePayloadToolHandoff(params, error, reject(error.code, error.message));
+    }
     const code = filePreparationFailureCode(error);
     return reject(code, error instanceof Error ? error.message : "The file content could not be prepared.");
   }

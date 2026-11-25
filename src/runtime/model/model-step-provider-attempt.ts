@@ -1,3 +1,4 @@
+import { modelIssueObserver } from "./model-issue-event.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestModelInvocationView } from "../request/contracts.js";
 import type { RequestSteeringSnapshot } from "../request/request-steering.js";
@@ -8,6 +9,7 @@ import type { ModelStepTimeoutIdentity } from "./model-step-timeout-event.js";
 import { invokeModelProvider } from "./provider-failure.js";
 import { projectPromptCacheBoundary } from "./prompt-cache-boundary.js";
 import { ProviderContextRecovery } from "./provider-context-recovery.js";
+import { ProviderStreamRecovery } from "./provider-stream-recovery.js";
 
 type ModelStepAttemptConstructor<T> = Readonly<{
   request: RequestModelInvocationView;
@@ -18,6 +20,9 @@ type ModelStepAttemptConstructor<T> = Readonly<{
   stepAbort: ReturnType<typeof createModelStepAbort>;
   onThinking: (delta: string) => void;
   contextRecovery: ProviderContextRecovery;
+  streamRecovery: ProviderStreamRecovery;
+  assertCurrent(): void;
+  onProviderRetry(): void;
   recoverContext?: (signal: AbortSignal) => Promise<ChatMessage[]>;
   onContextEvent?: (name: string, extra?: Record<string, unknown>) => void;
 }>;
@@ -42,24 +47,34 @@ export class ModelStepAttempt {
       messages: this.input.messages, signal: this.signal, recover: this.input.recoverContext,
       identity: { requestId: request.requestId, modelStep: params.modelStep, invocationId: this.identity.invocationId },
       invoke: (messages) => invokeModelProvider(params.modelStep, () =>
-      request.modelGatewayClient.invoke({
-        messages,
-        ...projectPromptCacheBoundary({ messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
-        agentMode: request.agentMode,
-        modelStep: params.modelStep,
-        ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),
-      ...(request.modelPreference
-          ? { modelPreference: request.modelPreference }
-          : {}),
-        ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
-        abortSignal: this.input.stepAbort.signal,
-        debugRequestId: request.requestId,
-        ...(params.format === undefined ? {} : { format: params.format }),
-        ...(params.structuredOutputRepair
-          ? { structuredOutputRepair: params.structuredOutputRepair }
-          : {}),
-        onThinking: this.input.onThinking,
-      }),
+        this.input.streamRecovery.invoke({
+          signal: this.signal,
+          assertCurrent: this.input.assertCurrent,
+          onRetry: this.input.onProviderRetry,
+          identity: { requestId: request.requestId, modelStep: params.modelStep, invocationId: this.identity.invocationId },
+          invoke: () => request.modelGatewayClient.invoke({
+            onIssue: modelIssueObserver({ requestId: request.requestId,
+              invocationId: this.identity.invocationId, modelStep: params.modelStep,
+              onEvent: this.input.onContextEvent }),
+            messages,
+            ...projectPromptCacheBoundary({ messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
+            agentMode: request.agentMode,
+            modelStep: params.modelStep,
+            ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),
+            ...(request.modelPreference
+              ? { modelPreference: request.modelPreference }
+              : {}),
+            ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
+            abortSignal: this.input.stepAbort.signal,
+            debugRequestId: request.requestId,
+            ...(request.sessionId ? { promptCacheScope: request.sessionId } : {}),
+            ...(params.format === undefined ? {} : { format: params.format }),
+            ...(params.structuredOutputRepair
+              ? { structuredOutputRepair: params.structuredOutputRepair }
+              : {}),
+            onThinking: this.input.onThinking,
+          }),
+        }),
       ),
     });
   }

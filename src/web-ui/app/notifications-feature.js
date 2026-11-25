@@ -3,6 +3,7 @@ import { createNotificationsWorkspace } from "./components/notifications/workspa
 import { createNotificationsController } from "./controllers/notifications-controller.js";
 import { createNotificationPresence } from "./controllers/notification-presence.js";
 import { createHomeNotificationsEntry } from "./components/notifications/home-entry.js";
+import { createHomeErrorAttention } from "./components/notifications/home-error-attention.js";
 import { createNotificationFavicon } from "./components/notifications/favicon.js";
 import { notificationSourceUrl } from "./components/notifications/presentation.js";
 import { sparkNotificationReference } from "./lib/spark-chat-address.js";
@@ -11,34 +12,39 @@ function isNotificationSummaryWorkspace(workspace) {
   return ["notifications", "home"].includes(workspace);
 }
 
-export function createNotificationsFeature({ dom, state, client, shell, getEnvironmentId, send }) {
+export function createNotificationsFeature({ dom, state, client, shell, getEnvironmentId, send, reviewStepTimeout }) {
   mountNotificationsDom(dom);
   const favicon = createNotificationFavicon();
   let view;
-  let companionChat;
+  let companionChat, agents;
   let environmentRevision = 0;
+  const openUnread = async () => {
+    const environment = getEnvironmentId();
+    const revision = environmentRevision;
+    const activate = await shell.prepareWorkspaceActivation("notifications");
+    if (!activate || revision !== environmentRevision) return;
+    if (environment !== getEnvironmentId()) return;
+    if (!activate()) return;
+    controller.setFilter("unread");
+  };
   const homeEntry = createHomeNotificationsEntry({
-    homePanel: dom.homeWorkspacePanel,
-    onOpen: async () => {
-      const environment = getEnvironmentId();
-      const revision = environmentRevision;
-      const activate = await shell.prepareWorkspaceActivation("notifications");
-      if (!activate || revision !== environmentRevision) return;
-      if (environment !== getEnvironmentId()) return;
-      if (!activate()) return;
-      controller.setFilter("unread");
-    },
+    homePanel: dom.homeWorkspacePanel, onOpen: openUnread,
+  });
+  const homeErrors = createHomeErrorAttention({
+    homePanel: dom.homeWorkspacePanel, onOpen: openUnread,
   });
   const controller = createNotificationsController({
     client, getEnvironmentId, render: (snapshot) => {
       view?.render(snapshot);
       homeEntry.render(snapshot);
+      homeErrors.render(snapshot);
       refreshAvailability();
     },
   });
   const presence = createNotificationPresence({
     getEnvironmentId,
     getSessionId: () => state.currentSessionId,
+    getAgentId: () => agents?.selectedId?.() || "",
     getWorkspace: shell.activeWorkspace,
     isConnected: () => state.connected && client.supportsNotifications(),
     send,
@@ -73,6 +79,24 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     if (navigationRequest !== shell.navigationRequestRevision?.()) return;
     window.location.assign(source);
   }
+  async function reviewIssue(item) {
+    if (!canOpenNotificationSource(item) || item.severity !== "error") return;
+    const action = item.issue?.action;
+    if (action?.kind === "model-settings") {
+      await shell.activateWorkspace("models");
+      return;
+    }
+    if (action?.kind !== "step-timeout" || !reviewStepTimeout) return;
+    if (action.reference?.environment !== getEnvironmentId()) return;
+    const revision = environmentRevision;
+    const navigation = shell.navigationRevision();
+    try {
+      await reviewStepTimeout(action.reference);
+    } catch (error) {
+      if (revision !== environmentRevision || navigation !== shell.navigationRevision()) return;
+      controller.reportError(error);
+    }
+  }
   function refreshAvailability() {
     favicon.render(controller.snapshot());
     const available = client.supportsNotifications();
@@ -86,11 +110,12 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     root: dom.notificationsRoot,
     button: dom.notificationsWorkspaceButton,
     badge: dom.notificationsBadge,
-    actions: { ...controller, openSource: openNotificationSource },
+    actions: { ...controller, openSource: openNotificationSource, reviewIssue },
   });
   controller.publish();
   return {
     ...controller,
+    setAgents(value) { agents = value; },
     setCompanionChat(companion) { companionChat = companion; },
     refreshAvailability,
     isWorkspaceAvailable(destination) {

@@ -10,6 +10,8 @@ import { buildEaMutationGrounding } from "./mutation-grounding.js";
 import { boundPayload } from "./payload-source.js";
 import type { PayloadBinding, RangeReferences } from "./range-references.js";
 import { readSnapshot, versionKey } from "./snapshot.js";
+import { sameSourceVersion } from "./source-version.js";
+import { confirmCommittedRangeReference, prepareCommittedRangeReceipt } from "./committed-range-reference.js";
 
 export function createMutationHandler(paths: FilesystemPathService, references: RangeReferences,
   mutations: FilesystemMutationCoordinator, tool: "create_text" | "edit_text"): ToolImplementation {
@@ -19,7 +21,7 @@ export function createMutationHandler(paths: FilesystemPathService, references: 
     return mutations.runExclusive(bound.target.absolutePath, async () => {
       context?.abortSignal?.throwIfAborted();
       const snapshot = await readSnapshot(bound.target);
-      if (versionKey(snapshot.version) !== bound.binding.version) fail("filesystem_target_changed", "The target changed after preparation; no changes were applied.");
+      if (!sameSourceVersion(bound.binding.version, versionKey(snapshot.version))) fail("filesystem_target_changed", "The target changed after preparation; no changes were applied.");
       const source = snapshot.content ?? "";
       const edits = resolvePreparedFileEdits(bound.binding, bound.body);
       const changedEdits = edits.filter((edit) => source.slice(edit.start, edit.end) !== edit.newText);
@@ -47,14 +49,27 @@ export function createMutationHandler(paths: FilesystemPathService, references: 
         },
       }, context?.resultBudget);
       if (!result.ok) return result;
-      if (changed) {
-        context?.abortSignal?.throwIfAborted();
-        await atomicWriteText({ target: bound.target, content, expectedVersion: snapshot.version,
-          onCommitted: (root) => reportCommittedFileOutput(context, bound.target,
-            snapshot.content === null ? "created" : "updated", root) });
+      const reservation = bound.binding.mode === "range" ? references.reserveCommitted({
+        path: bound.target.absolutePath, targetPath: bound.target.logicalPath,
+        start: bound.binding.start!, end: bound.binding.start! + bound.body.length,
+      }, bound.binding.id) : undefined;
+      try {
+        const receipt = reservation ? prepareCommittedRangeReceipt(result, reservation, context?.resultBudget) : undefined;
+        if (receipt?.failure) return receipt.failure;
+        if (changed) {
+          context?.abortSignal?.throwIfAborted();
+          await atomicWriteText({ target: bound.target, content, expectedVersion: snapshot.version,
+            onCommitted: (root) => reportCommittedFileOutput(context, bound.target,
+              snapshot.content === null ? "created" : "updated", root) });
+        }
+        references.forget(bound.binding.id);
+        if (!reservation || !receipt?.available || !receipt.unavailable) return result;
+        const confirmed = await confirmCommittedRangeReference({ reservation, target: bound.target, content,
+          ...(!changed ? { unchangedSnapshot: snapshot } : {}) });
+        return confirmed ? receipt.available : receipt.unavailable;
+      } finally {
+        reservation?.cancel();
       }
-      references.forget(bound.binding.id);
-      return result;
     });
   };
 }

@@ -1,4 +1,5 @@
 import { parsePromptCacheInput } from "./prompt-cache.js";
+import { parseReasoningSummaryInput } from "./reasoning-summary.js";
 import { modelParameterInputValidationError } from "./model-parameter-input-drafts.js";
 import { parseReasoningBudgetMode } from "./reasoning-budget.js";
 import { parseReasoningModeBudgets } from "./reasoning-mode-budgets.js";
@@ -297,6 +298,7 @@ export function createConfigWorkspaceModel() {
     const type = input.dataset.valueType || "string";
     if (type === "boolean") return input.checked;
     if (type === "prompt-cache") return parsePromptCacheInput(input.checked);
+    if (type === "reasoning-summary") return parseReasoningSummaryInput(input.value);
     if (type === "number") return parseNumericConfigInputValue(input);
     if (type === "reasoning-budget-mode")
       return parseReasoningBudgetMode(input.value, getConfigPathValue(file.config, path));

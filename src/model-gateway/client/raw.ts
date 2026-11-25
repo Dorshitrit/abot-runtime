@@ -1,3 +1,5 @@
+import { withModelIssues } from "./model-issues.js";
+import { PROVIDER_STREAM_DISCONNECTION_HEADER, providerStreamDisconnectionCause } from "../protocol/provider-stream-disconnection.js";
 import { PROVIDER_CONTEXT_OVERFLOW_HEADER, providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
 import { fetchModelGatewayResponse } from "./invocation-error.js";
 import { attachModelGatewayHttpUserMessage } from "./user-message.js";
@@ -18,6 +20,15 @@ import { toolMediaSafeMessage } from "../observability/tool-media-privacy.js";
 export async function invokeRawModelGatewayWithOptions(
   params: InvokeRawModelGatewayParams,
   options: ModelGatewayClientOptions = {},
+): Promise<RawModelGatewayResult> {
+  return withModelIssues(params.onIssue, params.abortSignal,
+    (issues) => invokeWithIssues(params, options, issues));
+}
+
+async function invokeWithIssues(
+  params: InvokeRawModelGatewayParams,
+  options: ModelGatewayClientOptions,
+  issues: import("./model-issues.js").ClientModelIssues,
 ): Promise<RawModelGatewayResult> {
   const clientOptions = resolveClientOptions(options);
   const url = clientOptions.baseUrl;
@@ -47,6 +58,7 @@ export async function invokeRawModelGatewayWithOptions(
     body: JSON.stringify({
       prompt: params.prompt,
       ...(requestId ? { debugRequestId: requestId } : {}),
+      ...(params.promptCacheScope ? { promptCacheScope: params.promptCacheScope } : {}),
       agentMode: params.agentMode,
       ...(typeof params.taskType === "string"
         ? { taskType: params.taskType }
@@ -67,6 +79,7 @@ export async function invokeRawModelGatewayWithOptions(
       ...(params.format ? { format: params.format } : {}),
     }),
   }, params.abortSignal, { preserveErrorIdentity: true });
+  issues.readHeader(response);
   params.abortSignal.throwIfAborted();
 
   traceDebug("model-gateway.client", "raw.response.received", {
@@ -84,10 +97,11 @@ export async function invokeRawModelGatewayWithOptions(
       bodyLength: errorText.length,
       ...(permitsModelContentTrace(modelStep, params.prompt) ? { bodyPreview: errorText.slice(0, 400) } : { contentOmitted: true }),
     });
-    throw attachModelGatewayHttpUserMessage(new Error(
+    throw issues.bindFailure(attachModelGatewayHttpUserMessage(new Error(
       `bridge_raw_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", params.prompt)}`,
-      providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
-    ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(modelStep, params.prompt));
+      providerStreamDisconnectionCause(response.headers.get(PROVIDER_STREAM_DISCONNECTION_HEADER)) ??
+        providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
+    ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(modelStep, params.prompt)));
   }
 
   const parsed = await response.json().catch(() => ({}));

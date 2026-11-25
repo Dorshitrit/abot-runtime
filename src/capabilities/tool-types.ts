@@ -1,4 +1,5 @@
 import type { ToolResultBudget } from "./result-budget.js";
+import type { ToolControlsRefinement } from "./controls-refinement.js";
 import type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "./tool-execution-binding.js";
 export type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "./tool-execution-binding.js";
 import type { ToolContextTextField } from "./tool-context-text.js";
@@ -82,7 +83,7 @@ export type ToolUnderlyingSettlement = Readonly<
   | { status: "rejected"; errorCode: string }
 >;
 
-export type ToolControlsRefinement = "mechanical_when_complete";
+export type { ToolControlsRefinement } from "./controls-refinement.js";
 
 export type ToolEventMetadataProjection = Readonly<{
   param: string;
@@ -342,6 +343,8 @@ export type ToolCallAdapterInput = {
 
 export type ToolCallAdapter = {
   preparePayload?: import("./tool-payload-preparation.js").ToolPayloadPreparation;
+  /** Unwrap a verified host-bound payload for the declared content-byte limit. */
+  payloadContent?: (input: ToolCallAdapterInput) => string;
   normalizeCall?: (input: ToolCallAdapterInput) => ToolCall;
   validateCall?: (
     input: ToolCallAdapterInput,

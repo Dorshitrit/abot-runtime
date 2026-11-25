@@ -117,8 +117,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       ]);
       if (policy.policyId === "supervisor-worker-v1") {
         expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-          "supervisor_presentation",
-          "supervisor_procedure_gate",
+          "supervisor_fused_entry",
           "supervisor.response",
         ]);
       }

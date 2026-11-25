@@ -1,4 +1,5 @@
 import { blockedCompletionFields } from "../../shared/completion-disposition.js";
+import { isSourceIssueId } from "../../shared/source-issue.js";
 import type {
   SessionCancelWaitCommand,
   SessionCommitTerminalCommand,
@@ -75,6 +76,9 @@ export function commitSessionTerminal(
     return rejectLifecycleCommand("invalid_command", request);
   if (!hasValidTerminalCompletionDisposition(command))
     return rejectLifecycleCommand("invalid_command", request);
+  if (command.sourceIssueId !== undefined &&
+    (command.status !== "failed" || !isSourceIssueId(command.sourceIssueId)))
+    return rejectLifecycleCommand("invalid_command", request);
   request.status = command.status;
   request.lifecycle.terminalCommandId = command.commandId;
   request.lifecycle.terminalCause =
@@ -94,7 +98,10 @@ export function commitSessionTerminal(
       : {
           type: "failed",
           error: command.error ?? request.lifecycle.terminalCause,
-          details: { stoppedResponse: command.message.content },
+          details: {
+            stoppedResponse: command.message.content,
+            ...(command.sourceIssueId ? { sourceIssueId: command.sourceIssueId } : {}),
+          },
         };
   const changed = appendLifecycleChangedEvent(context, request);
   const event = appendLifecycleEvent(context, request, payload);

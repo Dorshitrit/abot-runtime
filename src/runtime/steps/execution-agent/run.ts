@@ -1,4 +1,5 @@
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
+import { captureModelInvocationTimeMessage } from "../../context/model-invocation-time.js";
 import { projectExecutionAgentMemory } from "../../long-term-memory/initial-context.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
@@ -30,6 +31,7 @@ import { buildExecutionAgentInput } from "./input.js";
 import { resolveExecutionCapabilityScope } from "./capability-scope.js";
 import { loadExecutionObservationGuidance } from "./observation-guidance.js";
 import { parseExecutionAgentDecisionOutput } from "./parser.js";
+import { parseStableExecutionAgentDecisionOutput } from "./stable-decision-wire.js";
 import { refineExecutionCapabilityInvocations } from "./refinement.js";
 import { createRefinementInvalidOutputCause } from "./refinement-reconsideration.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
@@ -80,6 +82,9 @@ export async function runExecutionAgentDecision(
     modelStep: input.modelStep,
     format: input.format,
     messages: input.messages,
+    ...(input.stableDecisionWire ? {
+      createInvocationTailMessages: () => [captureModelInvocationTimeMessage(request.temporalContext?.timeZone)],
+    } : {}),
     ...(input.promptCacheBoundaryBeforeMessage
       ? { promptCacheBoundaryBeforeMessage: input.promptCacheBoundaryBeforeMessage } : {}),
     ...(input.basketCandidates ? { optionalContextProjection: input.basketCandidates.remove } : {}),
@@ -99,7 +104,9 @@ export async function runExecutionAgentDecision(
     timeoutReason: "execution_agent_decision_timeout",
     invalidOutputReason: "invalid_execution_agent_decision",
     parse: (text) => {
-      const parsed = parseExecutionAgentDecisionOutput(text, input.contract);
+      const parsed = input.stableDecisionWire
+        ? parseStableExecutionAgentDecisionOutput(text, input.contract, input.format)
+        : parseExecutionAgentDecisionOutput(text, input.contract);
       return parsed.ok
         ? Object.freeze({
             ok: true as const,
@@ -111,7 +118,7 @@ export async function runExecutionAgentDecision(
         : parsed;
     },
   });
-  const decision = await refineDecision(
+  const decision = await refineExecutionAgentDecision(
     request,
     options,
     input.capabilities,
@@ -124,7 +131,7 @@ export async function runExecutionAgentDecision(
   });
 }
 
-async function refineDecision(
+export async function refineExecutionAgentDecision(
   request: RequestExecutionScope,
   options: Readonly<{
     head: RoleCallLedgerHead;

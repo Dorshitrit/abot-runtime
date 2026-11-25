@@ -1,4 +1,5 @@
 import { runWorkerDecisionPhase } from "./decision-phase.js";
+import { isMaterializedWorkerCapabilityDecision } from "./controls-fusion-contract.js";
 import type { WorkerEvidenceAssessmentReceipt } from "./evidence-assessment.js";
 import { bindRoleApprovalWait } from "../../orchestration/role-executors/approval-continuation.js";
 import { isWorkerCapabilityApprovalWait } from "../../orchestration/worker-capabilities/approval-contracts.js";
@@ -153,6 +154,7 @@ export async function runWorkerDecision(
     }
     return decision;
   }
+  if (isMaterializedWorkerCapabilityDecision(decision)) return decision;
   if (decision.action === "invoke_capability") {
     assertGuidanceCapabilitiesInScope(options, [decision.capabilityId]);
     const guidance = (

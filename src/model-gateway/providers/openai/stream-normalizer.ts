@@ -4,6 +4,8 @@ import { readOpenAIFunctionResult } from "./function-result.js";
 import { isOpenAIRefusalEvent } from "./refusal.js";
 import { OpenAICompletedFunctionItems } from "./completed-function-items.js";
 import { buildModelTokenUsage } from "../../protocol/usage.js";
+import { OpenAIReasoningSummary } from "./reasoning-summary.js";
+import type { OpenAIResponseDisconnectionEvidence } from "./response-disconnection.js";
 import type { ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
 
@@ -15,11 +17,13 @@ import {
 export type { OpenAIMessageOutputNormalizationDiagnostic } from "./structured-message-output.js";
 
 export type OpenAIResponsesStreamOptions = Readonly<{
+  reasoningSummary?: boolean;
   structuredOutput?: boolean;
   requireCompletedResponse?: boolean;
   assembleCompletedFunctionItems?: boolean;
   contextOverflowRecovery?: true;
   functionOutputName?: string;
+  disconnectionEvidence?: OpenAIResponseDisconnectionEvidence;
   onMessageOutputDiagnostic?: (
     diagnostic: OpenAIMessageOutputNormalizationDiagnostic,
   ) => void;
@@ -27,6 +31,7 @@ export type OpenAIResponsesStreamOptions = Readonly<{
 
 export type NormalizedOpenAIStreamEvent =
   | { type: "content"; text: string }
+  | { type: "thinking"; text: string }
   | {
       type: "done";
       done: true;
@@ -96,10 +101,12 @@ function isStreamError(event: NormalizedOpenAIStreamEvent): boolean {
 
 export class OpenAIResponsesStreamNormalizer {
   private readonly structuredOutput = new OpenAIStructuredMessageOutput();
+  private readonly reasoningSummary?: OpenAIReasoningSummary;
   private readonly completedFunctionItems?: OpenAICompletedFunctionItems;
   private terminal = false;
 
   constructor(private readonly options: OpenAIResponsesStreamOptions) {
+    if (options.reasoningSummary) this.reasoningSummary = new OpenAIReasoningSummary();
     if (options.assembleCompletedFunctionItems && options.functionOutputName) {
       this.completedFunctionItems = new OpenAICompletedFunctionItems();
     }
@@ -110,6 +117,12 @@ export class OpenAIResponsesStreamNormalizer {
   }
 
   consume(data: unknown): NormalizedOpenAIStreamEvent[] {
+    const events = this.consumeResponse(data);
+    if (this.terminal) this.reasoningSummary?.clear();
+    return events;
+  }
+
+  private consumeResponse(data: unknown): NormalizedOpenAIStreamEvent[] {
     if (this.terminal) {
       return [];
     }
@@ -122,22 +135,24 @@ export class OpenAIResponsesStreamNormalizer {
     if (isOpenAIRefusalEvent(event)) {
       return this.fail("openai response refused");
     }
+    const thinking: NormalizedOpenAIStreamEvent[] = (this.reasoningSummary?.consume(event) ?? [])
+      .map((text) => ({ type: "thinking", text }));
     if (event.type === "response.output_text.delta") {
       return this.consumeTextDelta(event);
     }
     if (isMessageItemEvent(event)) {
-      return this.consumeMessageItem(event);
+      return [...thinking, ...this.consumeMessageItem(event)];
     }
     if (event.type === "response.completed") {
-      return this.complete(readOpenAIUsage(data), undefined, event.response);
+      return [...thinking, ...this.complete(readOpenAIUsage(data), undefined, event.response)];
     }
     if (event.type === "response.incomplete") {
-      return this.consumeIncompleteResponse(data);
+      return [...thinking, ...this.consumeIncompleteResponse(data)];
     }
     if (event.type === "error") {
       return this.fail(readOpenAIError(data), readOpenAIStreamContextOverflow(event, this.options.contextOverflowRecovery));
     }
-    return [];
+    return thinking;
   }
 
   finish(): NormalizedOpenAIStreamEvent[] {
@@ -179,6 +194,7 @@ export class OpenAIResponsesStreamNormalizer {
 
   // A transport ending alone cannot establish that any model output completed.
   end(): NormalizedOpenAIStreamEvent[] {
+    this.reasoningSummary?.clear();
     if (this.terminal) return [];
     if (this.options.functionOutputName) return this.fail("openai function response not completed");
     return this.fail("openai response not completed");

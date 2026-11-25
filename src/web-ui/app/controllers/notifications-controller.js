@@ -10,7 +10,7 @@ export function createNotificationsController({
   clearTimer = clearTimeout,
 }) {
   const state = {
-    items: [], unreadCount: 0, nextCursor: null, preferences: null,
+    items: [], unreadCount: 0, unreadErrorCount: 0, readBoundary: null, nextCursor: null, preferences: null,
     desktop: null, loading: false, busy: false, error: "", filter: "unread",
   };
   let ready = false;
@@ -58,6 +58,8 @@ export function createNotificationsController({
       const seen = new Set(existing.map((item) => item.id));
       state.items = [...existing, ...result.items.filter((item) => !seen.has(item.id))];
       state.unreadCount = Math.max(0, Number(result.unreadCount) || 0);
+      state.unreadErrorCount = Math.max(0, Number(result.unreadErrorCount) || 0);
+      state.readBoundary = Number.isSafeInteger(result.readBoundary) ? result.readBoundary : null;
       state.nextCursor = result.nextCursor || null;
       state.preferences = result.preferences;
       state.desktop = result.desktop;
@@ -82,8 +84,10 @@ export function createNotificationsController({
     state.error = "";
     publish();
     try {
-      await operation(environment);
+      const result = await operation(environment);
       if (!isCurrentEnvironment(environment, version)) return false;
+      applyReadAcknowledgement(result);
+      publish();
       await refresh();
       return isCurrentEnvironment(environment, version);
     } catch (error) {
@@ -97,21 +101,49 @@ export function createNotificationsController({
       }
     }
   }
+  function applyReadAcknowledgement(result) {
+    if (!Number.isSafeInteger(result?.unreadErrorCount)) return;
+    // A realtime read may already include occurrences newer than this POST's snapshot.
+    if (Number.isSafeInteger(state.readBoundary) && result.readBoundary < state.readBoundary) return;
+    state.unreadCount = result.unreadCount;
+    state.unreadErrorCount = result.unreadErrorCount;
+    state.readBoundary = result.readBoundary;
+    const issues = new Map((result.issueStates || []).map((item) => [item.id, item]));
+    state.items = state.items.map((item) => {
+      const acknowledged = issues.get(item.id);
+      if (!item.issue || !acknowledged) return item;
+      if (acknowledged.occurrenceCount < item.issue.occurrenceCount) return item;
+      const presentation = acknowledged.issue ? {
+        title: acknowledged.title, body: acknowledged.body, sourceUrl: acknowledged.sourceUrl,
+        sessionId: acknowledged.sessionId, sessionKind: acknowledged.sessionKind, requestId: acknowledged.requestId,
+      } : {};
+      return { ...item, ...presentation, readAt: acknowledged.readAt,
+        issue: acknowledged.issue || { ...item.issue, occurrenceCount: acknowledged.occurrenceCount } };
+    });
+  }
   async function markRead(id, read = true) {
     const item = state.items.find((candidate) => candidate.id === id);
     if (!item) return false;
     if (item.environmentId !== getEnvironmentId()) return false;
-    return mutate((environment) => client.markNotificationsRead({ ids: [id], read }, environment));
+    const observation = read && item.issue
+      ? { observedIssues: [{ id, occurrenceCount: item.issue.occurrenceCount }] } : {};
+    return mutate((environment) => client.markNotificationsRead({ ids: [id], read, ...observation }, environment));
   }
   return {
     snapshot, publish, refresh, markRead,
     loadMore: () => refresh({ append: true }),
     markAllRead: () => mutate((environment) =>
-      client.markNotificationsRead({ all: true, read: true }, environment)),
+      client.markNotificationsRead({ all: true, read: true,
+        ...(state.readBoundary === null ? {} : { issueReadBoundary: state.readBoundary }),
+      }, environment)),
     savePreferences: (preferences) => mutate((environment) =>
       client.saveNotificationPreferences(preferences, environment)),
     setFilter(filter) {
       state.filter = filter === "unread" ? "unread" : "all";
+      publish();
+    },
+    reportError(error) {
+      state.error = error instanceof Error ? error.message : String(error);
       publish();
     },
     setReady() {
@@ -126,7 +158,7 @@ export function createNotificationsController({
       readRevision += 1;
       refreshEvents.cancel();
       Object.assign(state, {
-        items: [], unreadCount: 0, nextCursor: null, preferences: null,
+        items: [], unreadCount: 0, unreadErrorCount: 0, readBoundary: null, nextCursor: null, preferences: null,
         desktop: null, loading: false, busy: false, error: "",
       });
       publish();

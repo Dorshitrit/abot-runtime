@@ -160,6 +160,14 @@ describe("runtime composition", () => {
         browseFolders: expect.any(Function),
         createSession: expect.any(Function),
       },
+      agents: expect.objectContaining({
+        register: expect.any(Function),
+        read: expect.any(Function),
+      }),
+      agentController: expect.objectContaining({
+        reserve: expect.any(Function),
+        decide: expect.any(Function),
+      }),
       scheduler: expect.any(Object),
       automations: expect.any(Object),
       sparkHome: expect.any(Object),

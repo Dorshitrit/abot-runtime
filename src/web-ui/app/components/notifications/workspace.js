@@ -56,6 +56,7 @@ export function createNotificationsWorkspace({ root, button, badge, actions }) {
     const item = snapshot?.items.find((candidate) => candidate.id === target.dataset.notificationId);
     if (!item) return;
     if (action === "read") return actions.markRead(item.id, item.readAt != null ? false : true);
+    if (action === "review-issue") return actions.reviewIssue(item);
     if (action !== "open") return;
     event.preventDefault();
     return actions.openSource(item);

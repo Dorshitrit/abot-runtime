@@ -1,4 +1,5 @@
 import type { ToolInputDocumentation } from "./input-documentation.js";
+import type { ToolInputPropertyModes } from "./input-property-modes.js";
 import type { ToolNormalInvocationOutputChannels } from "./output-channels.js";
 export type { ToolNormalInvocationOutputChannels, ToolNormalInvocationOutputChannelRole } from "./output-channels.js";
 
@@ -18,6 +19,7 @@ export type ToolNormalInvocationBoundedStringInput = Readonly<{
   type: "string";
   minLength: number;
   maxLength: number;
+  pattern?: string;
 }>;
 
 export type ToolNormalInvocationUnboundedStringInput = Readonly<{
@@ -61,14 +63,15 @@ export type ToolNormalInvocationPropertyInput = (
 
 /**
  * Provider-safe v1 input subset. The object is deliberately exact and flat:
- * command variants are separate operations and nested objects/unions are not
- * part of this contract version.
+ * command variants are separate operations. Optional property-name modes only
+ * restrict which declared flat controls may occur together.
  */
 export type ToolNormalInvocationInput = Readonly<{
   type: "object";
   additionalProperties: false;
   properties: Readonly<Record<string, ToolNormalInvocationPropertyInput>>;
   required: readonly string[];
+  anyOf?: ToolInputPropertyModes;
 }>;
 
 export type ToolNormalInvocationPayload = Readonly<{

@@ -26,6 +26,7 @@ import {
   UNSELECTED_SOURCE,
 } from "./support/super-dependency-observation-fixture.js";
 import { createDependencyCheckpoints } from "./support/super-dependency-compaction-fixture.js";
+import { projectSelectedDependencyResultSources } from "../context/semantic-compaction/super-dependency-result-source.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -96,8 +97,15 @@ test.each([false, true])("restored handoff uses original selected-source fingerp
   expect(record.semanticCheckpoint.scopeId).toBe(checkpoint.scopeId);
   expect(record.semanticCheckpoint.coveredSources).toEqual(checkpoint.sourceDigests);
   const covered = record.semanticCheckpoint.coveredResults as { executionId: string; sourceFingerprint: string }[];
-  expect(covered.map(result => result.executionId).sort()).toEqual(sources.map(source => source.sourceRef).sort());
-  for (const source of sources)
+  const summaries = projectSelectedDependencyResultSources(fixture.head, fixture.call);
+  expect(summaries.map(source => source.sourceRef)).toEqual([
+    `dependency-result:${fixture.selectedResult.resultRef}`, `dependency-result:${fixture.firstResult.resultRef}`,
+  ]);
+  const executionIds = [...(includeOwn ? [view.results.find(result => result.callId === fixture.call.callId)!.executionId] : []),
+    fixture.firstExecutionId, fixture.nestedExecutionId];
+  expect(sources.map(source => source.sourceRef)).toEqual([...executionIds, ...summaries.map(source => source.sourceRef)]);
+  expect(covered.map(result => result.executionId).sort()).toEqual([...executionIds].sort());
+  for (const source of sources.filter(source => executionIds.includes(source.sourceRef)))
     expect(covered.find(result => result.executionId === source.sourceRef)?.sourceFingerprint).toBe(source.sourceFingerprint);
   expect(record.results).toEqual(original.results.filter(
     (result: { executionId: string }) => result.executionId === fixture.unselectedExecutionId,

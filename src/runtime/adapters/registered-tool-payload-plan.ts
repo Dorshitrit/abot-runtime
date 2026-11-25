@@ -1,5 +1,3 @@
-import { readFile, stat } from "node:fs/promises";
-
 import type {
   ToolDefinition,
   ToolExecutionSharedState,
@@ -9,7 +7,8 @@ import type {
   ToolPayloadChannelStageSpec,
 } from "../../capabilities/tool-types.js";
 import { TOOL_PAYLOAD_STAGE_LITERAL_OUTPUT_MAX_BYTES } from "../../capabilities/tool-types.js";
-import { resolveRuntimeTargetPath } from "../capabilities/runtime-target-path.js";
+import { readRegisteredToolPayloadTarget } from "./registered-tool-payload-target-read.js";
+import { projectToolNormalInvocationInput } from "../../capabilities/normal-invocation/input-property-modes.js";
 
 export type RegisteredToolPayloadStage = Readonly<{
   outputParam: string;
@@ -103,9 +102,6 @@ export function deriveRegisteredToolStagedPayloadPlan(
       ([name]) => !stageOutputParams.has(name),
     ),
   );
-  const publicRequired = operation.input.required.filter(
-    (name) => !stageOutputParams.has(name),
-  );
   if (spec.targetParam && !Object.hasOwn(publicProperties, spec.targetParam)) {
     throw new TypeError("staged_payload_target_not_public");
   }
@@ -196,12 +192,7 @@ export function deriveRegisteredToolStagedPayloadPlan(
   });
 
   return Object.freeze({
-    publicInput: Object.freeze({
-      type: "object" as const,
-      additionalProperties: false as const,
-      properties: Object.freeze(publicProperties),
-      required: Object.freeze(publicRequired),
-    }),
+    publicInput: projectToolNormalInvocationInput(operation.input, Object.keys(publicProperties)),
     payloadParams: Object.freeze([...stageOutputParams]),
     outputParam: operation.payload.param,
     payloadMinBytes: operation.payload.minBytes ?? 0,
@@ -292,18 +283,9 @@ export async function resolveRegisteredToolPayloadTargetContext(params: {
     return undefined;
   }
 
-  let resolvedTarget: string;
-  try {
-    resolvedTarget = resolveRuntimeTargetPath(rawTarget, params.sharedState);
-    const targetStat = await stat(resolvedTarget);
-    if (!targetStat.isFile()) {
-      return undefined;
-    }
-  } catch {
-    return undefined;
-  }
-
-  const rawContent = await readFile(resolvedTarget, "utf8");
+  const rawContent = await readRegisteredToolPayloadTarget({
+    targetParam, targetPath: rawTarget, sharedState: params.sharedState,
+  });
   const presentation = params.stage.targetContext;
   if (presentation === "bounded") {
     return resolveBoundedTargetContext({

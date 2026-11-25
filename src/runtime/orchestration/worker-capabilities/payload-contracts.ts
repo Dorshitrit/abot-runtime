@@ -151,6 +151,11 @@ export type WorkerCapabilityPayloadAuthoringResult =
   | Readonly<{ status: "authored"; body: string }>
   | Readonly<{
       status: "failed";
+      code: "payload_model_timed_out";
+      timeoutMs?: number;
+    }>
+  | Readonly<{
+      status: "failed";
       code:
         | "payload_context_invalid"
         | "payload_context_budget_exceeded"

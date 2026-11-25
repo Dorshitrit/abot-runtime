@@ -4,6 +4,8 @@ import type { PersonalSkillManagementService } from "./knowledge-skills/personal
 import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
 import type WebSocket from "ws";
 import type { RuntimeProjectService } from "./projects/contracts.js";
+import type { AgentManagementService } from "./agents/management-contracts.js";
+import type { AgentControllerService } from "./agents/controller-service.js";
 
 import {
   createBoundRuntimeRequestHandler,
@@ -41,6 +43,8 @@ export type RuntimeEnvironmentServices = SessionMemoryCompactorComposition & Spa
   config: RuntimeConfig;
   sessions: SessionStore;
   projects?: RuntimeProjectService;
+  agents?: AgentManagementService;
+  agentController?: AgentControllerService;
   attachments: RuntimeAttachmentStore;
   tools: ToolRegistry;
   knowledgeSkillStore?: KnowledgeSkillStore;

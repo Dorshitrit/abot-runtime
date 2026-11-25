@@ -24,7 +24,7 @@ export function canAuthorConversationMemory(
   return context !== undefined;
 }
 
-/** Request-local authoring reference; never part of ordinary recall or routing. */
+/** Request-local memory-only reference; never ordinary recall or routing authority. */
 export async function prepareConversationMemoryAuthoring(
   request: Pick<RequestExecutionScope, "longTermMemory" | "requestId" | "sessionId" | "prompt" | "abortSignal">,
   steering: RequestSteeringSnapshot,

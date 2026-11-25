@@ -8,6 +8,7 @@ import type {
 import type { RegisteredToolNormalInvocationProjection } from "../registered-tool-normal-invocations.js";
 import { resolveRegisteredToolPayloadRelatedArtifactContexts } from "../registered-tool-payload-related-artifacts.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
+import { payloadAuthoringFailureMessage } from "./payload-authoring-failure.js";
 import {
   executionFreshnessRejection,
   payloadRejection,
@@ -201,7 +202,7 @@ export async function prepareOperationPayload(
       executor: params.executor,
       lifecycle,
       code: authored.code,
-      message: "The capability payload could not be prepared.",
+      message: payloadAuthoringFailureMessage(authored, "The capability payload could not be prepared."),
     });
   }
   const completed = params.executor.emitPayloadLifecycle({

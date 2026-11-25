@@ -4,15 +4,18 @@ import {
 } from "../src/shared/model-reasoning.js";
 
 import { parseSetupPromptCache } from "./runtime-setup-prompt-cache.js";
+import { parseSetupReasoningSummary, type SetupReasoningSummary } from "../src/model-gateway/providers/openai/setup-reasoning-summary.js";
 
 export type SetupModelOptions = Readonly<{
   promptCache?: boolean;
+  reasoningSummary?: SetupReasoningSummary;
   supportsThinking?: boolean;
   reasoningBudget?: ModelReasoningBudget;
 }>;
 
 export function parseSetupModelOptions(body: Record<string, unknown>): SetupModelOptions {
   const promptCache = parseSetupPromptCache(body.promptCache);
+  const reasoningSummary = parseSetupReasoningSummary(body.reasoningSummary);
   const supportsThinking = body.supportsThinking;
   if (supportsThinking !== undefined && typeof supportsThinking !== "boolean")
     throw new Error("Supports reasoning must be true or false.");
@@ -21,6 +24,7 @@ export function parseSetupModelOptions(body: Record<string, unknown>): SetupMode
     throw new Error("Enable reasoning support before configuring its budget.");
   return {
     ...(promptCache !== undefined ? { promptCache } : {}),
+    ...(reasoningSummary !== undefined ? { reasoningSummary } : {}),
     ...(supportsThinking !== undefined ? { supportsThinking } : {}),
     ...(reasoningBudget !== undefined ? { reasoningBudget } : {}),
   };

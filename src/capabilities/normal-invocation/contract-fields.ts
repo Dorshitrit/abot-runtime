@@ -23,6 +23,18 @@ export function hasExactKeys(
   );
 }
 
+/** Anchored, fixed-width tokens only; manifest patterns cannot introduce backtracking groups. */
+export function isFixedWidthInputPattern(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 256 ||
+      !/^\^(?:[a-zA-Z0-9_:-]|\[[a-zA-Z0-9-]+\](?:\{[1-9][0-9]{0,2}\})?)+\$$/u.test(value)) return false;
+  try {
+    new RegExp(value, "u");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function fail(toolName: string, path: string, issue: string): never {
   throw new Error(
     `Invalid normal invocation contract for ${toolName} (${path}: ${issue})`,

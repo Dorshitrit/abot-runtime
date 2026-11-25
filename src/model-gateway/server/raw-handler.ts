@@ -1,3 +1,4 @@
+import { GatewayModelIssues } from "./model-issues.js";
 import { resolveModelInvocation } from "../policy/invocation-policy.js";
 import type { ModelGatewayRequest } from "../types.js";
 import type {
@@ -27,6 +28,7 @@ export function createRawHandler(options: ModelGatewayHandlerOptions = {}) {
     context: ModelGatewayInvocationContext = {},
   ): Promise<void> {
     const abortSignal = context.abortSignal ?? new AbortController().signal;
+    const issues = new GatewayModelIssues();
     try {
       abortSignal.throwIfAborted();
       const effectiveRequestBody = applyConfiguredModelPolicy(
@@ -61,6 +63,7 @@ export function createRawHandler(options: ModelGatewayHandlerOptions = {}) {
       }
 
       const result = await providerAdapter.invoke({
+        onIssue: issues.observe,
         endpoint: "raw",
         abortSignal,
         requestBody: effectiveRequestBody,
@@ -77,13 +80,16 @@ export function createRawHandler(options: ModelGatewayHandlerOptions = {}) {
         return;
       }
       if (result.kind === "error") {
+        issues.writeHeader(response);
         return sendProviderError(response, result, effectiveRequestBody);
       }
       if (result.kind !== "raw") {
         throw new Error("model_provider_adapter_raw_result_invalid");
       }
+      issues.writeHeader(response);
       return sendJson(response, 200, result.body);
     } catch (error) {
+      issues.writeHeader(response);
       respondToGatewayHandlerError({
         error,
         response,

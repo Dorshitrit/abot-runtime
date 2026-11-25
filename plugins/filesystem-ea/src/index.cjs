@@ -1113,6 +1113,31 @@ var prepareFilesystemRequest = async (modules) => {
 
 // plugins/filesystem-ea/source/range-references.ts
 var import_node_crypto = require("node:crypto");
+
+// plugins/filesystem-ea/source/source-version.ts
+function sameSourceVersion(expected, observed) {
+  if (expected === observed) return true;
+  try {
+    const before = JSON.parse(expected);
+    const after = JSON.parse(observed);
+    if (!isFileVersion(before) || !isFileVersion(after)) return false;
+    if (!hasSameContentRevision(before, after)) return false;
+    return hasSameDestinationAccess(before, after);
+  } catch {
+    return false;
+  }
+}
+function isFileVersion(value) {
+  return typeof value === "object" && value !== null && "kind" in value && value.kind === "file";
+}
+function hasSameContentRevision(before, after) {
+  return typeof before.digest === "string" && before.digest === after.digest && before.size === after.size;
+}
+function hasSameDestinationAccess(before, after) {
+  return before.device === after.device && before.inode === after.inode && before.mode === after.mode;
+}
+
+// plugins/filesystem-ea/source/range-references.ts
 var STATE_KEY = "filesystem-ea.v1";
 var MAX_RANGES = 32;
 var MAX_BINDINGS = 128;
@@ -1125,12 +1150,13 @@ function createRangeReferences(context) {
     if (closed) fail("ea_request_closed", "This file request has ended.");
   };
   const ranges = /* @__PURE__ */ new Map();
+  const reservations = /* @__PURE__ */ new Map();
   const bindings = /* @__PURE__ */ new Map();
   const restored = context?.requestState?.read(STATE_KEY);
   if (restored !== void 0) {
-    if (!isRecord(restored) || restored.version !== 1 || restored.requestId !== requestId || !Array.isArray(restored.ranges) || !Array.isArray(restored.bindings) || restored.ranges.length > MAX_RANGES || restored.bindings.length > MAX_BINDINGS || Buffer.byteLength(JSON.stringify(restored)) > MAX_STATE_BYTES) invalidState();
+    if (!isRecord(restored) || !isSupportedStateVersion(restored.version) || restored.requestId !== requestId || !Array.isArray(restored.ranges) || !Array.isArray(restored.bindings) || restored.ranges.length > MAX_RANGES || restored.bindings.length > MAX_BINDINGS || Buffer.byteLength(JSON.stringify(restored)) > MAX_STATE_BYTES) invalidState();
     for (const range of restored.ranges) {
-      if (!isRecord(range) || !validBase(range) || !validOffsets(range) || typeof range.targetPath !== "string" || !range.targetPath.length || range.targetPath.length > 4096 || typeof range.text !== "string" || range.text.length !== Number(range.end) - Number(range.start) || Buffer.byteLength(range.text) > 24e3) invalidState();
+      if (!isRecord(range) || !validBase(range) || !validOffsets(range) || typeof range.targetPath !== "string" || !range.targetPath.length || range.targetPath.length > 4096 || !hasSupportedRangeSource(range, restored.version)) invalidState();
       if (ranges.has(range.id)) invalidState();
       ranges.set(range.id, Object.freeze(range));
     }
@@ -1143,30 +1169,76 @@ function createRangeReferences(context) {
   const dispose = () => {
     closed = true;
     ranges.clear();
+    reservations.clear();
     bindings.clear();
   };
-  const snapshot = () => ({ version: 1, requestId, ranges: [...ranges.values()], bindings: [...bindings.values()] });
-  const reservedBytes = () => Buffer.byteLength(JSON.stringify(snapshot())) + [...bindings.values()].filter((binding) => binding.bodyDigest === void 0).length * 80;
+  const snapshot = () => ({ version: 2, requestId, ranges: [...ranges.values()], bindings: [...bindings.values()] });
+  const reservedBytes = () => {
+    const current = Buffer.byteLength(JSON.stringify(snapshot())) + [...bindings.values()].filter((binding) => binding.bodyDigest === void 0).length * 80;
+    const future = [...reservations.values()].reduce((total, reservation) => {
+      const binding = bindings.get(reservation.bindingId);
+      return total + reservation.bytes - (binding ? Buffer.byteLength(JSON.stringify(binding)) : 0);
+    }, current);
+    return Math.max(current, future);
+  };
+  const evictOldestRange = () => {
+    const oldest = ranges.keys().next().value;
+    if (oldest === void 0) fail("ea_request_state_limit", "The request has no room for another exact file window.");
+    ranges.delete(oldest);
+  };
   if (reservedBytes() > MAX_STATE_BYTES) invalidState();
   context?.requestState?.register(STATE_KEY, { snapshot, dispose });
   if (!context?.requestState) context?.onRequestDispose?.(dispose);
   return Object.freeze({
     observe(input) {
       assertOpen();
-      while (ranges.size >= MAX_RANGES) ranges.delete(ranges.keys().next().value);
+      while (ranges.size + reservations.size >= MAX_RANGES) evictOldestRange();
       const id = `range:${(0, import_node_crypto.randomUUID)()}`;
       ranges.set(id, Object.freeze({ ...input, id }));
       while (reservedBytes() > MAX_STATE_BYTES) {
-        ranges.delete(ranges.keys().next().value);
+        evictOldestRange();
       }
       if (!ranges.has(id)) fail("ea_request_state_limit", "The request has no room for another exact file window.");
       return id;
     },
+    reserveCommitted(input, bindingId) {
+      assertOpen();
+      if (!validOffsets(input)) invalidState();
+      const binding = bindings.get(bindingId);
+      if (!binding) fail("ea_payload_binding_invalid", "The prepared payload is not owned by this request.");
+      const id = `range:${(0, import_node_crypto.randomUUID)()}`;
+      const entry = { ...input, id, origin: "committed_edit" };
+      const bytes = Buffer.byteLength(JSON.stringify({ ...entry, version: binding.version })) + 256;
+      reservations.set(id, { bytes, bindingId });
+      const rangeBytes = [...ranges.values()].reduce((total, range) => total + Buffer.byteLength(JSON.stringify(range)), 0);
+      if (reservations.size > MAX_RANGES || reservedBytes() - rangeBytes > MAX_STATE_BYTES) {
+        reservations.delete(id);
+        fail("ea_request_state_limit", "The request has no room for another exact file window.");
+      }
+      return Object.freeze({
+        id,
+        commit(version) {
+          assertOpen();
+          const committed = { ...entry, version };
+          const capacity = reservations.get(id)?.bytes;
+          if (capacity === void 0 || Buffer.byteLength(JSON.stringify(committed)) + 1 > capacity)
+            fail("ea_request_state_limit", "The committed file reference exceeds its reserved capacity.");
+          reservations.delete(id);
+          while (ranges.size + reservations.size >= MAX_RANGES) evictOldestRange();
+          ranges.set(id, Object.freeze(committed));
+          while (reservedBytes() > MAX_STATE_BYTES) evictOldestRange();
+          if (!ranges.has(id)) fail("ea_request_state_limit", "The committed file reference could not be retained.");
+        },
+        cancel() {
+          reservations.delete(id);
+        }
+      });
+    },
     resolve(id, path, version) {
       assertOpen();
       const range = ranges.get(id);
-      if (!range || range.path !== path) fail("ea_range_invalid", "The range reference is not available for this request and path. Read the desired range again.");
-      if (range.version !== version) fail("filesystem_target_changed", "The file changed after the range was read. Read it again.");
+      assertRangeReferenceForPath(range, path);
+      if (!sameSourceVersion(range.version, version)) fail("filesystem_target_changed", "The file changed after the range was read. Read it again.");
       return range;
     },
     bind(input) {
@@ -1197,6 +1269,11 @@ function createRangeReferences(context) {
     }
   });
 }
+function assertRangeReferenceForPath(range, path) {
+  if (!range) fail("ea_range_invalid", "The range reference is not available for this request. Read the desired range again.");
+  if (range.path !== path)
+    fail("ea_range_invalid", "The range reference belongs to a different path. Read the desired range from the selected file and use its range_ref.");
+}
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1205,6 +1282,20 @@ function validBase(value) {
 }
 function validOffsets(value) {
   return Number.isSafeInteger(value.start) && Number.isSafeInteger(value.end) && Number(value.start) >= 0 && Number(value.end) >= Number(value.start) && Number(value.end) <= 1048576;
+}
+function hasSupportedRangeSource(value, stateVersion) {
+  if (value.origin === "committed_edit") {
+    if (stateVersion !== 2) return false;
+    if (Object.hasOwn(value, "text")) return false;
+    return Number(value.end) - Number(value.start) <= 262144;
+  }
+  if (value.origin !== void 0) return false;
+  if (typeof value.text !== "string") return false;
+  if (value.text.length !== Number(value.end) - Number(value.start)) return false;
+  return Buffer.byteLength(value.text) <= 24e3;
+}
+function isSupportedStateVersion(version) {
+  return version === 1 || version === 2;
 }
 function invalidState() {
   return fail("ea_request_state_invalid", "The saved EA file state is invalid.");
@@ -2101,6 +2192,9 @@ var EA_FILE_PAYLOAD_CONTRACT = "execution_file_v1";
 var MAX_AUTHORED_BYTES = 262144;
 function createPayloadAdapter(paths, references, operation) {
   return {
+    payloadContent(input) {
+      return boundPayload(input, paths, references).body;
+    },
     async preparePayload(input, context) {
       context.abortSignal?.throwIfAborted();
       const rangeRef = readSelectedRangeReference(operation, input.params.range_ref);
@@ -2109,7 +2203,7 @@ function createPayloadAdapter(paths, references, operation) {
       assertOperationTargetExists(operation, snapshot.content);
       const version = versionKey(snapshot.version);
       const range = rangeRef === void 0 ? void 0 : references.resolve(rangeRef, target.absolutePath, version);
-      const source = selectPayloadSource(operation, range);
+      const source = selectPayloadSource(operation, range, snapshot.content);
       const binding = references.bind({
         path: target.absolutePath,
         version,
@@ -2139,7 +2233,7 @@ function createPayloadAdapter(paths, references, operation) {
       context.abortSignal?.throwIfAborted();
       const bound2 = boundPayload(input, paths, references);
       const snapshot = await readSnapshot(bound2.target);
-      if (versionKey(snapshot.version) !== bound2.binding.version)
+      if (!sameSourceVersion(bound2.binding.version, versionKey(snapshot.version)))
         fail("filesystem_target_changed", "The target changed after payload preparation. Read it again.");
       return { identity: bound2.identity, metadata: {
         path: bound2.target.logicalPath,
@@ -2151,7 +2245,7 @@ function createPayloadAdapter(paths, references, operation) {
 function readSelectedRangeReference(operation, value) {
   if (operation === "create") return void 0;
   if (typeof value !== "string" || !value.trim())
-    fail("ea_range_required", "edit_text requires a range_ref from read_text for this file.");
+    fail("ea_range_required", "edit_text requires a range_ref from read_text or a successful edit_text for this file.");
   return value;
 }
 function assertOperationTargetExists(operation, content) {
@@ -2161,13 +2255,27 @@ function assertOperationTargetExists(operation, content) {
     fail("ea_file_exists", "create_text only creates a new file; use edit_text for an existing file.");
   fail("file_not_found", "edit_text requires an existing file.");
 }
-function selectPayloadSource(operation, range) {
+function selectPayloadSource(operation, range, content) {
   if (operation === "create") return { mode: "create" };
-  if (range) return { mode: "range", sourceText: range.text };
-  return fail("ea_range_required", "edit_text requires a selected source range.");
+  if (!range) return fail("ea_range_required", "edit_text requires a selected source range.");
+  if ("text" in range) return { mode: "range", sourceText: range.text };
+  if (content === null || range.end > content.length)
+    return fail("ea_range_invalid", "The committed range is not available in the current file.");
+  if (!isCompleteTextBoundary(content, range.start) || !isCompleteTextBoundary(content, range.end))
+    return fail("ea_range_invalid", "The committed range does not preserve complete UTF-8 characters.");
+  const sourceText = content.slice(range.start, range.end);
+  if (Buffer.byteLength(sourceText) > MAX_AUTHORED_BYTES)
+    return fail("ea_range_invalid", "The committed range exceeds the replacement byte limit.");
+  return { mode: "range", sourceText };
+}
+function isCompleteTextBoundary(content, offset) {
+  const code = content.charCodeAt(offset);
+  return !(code >= 56320 && code <= 57343);
 }
 function boundPayload(input, paths, references) {
   const target = paths.resolve(input.params.path);
+  if (!hasBoundedFileEnvelope(input.params.payload))
+    fail("ea_payload_binding_invalid", "Expected a bounded host-bound payload.");
   let value;
   try {
     value = JSON.parse(String(input.params.payload));
@@ -2179,6 +2287,10 @@ function boundPayload(input, paths, references) {
   if (!matchesPreparedFileBinding(binding, target.absolutePath, input.tool, value.body))
     fail("ea_payload_binding_invalid", "The payload does not match its captured source and operation.");
   return { target, binding, body: value.body, identity: bindingIdentity(binding) };
+}
+function hasBoundedFileEnvelope(payload) {
+  if (typeof payload !== "string") return false;
+  return Buffer.byteLength(payload) <= MAX_AUTHORED_BYTES * 6 + 1024;
 }
 function isPreparedFileEnvelope(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -2766,6 +2878,41 @@ function bound(value) {
   return value.length <= GROUNDING_MAX_CHARS ? value : `${value.slice(0, GROUNDING_MAX_CHARS - 1)}…`;
 }
 
+// plugins/filesystem-ea/source/committed-range-reference.ts
+var UNAVAILABLE_REASON = "The edit completed, but its current file revision could not be confirmed. Read the desired range again.";
+function prepareCommittedRangeReceipt(result, reservation, budget) {
+  const available = enforcePluginResultByteBudget({
+    ...result,
+    output: `${result.output}
+range_ref: ${reservation.id}
+Range: exact replacement text in the current file.`,
+    data: { ...result.data, range_ref: reservation.id }
+  }, budget);
+  if (!available.ok) return { failure: available };
+  const unavailable = enforcePluginResultByteBudget({
+    ...result,
+    output: `${result.output}
+range_ref unavailable: ${UNAVAILABLE_REASON}`,
+    data: { ...result.data, range_ref_unavailable: UNAVAILABLE_REASON }
+  }, budget);
+  if (!unavailable.ok) return { failure: unavailable };
+  return { available, unavailable };
+}
+async function confirmCommittedRangeReference(input) {
+  try {
+    const current = input.unchangedSnapshot ?? await readSnapshot(input.target);
+    if (!matchesCommittedContent(current, input.content)) return false;
+    input.reservation.commit(versionKey(current.version));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function matchesCommittedContent(snapshot, content) {
+  if (snapshot.version.kind !== "file") return false;
+  return snapshot.content === content;
+}
+
 // plugins/filesystem-ea/source/mutate-text.ts
 function createMutationHandler(paths, references, mutations, tool) {
   return async (params, context) => {
@@ -2774,7 +2921,7 @@ function createMutationHandler(paths, references, mutations, tool) {
     return mutations.runExclusive(bound2.target.absolutePath, async () => {
       context?.abortSignal?.throwIfAborted();
       const snapshot = await readSnapshot(bound2.target);
-      if (versionKey(snapshot.version) !== bound2.binding.version) fail("filesystem_target_changed", "The target changed after preparation; no changes were applied.");
+      if (!sameSourceVersion(bound2.binding.version, versionKey(snapshot.version))) fail("filesystem_target_changed", "The target changed after preparation; no changes were applied.");
       const source = snapshot.content ?? "";
       const edits = resolvePreparedFileEdits(bound2.binding, bound2.body);
       const changedEdits = edits.filter((edit) => source.slice(edit.start, edit.end) !== edit.newText);
@@ -2820,22 +2967,41 @@ Bytes: ${byteCount}`,
         }
       }, context?.resultBudget);
       if (!result.ok) return result;
-      if (changed) {
-        context?.abortSignal?.throwIfAborted();
-        await atomicWriteText({
+      const reservation = bound2.binding.mode === "range" ? references.reserveCommitted({
+        path: bound2.target.absolutePath,
+        targetPath: bound2.target.logicalPath,
+        start: bound2.binding.start,
+        end: bound2.binding.start + bound2.body.length
+      }, bound2.binding.id) : void 0;
+      try {
+        const receipt = reservation ? prepareCommittedRangeReceipt(result, reservation, context?.resultBudget) : void 0;
+        if (receipt?.failure) return receipt.failure;
+        if (changed) {
+          context?.abortSignal?.throwIfAborted();
+          await atomicWriteText({
+            target: bound2.target,
+            content,
+            expectedVersion: snapshot.version,
+            onCommitted: (root) => reportCommittedFileOutput(
+              context,
+              bound2.target,
+              snapshot.content === null ? "created" : "updated",
+              root
+            )
+          });
+        }
+        references.forget(bound2.binding.id);
+        if (!reservation || !receipt?.available || !receipt.unavailable) return result;
+        const confirmed = await confirmCommittedRangeReference({
+          reservation,
           target: bound2.target,
           content,
-          expectedVersion: snapshot.version,
-          onCommitted: (root) => reportCommittedFileOutput(
-            context,
-            bound2.target,
-            snapshot.content === null ? "created" : "updated",
-            root
-          )
+          ...!changed ? { unchangedSnapshot: snapshot } : {}
         });
+        return confirmed ? receipt.available : receipt.unavailable;
+      } finally {
+        reservation?.cancel();
       }
-      references.forget(bound2.binding.id);
-      return result;
     });
   };
 }

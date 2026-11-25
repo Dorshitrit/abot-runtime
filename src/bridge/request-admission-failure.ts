@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import { isAgentSessionAccessError } from "./agent-session-access.js";
 import { getSessionAdmissionErrorCode } from "../runtime/request/session-busy.js";
 import { RuntimeCommandInputError } from "../runtime/commands/catalog.js";
 import { isAutomationSessionLockedError } from "../sessions/automation-session-origin.js";
@@ -6,6 +7,7 @@ import { getSparkChatAdmissionErrorCode } from "../runtime/spark-chat/service.js
 
 function admissionFailureCode(error: unknown): string | undefined {
   if (error instanceof RuntimeCommandInputError) return error.code;
+  if (isAgentSessionAccessError(error)) return error.message;
   if (isAutomationSessionLockedError(error)) return "automation_session_locked";
   return getSessionAdmissionErrorCode(error) ?? getSparkChatAdmissionErrorCode(error);
 }

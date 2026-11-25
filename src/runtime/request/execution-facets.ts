@@ -130,6 +130,7 @@ export function createModelInvocationView(
       ? { toolResources: enumerableGetter(() => facets.model.toolResources!) }
       : {}),
     requestId: enumerableGetter(() => facets.identity.requestId),
+    sessionId: enumerableGetter(() => facets.identity.sessionId),
     runnerConfig: enumerableGetter(() => facets.model.runnerConfig),
     agentMode: enumerableGetter(() => facets.input.agentMode),
     ...(facets.model.reasoningPreference ? { reasoningPreference: enumerableGetter(() => facets.model.reasoningPreference!) } : {}),

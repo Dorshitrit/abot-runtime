@@ -1,6 +1,5 @@
 import {
   validateToolNormalInvocationInput,
-  validateToolNormalInvocationPayload,
 } from "../../../../capabilities/normal-invocation/index.js";
 import type {
   BoundOperation,
@@ -9,6 +8,7 @@ import type {
 } from "../shared/contracts.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
 import { isPlainRecord } from "../shared/values.js";
+import { materializeCall, validateInvocationPayload } from "../execution/call-binding.js";
 
 export function validatePublicInput(
   source: BoundOperation,
@@ -66,8 +66,10 @@ export function prepareCompleteInvocationInput(
         ),
       };
     }
-    const payloadIssue = validateToolNormalInvocationPayload(
+    const payloadIssue = validateInvocationPayload(
       source.operation,
+      source.registration.adapter,
+      materializeCall(source, sourceInput.value, input.payload),
       input.payload,
     );
     if (payloadIssue) {
@@ -148,8 +150,10 @@ export function prepareCompleteInvocationInput(
     };
   }
   const payload = materialized[plan.outputParam];
-  const payloadIssue = validateToolNormalInvocationPayload(
+  const payloadIssue = validateInvocationPayload(
     source.operation,
+    source.registration.adapter,
+    materializeCall(source, sourceInput.value, payload),
     payload,
   );
   if (payloadIssue) {

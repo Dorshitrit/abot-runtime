@@ -111,9 +111,9 @@ export function createHomeWidgetsHarness(width = 1280, hasMatchMedia = true) {
       if (event === "change") mediaListeners.delete(listener);
     }),
   };
-  const viewport = {
+  const viewport = Object.assign(new EventTarget(), {
     ...(hasMatchMedia ? { matchMedia: vi.fn(() => media) } : {}),
-  };
+  });
   const documentRoot = {} as FakeElement["ownerDocument"] & {
     defaultView: typeof viewport;
     addEventListener: (name: string, listener: () => void) => void;

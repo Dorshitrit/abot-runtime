@@ -155,9 +155,9 @@ describe("startAgentBridge lifecycle", () => {
     await vi.waitFor(() => {
       expect(connectionCount).toBeGreaterThanOrEqual(2);
       expect(registerCount).toBeGreaterThanOrEqual(2);
+      expect(handle.getStatus().registered).toBe(true);
     });
 
-    expect(handle.getStatus().registered).toBe(true);
     expect(mocks.traceDebug).toHaveBeenCalledWith(
       "agent-bridge.client",
       "reconnect.scheduled",

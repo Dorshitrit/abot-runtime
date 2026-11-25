@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -42,7 +42,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory")
     return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+  if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
   expect(input.modelStep).toBe("worker.result");
   return "The requested verification is complete.";
 }
@@ -60,7 +60,7 @@ test("three eligible duplicate outputs decline the fresh batch, route normally a
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Check the requested verification." }),
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       expect(jsonMessages(input).some(({ kind }) => kind === "runtime_core_skill_read_v1")).toBe(false);
       expect(JSON.stringify(input.messages)).not.toContain(first.content);
       if (++routes === 1) return { action: "recall_memory", query: RECALL_QUERY };
@@ -82,12 +82,12 @@ test.each([2, 3])("a valid correction on attempt %s still reads the requested ba
   const f = fixture({
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ++selections === validAttempt ? read(first.skillId) : duplicate(first.skillId),
-    classifyProcedure(input) {
+    delegate(input) {
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
         .toEqual([expect.objectContaining({
           authority: "passive_reference", purpose: "skill_guidance", document: first,
         })]);
-      return { requiresProcedure: false, responseRecommendation: "Answer with the accepted guidance." };
+      return { action: "respond", responseRecommendation: "Answer with the accepted guidance." };
     },
     onInput(input) {
       if (input.modelStep === "supervisor.response") expect(JSON.stringify(input.messages)).toContain(first.content);
@@ -121,7 +121,7 @@ test("a refused batch after child return keeps prior guidance and a later child 
       return { action: "invoke_role", roleId: "worker", objective: `Complete verification ${++routes}.` };
     },
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       expect(JSON.stringify(input.messages)).toContain(first.content);
       routes++;
       if (routes < 3) {
@@ -159,7 +159,7 @@ test.each([
   });
   expect(selectSkills).toHaveBeenCalledTimes(3);
   expect(f.store.read).not.toHaveBeenCalled();
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => supervisorFormatName(input) === "supervisor_decision")).toBe(false);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => ["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? ""))).toBe(false);
   expect(decide).not.toHaveBeenCalled();
   expectNoDegradedFinalization(f);
 });
@@ -198,13 +198,13 @@ test("steering during the final rejection leaves the stale window open for a fre
       expect(JSON.stringify(input.messages)).toContain(update);
       return read(first.skillId);
     },
-    classifyProcedure(input) {
+    delegate(input) {
       expect(JSON.stringify(input.messages)).toContain(update);
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
         .toEqual([expect.objectContaining({
           authority: "passive_reference", purpose: "skill_guidance", document: first,
         })]);
-      return { requiresProcedure: false, responseRecommendation: "Answer the updated request." };
+      return { action: "respond", responseRecommendation: "Answer the updated request." };
     },
     onInput(input) {
       if (input.modelStep !== "supervisor.response") return;

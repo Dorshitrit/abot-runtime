@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
@@ -42,10 +42,6 @@ function createReviewedWorkScript(): Entry[] {
       }),
     },
     {
-      step: "supervisor.decision",
-      output: JSON.stringify({ workingDirectory: "." }),
-    },
-    {
       step: "planner.decision",
       output: decision({
         action: "invoke_role",
@@ -62,7 +58,7 @@ function createReviewedWorkScript(): Entry[] {
         selectedItemIndexes: [0],
       }),
     },
-    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, false).text },
+    { step: "worker.decision", output: (input) => workerFusedReply(input, { action: "return_result" }).text },
     { step: "worker.result", output: WORK_RESULT },
     {
       step: "planner.decision",

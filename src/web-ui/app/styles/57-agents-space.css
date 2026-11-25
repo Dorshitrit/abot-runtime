@@ -1,0 +1,241 @@
+.agents-workspace-panel { container: agents-workspace / inline-size; grid-area: 1 / 2; min-height: 0; min-width: 0; overflow: hidden; color: var(--text); background: var(--bg); }
+.agents-workspace-panel[hidden], .agents-workspace-panel [hidden] { display: none !important; }
+.agents-cosmos { position: relative; isolation: isolate; width: 100%; height: 100%; min-height: 400px; overflow: hidden; background: radial-gradient(ellipse at 67% 22%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 45%), radial-gradient(ellipse at 28% 70%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 48%), var(--bg); animation: agents-enter .55s ease both; }
+.agents-nebula { position: absolute; inset: 0; pointer-events: none; opacity: .7; background: radial-gradient(ellipse at 54% 45%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 43%), radial-gradient(ellipse at 38% 27%, color-mix(in srgb, var(--panel-raised) 30%, transparent), transparent 28%); filter: blur(30px); }
+.agents-stars { position: absolute; inset: -110px; pointer-events: none; }
+.agents-stars i { position: absolute; width: var(--star-size); height: var(--star-size); border-radius: 50%; background: var(--text); opacity: var(--star-opacity); box-shadow: 0 0 5px color-mix(in srgb, var(--text) 35%, transparent); }
+.agents-workspace-panel .agents-plain { background: transparent; border: 0; color: var(--muted); padding: 7px 10px; font-size: 12px; box-shadow: none; }
+.agents-workspace-panel .agents-plain:hover { color: var(--text); background: var(--panel-soft); }
+.agents-workspace-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.agents-orbit-field { position: absolute; inset: 0; }
+.agents-orbit-guides { position: absolute; inset: 0; pointer-events: none; transition: opacity .32s ease; }
+.agents-orbit-track {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--text) 74%, var(--accent));
+  border-radius: 50%;
+  opacity: .27;
+  --arc-faint: color-mix(in srgb, currentColor 20%, transparent);
+  --arc-mid: color-mix(in srgb, currentColor 55%, transparent);
+  mask-image: conic-gradient(from 12deg, var(--arc-faint), var(--arc-mid) 52deg, transparent 87deg, var(--arc-mid) 127deg, currentColor 173deg, var(--arc-mid) 219deg, transparent 253deg, var(--arc-faint) 310deg);
+}
+.agents-orbit-field[data-focused="true"] .agents-orbit-guides { opacity: .35; }
+.agents-workspace-panel .agents-orbit-agent { --orb-size: 74px; position: absolute; left: 0; top: 0; width: var(--orb-size); padding: 0; border: 0; background: transparent; box-shadow: none; transform: translate(calc(var(--orbit-x, 50vw) - 50%), calc(var(--orbit-y, 40vh) - 50%)) scale(var(--orbit-scale, 1)); transform-origin: center; will-change: transform; text-align: center; cursor: pointer; }
+.agents-orb-shell { display: block; position: relative; width: var(--orb-size); height: var(--orb-size); animation: agents-float 7.5s ease-in-out infinite; animation-delay: var(--blink-delay); }
+.agents-orb { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle at 36% 25%, color-mix(in srgb, var(--text-strong) 10%, transparent), transparent 58%), var(--agent-color); box-shadow: inset 0 -7px 18px color-mix(in srgb, var(--bg) 12%, transparent), 0 8px 38px color-mix(in srgb, var(--bg) 34%, transparent); transition: box-shadow .2s ease; }
+.agents-orbit-agent:hover .agents-orb { box-shadow: 0 0 45px color-mix(in srgb, var(--agent-color) 20%, transparent), inset 0 -5px 16px color-mix(in srgb, var(--bg) 8%, transparent); }
+.agents-eyes { position: absolute; display: flex; align-items: center; gap: calc(var(--orb-size) * .13); top: 42%; left: 50%; transform: translateX(-50%); }
+.agents-eyes > span { width: calc(var(--orb-size) * .105); height: calc(var(--orb-size) * .135); border-radius: 45% 58% 45% 56%; transform: rotate(-10deg); background: #183032; animation: agents-blink var(--blink-period) ease-in-out infinite; animation-delay: var(--blink-delay); }
+.agents-eyes > span + span { height: calc(var(--orb-size) * .11); transform: rotate(13deg); border-radius: 53% 42% 58% 40%; }
+.agents-name { display: block; position: absolute; top: calc(100% + 14px); width: 160px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agents-work-ring { display: none; }
+.agents-orbit-agent.is-working {
+  --work-light: color-mix(in srgb, var(--agent-color) 54%, var(--text-strong));
+  --work-glow: color-mix(in srgb, var(--agent-color) 44%, transparent);
+}
+.agents-orbit-agent.is-working .agents-orb {
+  box-shadow: inset 0 -7px 18px color-mix(in srgb, var(--bg) 12%, transparent),
+    0 0 0 2px var(--work-light), 0 0 18px 5px var(--work-glow);
+}
+.agents-orbit-agent.is-working .agents-eyes {
+  gap: calc(var(--orb-size) * .1);
+  transform: translateX(-50%) rotate(-6deg);
+}
+.agents-orbit-agent.is-working .agents-work-ring {
+  display: block;
+  position: absolute;
+  inset: -8px;
+  pointer-events: none;
+  border: 3px solid;
+  border-color: var(--work-light) var(--agent-color) var(--work-glow) transparent;
+  border-radius: 50%;
+  animation: agents-working 5s linear infinite;
+}
+.agents-work-ring::before, .agents-work-ring::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  border-radius: 50%;
+  background: var(--work-light);
+  box-shadow: 0 0 6px var(--agent-color);
+}
+.agents-work-ring::before {
+  top: -1.5px;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+}
+.agents-work-ring::after {
+  bottom: -1.5px;
+  width: 4px;
+  height: 4px;
+  transform: translate(-50%, 50%);
+}
+.agents-orbit-notices { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+.agents-orbit-notice {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: min(24ch, 37%);
+  padding: 5px 9px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--agent-color) 40%, var(--line));
+  border-inline-start: 3px solid var(--agent-color);
+  border-radius: 9px;
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  visibility: hidden;
+}
+.agents-orbit-notice[data-kind="reply"] {
+  background: color-mix(in srgb, var(--agent-color) 12%, var(--panel-solid));
+  border-radius: 12px;
+}
+.agents-orbit-notice[data-kind="thinking"] {
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.agents-hover {
+  position: absolute;
+  z-index: 15;
+  width: max-content;
+  max-width: min(28ch, calc(100% - 24px));
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-solid);
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--bg) 36%, transparent);
+  pointer-events: none;
+  animation: agents-enter .18s ease both;
+}
+.agents-hover strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.agents-hover p {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.agents-hover small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.agents-hover small span { color: var(--accent); }
+.agents-archive-trigger { position: absolute; bottom: 28px; left: 28px; z-index: 8; }
+.agents-add {
+  position: absolute;
+  top: 22px;
+  left: 28px;
+  z-index: 8;
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-soft);
+  color: var(--accent);
+}
+.agents-add::before, .agents-add::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+.agents-add::after { transform: rotate(90deg); }
+.agents-space-error { position: absolute; left: 24px; right: 24px; bottom: 86px; text-align: center; color: var(--danger); font-size: 12px; z-index: 20; }
+.agents-entry-faces { display: flex; align-items: center; padding: 4px; }
+.agents-entry-faces i { position: relative; width: 22px; height: 22px; margin: 0 -1px; border-radius: 50%; background: #7aaee7; }
+.agents-entry-faces i:nth-child(2) { background: #dcb37b; transform: translateY(-4px); z-index: 1; }
+.agents-entry-faces i:nth-child(3) { background: #7dc1aa; }
+.agents-entry-faces i::before, .agents-entry-faces i::after { content: ""; position: absolute; top: 9px; width: 2px; height: 3px; border-radius: 45%; background: #183032; }
+.agents-entry-faces i::before { left: 7px; } .agents-entry-faces i::after { right: 6px; height: 2px; }
+@keyframes agents-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes agents-float { 50% { transform: translateY(-5px); } }
+@keyframes agents-working { to { transform: rotate(360deg); } }
+@keyframes agents-blink { 0%, 42%, 46%, 100% { scale: 1 1; } 44% { scale: 1 .1; } 67%, 75% { translate: 2px 0; } }
+@media (max-width: 640px) { .agents-add { top: 15px; left: 12px; } .agents-archive-trigger { bottom: 18px; left: 12px; } .agents-name { font-size: 10px; width: 100px; } }
+@media (prefers-reduced-motion: reduce) { .agents-workspace-panel *, .agents-workspace-panel *::after { animation: none !important; transition: none !important; } }
+
+
+/* A dedicated doorway above Home. Never use the legacy 30px grid icon. */
+.workspace-rail #agentsWorkspaceButton { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; height: 76px; min-height: 76px; padding: 10px 8px; gap: 7px; border: 0; border-radius: 0; background: transparent; color: var(--muted); box-shadow: none; }
+.workspace-rail #agentsWorkspaceButton:hover, .workspace-rail #agentsWorkspaceButton[aria-current="page"] { background: transparent; color: var(--text-strong); }
+.workspace-rail #agentsWorkspaceButton::before { display: none; }
+.workspace-rail #agentsWorkspaceButton .agents-entry-faces { display: inline-flex; flex-direction: row; flex-wrap: nowrap; justify-content: center; align-items: center; flex: 0 0 auto; width: 67px; height: 26px; padding: 0 0 0 4px; }
+.workspace-rail #agentsWorkspaceButton .agents-entry-faces i { flex: 0 0 25px; width: 25px; height: 25px; margin: 0 0 0 -5px; border: 2px solid var(--panel); }
+.workspace-rail #agentsWorkspaceButton .agents-entry-label { font-size: 12px; line-height: 16px; }
+:root[data-navigation="icons"] .workspace-rail #agentsWorkspaceButton .agents-entry-faces { width: 46px; }
+:root[data-navigation="icons"] .workspace-rail #agentsWorkspaceButton .agents-entry-faces i { flex-basis: 20px; width: 20px; height: 20px; }
+@media(max-width:760px) { .app-shell .workspace-rail #agentsWorkspaceButton { height: 62px; min-height: 62px; padding: 4px; } }
+
+.agents-orbit-agent.needs-approval .agents-orb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 70%, transparent), 0 0 24px color-mix(in srgb, var(--amber) 22%, transparent); }
+.agents-activity-rail { position: absolute; right: 20px; top: 20px; bottom: 24px; z-index: 11; width: min(300px, calc(100% - 100px)); display: flex; flex-direction: column; gap: 16px; pointer-events: none; }
+.agents-activity-rail > aside { pointer-events: auto; }
+.agents-approval-tray { flex: none; max-height: 130px; overflow: auto; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); border-radius: 12px; background: var(--panel-solid); color: var(--text); box-shadow: 0 8px 30px color-mix(in srgb, var(--bg) 55%, transparent); }
+.agents-approval-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+.agents-approval-alert + .agents-approval-alert { border-top: 1px solid var(--line); }
+.agents-approval-alert span { min-width: 0; display: grid; gap: 3px; }
+.agents-approval-alert strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.agents-approval-alert small { color: var(--muted); font-size: 11px; }
+.agents-approval-alert button { flex: 0 0 auto; color: var(--text); }
+
+/* Visible rail children share space; a hidden feed never reserves orbit width. */
+.agents-activity-feed { display: none; flex: 1; min-height: 0; box-sizing: border-box; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-solid); color: var(--text); padding: 14px; }
+.agents-activity-feed h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+.agents-activity-feed ol { list-style: none; padding: 0; margin: 0; }
+.agents-activity-feed li + li { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.agents-activity-item { display: block; width: 100%; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: start; }
+.agents-activity-item:hover { background: var(--panel-soft); }
+.agents-activity-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.agents-activity-feed strong, .agents-activity-feed small, .agents-activity-feed time { display: block; overflow-wrap: anywhere; }
+.agents-activity-feed strong { font-size: 12px; color: var(--agent-color); }
+.agents-activity-feed strong::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-inline-end: 6px; border-radius: 50%; background: var(--agent-color); }
+.agents-activity-text, .agents-activity-feed p { display: block; font-size: 12px; line-height: 1.5; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agents-activity-feed small, .agents-activity-feed time, .agents-activity-empty { font-size: 11px; color: var(--muted); }
+@container agents-workspace (min-width: 1100px) {
+  .agents-activity-feed { display: block; }
+  .agents-cosmos:has(.agents-activity-feed:not([hidden])) .agents-orbit-field { right: 340px; }
+}
+
+/* Independent drift and soft twinkle; paused outside the visible workspace. */
+.agents-stars i { animation: agents-star-drift 28s ease-in-out infinite alternate, agents-star-twinkle 5s ease-in-out infinite alternate; animation-delay: var(--star-delay), var(--star-delay); animation-play-state: paused; }
+.agents-stars i:nth-child(3n) { animation-duration: 38s, 7s; animation-direction: alternate-reverse, alternate; }
+.agents-stars i:nth-child(3n + 1) { animation-duration: 48s, 9s; }
+.agents-cosmos[data-stars-active="true"] .agents-stars i { animation-play-state: running; }
+@keyframes agents-star-drift { from { transform: translate3d(-90px, -45px, 0); } to { transform: translate3d(90px, 45px, 0); } }
+@keyframes agents-star-twinkle { from { opacity: calc(var(--star-opacity) * .5); } to { opacity: var(--star-opacity); } }
+.agents-window-launcher { position: absolute; top: 12px; left: 82px; right: 12px; z-index: 18; display: flex; gap: 4px; overflow-x: auto; padding: 4px; background: var(--panel-solid); border-radius: 12px; }
+.agents-window-launcher:empty { display: none; }
+.agents-window-launcher button { flex: none; }
+.agents-cosmos:has(.agents-window-layer > section) .agents-activity-rail { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .agents-stars i { animation: none !important; } }

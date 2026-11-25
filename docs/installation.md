@@ -82,8 +82,14 @@ Its address is resolved from the ABot host, even when you use the UI from a phon
 Continue through the optional **Embedding** step to configure semantic memory,
 or choose to set it up later. **Plugins** starts with all tools selected for a
 fresh installation; turn off any plugin or individual tool you do not want.
-Choose **Finish setup** to apply the selections. Successful activation opens Home
-automatically. If **Start chatting** remains visible, use it to reload the
+Choose **Finish setup** to apply the selections. After successful first-model
+activation, the optional **ABot Socket** step offers to import the private
+`runtime-connection.json` created by your Socket server setup. Review the server
+and the explicit mapping between the local environment and the remote runtime ID
+before connecting, or choose **Skip for now** to enter Home. The **ABot Socket**
+card on Home lets you connect later, check status, pause, resume or forget the
+local connection. Phone pairing remains separate. See
+[Socket connection setup and CLI commands](running-locally.md) for details. If **Start chatting** remains visible, use it to reload the
 configured model profiles.
 Complete initial setup on Home before opening other workspaces. Spark appears
 when setup is ready; Computer access remains available throughout setup.

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
 import { createServer, type Server } from "node:http";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -27,7 +29,7 @@ async function fixture() {
     failedSessionIds: [], deletedMessages: 4, deletedRequests: 2 };
   const resetSessions = vi.fn(async () => result);
   const clearLogs = vi.fn(async () => ({ complete: true, clearedFiles: 3, removedRotatedFiles: 2 }));
-  const get = vi.fn(() => ({ services: { maintenance: { resetSessions, clearLogs } } }));
+  const get = vi.fn(() => ({ services: { config: { paths: { runtimeDir: join(tmpdir(), `abot-maintenance-no-agent-index-${randomUUID()}`) } }, maintenance: { resetSessions, clearLogs } } }));
   const resetConversations = vi.fn(async (_environmentId: string, operation: typeof resetSessions) => operation());
   const notify = vi.fn();
   const router = new LocalRuntimeApiRouter(

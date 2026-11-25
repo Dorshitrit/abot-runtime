@@ -1,3 +1,4 @@
+import { assertCanResetAgentSessions } from "../../runtime/agents/session-association.js";
 import { randomUUID } from "node:crypto";
 import type { RuntimeSessionsResetResult } from "../../runtime/local-host/maintenance-contracts.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -8,6 +9,8 @@ import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { sendJson } from "./http.js";
 
 const MESSAGES: Readonly<Record<string, string>> = {
+  agents_sessions_prevent_bulk_reset: "Agent work sessions are retained separately. Delete individual Chats instead of resetting all Runtime sessions.",
+  agent_session_index_unavailable: "The Agent session index could not be checked. No conversations were deleted.",
   runtime_maintenance_busy: "The Runtime is working. Wait for active conversations and Jobs to finish, then try again.",
   runtime_maintenance_pending_approvals: "Resolve or cancel pending approvals before deleting conversations.",
   runtime_maintenance_scope_unavailable: "The Runtime cannot verify the storage scope from its configuration. Apply the current configuration before trying again; custom configuration hosts must provide the same configuration file to the Runtime owner.",
@@ -58,11 +61,13 @@ export class RuntimeMaintenanceRoutes {
       return true;
     }
     try {
-      const maintenance = this.resolveEnvironment(input.environmentId).services.maintenance;
+      const environment = this.resolveEnvironment(input.environmentId);
+      const maintenance = environment.services.maintenance;
       if (input.route === "runtime/maintenance/logs") {
         sendJson(input.response, 200, { ok: true, result: await maintenance.clearLogs() });
         return true;
       }
+      await assertCanResetAgentSessions(environment.services.config.paths.runtimeDir);
       let sessionReset: RuntimeSessionResetNotice | undefined;
       try {
         const result = await this.withClientStateReset(input.environmentId, () =>

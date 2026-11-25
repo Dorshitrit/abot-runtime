@@ -6,6 +6,7 @@ import { createCapabilityResultCompactionSource } from "./capability-result-comp
 import { CompactionSourceInvariantError } from "./compaction-source-invariant.js";
 import { hasSuperContextContract } from "./super-context-policy.js";
 import { projectCheckpointMessages, scanCompactionSources } from "./model-step-compaction-projection.js";
+import { projectDependencyResultCheckpointMessage, scanDependencyResultSources } from "./semantic-compaction/super-dependency-result-source.js";
 
 type CompactionProjection = Readonly<{
   scanCompactionSources: typeof scanCompactionSources;
@@ -40,6 +41,7 @@ function scanSuperDependencyCompactionSources(
     for (const source of [
       ...scanCompactionSources([message], scopeId, overrides, sidecar).map(({ source }) => source),
       ...scanDependencyObservationSources(message, overrides, sidecar),
+      ...scanDependencyResultSources(message, overrides, sidecar),
     ]) {
       const previous = sources.get(source.sourceRef);
       if (hasSourceConflict(previous?.source, source))
@@ -60,7 +62,7 @@ function hasSourceConflict(
   );
 }
 
-/** MAIN owns ordinary sources; SUPER removes only its covered nested observations. */
+/** MAIN owns ordinary sources; SUPER projects its covered selected dependency evidence. */
 function projectSuperDependencyCheckpointMessages(
   ...[messages, scopeId, checkpoint, overrides, superOwned, recordVerifiedProjection, options]: Parameters<typeof projectCheckpointMessages>
 ): ChatMessage[] {
@@ -73,17 +75,20 @@ function projectSuperDependencyCheckpointMessages(
   const replacements = new Map<ChatMessage, ChatMessage>();
   let firstCoveredAssignment: ChatMessage | undefined;
   const result = projected.map((message) => {
-    const replacement = projectDependencyObservationCheckpointMessage(message, checkpoint, overrides);
+    const observations = projectDependencyObservationCheckpointMessage(message, checkpoint, overrides);
+    const summary = projectDependencyResultCheckpointMessage(observations ?? message, checkpoint, overrides);
+    const replacement = summary ?? observations;
     if (!replacement) return message;
     replacements.set(message, replacement);
     firstCoveredAssignment ??= replacement;
+    verified.push(replacement);
     return replacement;
   });
   // An ordinary assignment has no MAIN sources, so its standalone summary may be
   // appended. Keep that same checkpoint object before the first covered assignment.
   placeDependencyCheckpointBeforeAssignment(result, firstCoveredAssignment, scopeId);
-  for (const message of verified)
-    recordVerifiedProjection?.(replacements.get(message) ?? message);
+  const verifiedMessages = new Set(verified.map((message) => replacements.get(message) ?? message));
+  for (const message of verifiedMessages) recordVerifiedProjection?.(message);
   return result;
 }
 

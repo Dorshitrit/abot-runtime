@@ -1,4 +1,5 @@
 import { setupPromptCacheState, updateSetupPromptCacheField } from "./prompt-cache-fields.js";
+import { hasSetupReasoningSummaryChanges, setupReasoningSummaryState, updateSetupReasoningSummaryField } from "./reasoning-summary-fields.js";
 import { textOf } from "../../lib/text-format.js";
 import { setupReasoningState, updateSetupReasoningField } from "./reasoning-fields.js";
 import { normalizeProvider, defaultSetupProviderAddress } from "./validation.js";
@@ -30,6 +31,7 @@ export function hasSetupConnectionChanges(state) {
     return true;
   if (state.supportsThinking !== saved.supportsThinking) return true;
   if (state.provider === "openai" && (state.promptCache === true) !== (saved.promptCache === true)) return true;
+  if (hasSetupReasoningSummaryChanges(state)) return true;
   if (state.provider === "llamacpp") {
     const reasoning = setupReasoningState(saved);
     if (state.supportsThinking !== reasoning.supportsThinking) return true;
@@ -70,6 +72,7 @@ export function updateSetupConnectionField(state, field, value) {
   if (field === "model-id") state.modelId = value;
   if (field === "context-window") state.contextWindowTokens = value;
   if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
+  if (updateSetupReasoningSummaryField(state, field, value)) return false;
   if (updateSetupPromptCacheField(state, field, value)) return true;
   return updateSetupReasoningField(state, field, value);
 }
@@ -78,6 +81,7 @@ export function receiveSetupConnection(state, setup) {
   state.editableConnection = setup?.editableConnection || null;
   state.existingModel = setup?.existingModel || null;
   Object.assign(state, setupReasoningState(state.existingModel || {}), setupPromptCacheState(state.existingModel || {}));
+  Object.assign(state, setupReasoningSummaryState(state.existingModel || undefined));
   state.contextWindowTokens = textOf(
     state.existingModel?.contextWindowTokens ??
       setup?.defaultContextWindowTokens,

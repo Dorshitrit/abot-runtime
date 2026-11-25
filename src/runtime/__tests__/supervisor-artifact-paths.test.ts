@@ -121,12 +121,10 @@ async function runDelegation(
   const workingDirectory = options.workingDirectory ?? ".event_artifacts";
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     const phase = typeof input.format === "object" && input.format?.name;
-    if (phase === "supervisor_procedure_gate")
+    if (phase === "supervisor_fused_entry")
       return { text: JSON.stringify({ decision: { requiresProcedure: true } }), meta: {} };
-    if (phase === "supervisor_delegation")
-      return { text: JSON.stringify({ decision: { action: "invoke_role", roleId: "planner", objective } }), meta: {} };
-    if (phase === "supervisor_working_directory")
-      return { text: JSON.stringify({ workingDirectory }), meta: {} };
+    if (phase === "supervisor_fused_routing")
+      return { text: JSON.stringify({ decision: { action: "invoke_role", roleId: "planner", objective, workingDirectory } }), meta: {} };
     throw new Error("unexpected_artifact_test_phase");
   });
   const request = createRequest({
@@ -170,7 +168,7 @@ describe("Supervisor session artifact path reference", () => {
     ).toEqual(
       absent.inputs.map(({ messages, format }) => ({ messages, format })),
     );
-    expect(empty.inputs).toHaveLength(3);
+    expect(empty.inputs).toHaveLength(2);
     for (const input of empty.inputs)
       expect(artifactCapsules(input.messages)).toEqual([]);
   });
@@ -227,13 +225,13 @@ describe("Supervisor session artifact path reference", () => {
     );
   });
 
-  test("passes the exact dotted target once to routing and inherited directory selection with no extra invocation", async () => {
+  test("passes the exact dotted target once to fused routing and directory selection with no extra invocation", async () => {
     const result = await runDelegation({ sessionArtifactPaths: [TARGET] });
     expect(
       result.inputs.map(
         ({ format }) => typeof format === "object" && format?.name,
       ),
-    ).toEqual(["supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory"]);
+    ).toEqual(["supervisor_fused_entry", "supervisor_fused_routing"]);
     expect(artifactCapsules(result.inputs[0]!.messages)).toEqual([]);
     for (const input of result.inputs.slice(1)) {
       expect(artifactCapsules(input.messages)).toHaveLength(1);
@@ -271,7 +269,7 @@ describe("Supervisor session artifact path reference", () => {
     expect(artifactCapsules(result.inputs[1]!.messages)[0]?.targets).toEqual([
       TARGET,
     ]);
-    expect(result.inputs).toHaveLength(3);
+    expect(result.inputs).toHaveLength(2);
   });
 
   test("omits the optional paths near the compaction threshold without evicting history or catalog", () => {

@@ -1,4 +1,5 @@
 import { ChatGptAuthError } from "../../../provider-auth/chatgpt/contracts.js";
+import { observeParameterOmissions } from "../parameter-issues.js";
 import { getChatGptAuthService } from "../../../provider-auth/chatgpt/service.js";
 import type { ModelProviderAdapter } from "../contracts.js";
 import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
@@ -33,6 +34,7 @@ export function createChatGptProviderAdapter(options: Readonly<{
       const payload = buildChatGptResponsesPayload(params.requestBody, {
         onFormatProjection: (diagnostics) => emitOpenAISchemaDiagnostics(requestId, diagnostics, "openai-chatgpt"),
       });
+      observeParameterOmissions({ ...params, operation: params.endpoint });
       return invokeOpenAIResponses({
         ...params,
         fetchImpl: (input, init) => params.fetchImpl(input, { ...init, redirect: "error" }),

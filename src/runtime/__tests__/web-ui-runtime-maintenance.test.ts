@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { expect, test, vi } from "vitest";
 import type { RuntimeSessionsResetResult } from "../local-host/maintenance-contracts.js";
@@ -9,7 +12,7 @@ function fixture() {
     failedSessionIds: [] as string[], deletedMessages: 3, deletedRequests: 1 } satisfies RuntimeSessionsResetResult;
   const resetSessions = vi.fn(async (): Promise<RuntimeSessionsResetResult> => result);
   const clearLogs = vi.fn(async () => ({ complete: true as const, clearedFiles: 2, removedRotatedFiles: 1 }));
-  const resolver = vi.fn(() => ({ services: { maintenance: { resetSessions, clearLogs } } }) as unknown as RuntimeEnvironment);
+  const resolver = vi.fn(() => ({ services: { config: { paths: { runtimeDir: join(tmpdir(), `abot-maintenance-no-agent-index-${randomUUID()}`) } }, maintenance: { resetSessions, clearLogs } } }) as unknown as RuntimeEnvironment);
   const readStates = { resetConversations: vi.fn(async (_id: string, operation: () => Promise<RuntimeSessionsResetResult>) => operation()) };
   const notify = vi.fn();
   const routes = new RuntimeMaintenanceRoutes(resolver, readStates, notify);

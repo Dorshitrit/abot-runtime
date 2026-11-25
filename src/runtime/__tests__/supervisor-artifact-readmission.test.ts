@@ -16,15 +16,8 @@ import {
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
-function phaseInputs(
-  inputs: readonly ArtifactModelInput[],
-  phase: "routing" | "directory",
-) {
-  const name =
-    phase === "routing"
-      ? "supervisor_delegation"
-      : "supervisor_working_directory";
-  return inputs.filter((input) => modelFormatName(input) === name);
+function phaseInputs(inputs: readonly ArtifactModelInput[]) {
+  return inputs.filter((input) => modelFormatName(input) === "supervisor_fused_routing");
 }
 
 function assertExactArtifact(input: ArtifactModelInput) {
@@ -68,8 +61,8 @@ describe("Supervisor artifact paths across actual model attempt admission", () =
       });
       const expected = await baseline.run();
       await ample.run();
-      const original = phaseInputs(ample.workInputs(), repairPhase);
-      const mandatory = phaseInputs(baseline.workInputs(), repairPhase);
+      const original = phaseInputs(ample.workInputs());
+      const mandatory = phaseInputs(baseline.workInputs());
       const firstRouting = ample.workInputs()[0]!;
       const targetTokens =
         Math.max(
@@ -92,15 +85,17 @@ describe("Supervisor artifact paths across actual model attempt admission", () =
         contextWindowTokens,
       });
       await expect(fixture.run()).resolves.toEqual(expected);
-      const attempts = phaseInputs(fixture.workInputs(), repairPhase);
+      const attempts = phaseInputs(fixture.workInputs());
       expect(attempts).toHaveLength(2);
       assertExactArtifact(attempts[0]!);
       expect(modelMessages(attempts[1]!).filter(isArtifactMessage)).toEqual([]);
       // Removing the reference also restores its owning instructions, while
       // retaining the exact mandatory context, schema and repair message.
-      expect(modelMessages(attempts[1]!)).toEqual(modelMessages(mandatory[1]!));
+      expect(modelMessages(attempts[1]!).filter(isCapabilityBriefMessage)).toEqual([]);
+      expect(modelMessages(attempts[1]!).filter(message => !isCapabilityBriefMessage(message)))
+        .toEqual(modelMessages(mandatory[1]!).filter(message => !isCapabilityBriefMessage(message)));
       expect(attempts[1]!.format).toEqual(mandatory[1]!.format);
-      expect(fixture.workInputs()).toHaveLength(3);
+      expect(fixture.workInputs()).toHaveLength(2);
       expect(
         modelMessages(fixture.workInputs()[0]!).filter(isCapabilityBriefMessage),
       ).toEqual(
@@ -110,17 +105,16 @@ describe("Supervisor artifact paths across actual model attempt admission", () =
     },
   );
 
-  test("retains one exact target in both phases and repair while headroom remains", async () => {
+  test("retains one exact target in fused routing and repair while headroom remains", async () => {
     const fixture = createArtifactReadmissionFixture({
       repairPhase: "routing",
     });
     await fixture.run();
-    expect(fixture.workInputs()).toHaveLength(3);
+    expect(fixture.workInputs()).toHaveLength(2);
     for (const input of fixture.workInputs()) assertExactArtifact(input);
     expect(fixture.workInputs().map(modelFormatName)).toEqual([
-      "supervisor_delegation",
-      "supervisor_delegation",
-      "supervisor_working_directory",
+      "supervisor_fused_routing",
+      "supervisor_fused_routing",
     ]);
     assertNoCompaction(fixture);
   });
@@ -140,21 +134,25 @@ describe("Supervisor artifact paths across actual model attempt admission", () =
     });
     const expected = await rerunAfterSteering(baseline);
     await rerunAfterSteering(ample);
-    const mandatory = phaseInputs(baseline.workInputs(), "routing");
+    const mandatory = phaseInputs(baseline.workInputs());
     const targetTokens =
       Math.max(
-        ample.assess(modelMessages(ample.workInputs()[0]!)).estimatedInputTokens,
-        baseline.assess(modelMessages(mandatory[1]!)).estimatedInputTokens,
+        ample.assess(modelMessages(ample.workInputs()[0]!), ample.workInputs()[0]!.format as typeof ample.input.format).estimatedInputTokens,
+        baseline.assess(modelMessages(mandatory[1]!), mandatory[1]!.format as typeof baseline.input.format).estimatedInputTokens,
       ) + 10;
     const fixture = createArtifactReadmissionFixture({
       ...options,
       contextWindowTokens: Math.ceil(targetTokens / 0.7),
     });
     await expect(rerunAfterSteering(fixture)).resolves.toEqual(expected);
-    const routing = phaseInputs(fixture.workInputs(), "routing");
+    const routing = phaseInputs(fixture.workInputs());
     expect(routing).toHaveLength(2);
     assertExactArtifact(routing[0]!);
-    expect(modelMessages(routing[1]!)).toEqual(modelMessages(mandatory[1]!));
+    expect(modelMessages(routing[1]!).filter(isArtifactMessage)).toEqual([]);
+    expect(modelMessages(routing[1]!).filter(isCapabilityBriefMessage)).toEqual([]);
+    expect(modelMessages(routing[1]!))
+      .toEqual(modelMessages(mandatory[1]!).filter(message => !isCapabilityBriefMessage(message)));
+    expect(routing[1]!.format).toEqual(mandatory[1]!.format);
     for (const input of fixture.workInputs().slice(1)) {
       expect(
         modelMessages(input).filter(({ content }) =>
@@ -163,7 +161,7 @@ describe("Supervisor artifact paths across actual model attempt admission", () =
       ).toHaveLength(1);
     }
     expect(expected.steeringVersion).toBe(1);
-    expect(fixture.workInputs()).toHaveLength(3);
+    expect(fixture.workInputs()).toHaveLength(2);
     assertNoCompaction(fixture);
   });
 

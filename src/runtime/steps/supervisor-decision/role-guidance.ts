@@ -13,13 +13,15 @@ export function buildSupervisorRoleGuidance(
   return roles.map((role) => ROLE_GUIDANCE[role]);
 }
 
-export function buildSupervisorDelegationGuidance(): readonly string[] {
+export function buildSupervisorDelegationGuidance(fusedDirectory = false): readonly string[] {
   return [
     "Delegation",
     "Keep targets beneath the exact project root. A software project named NAME uses NAME/ unless the user requests another form. Delegate usable project artifacts, not source text or previews.",
     "objective contains only the remaining external end state, target, source facts and constraints. Children do not inherit conversation: resolve vague references into bounded concrete material and include dependencies absent from supplied settled sibling results. Never rediscover established sibling information.",
     "Do not prescribe reasoning, decomposition, operation order, capability, layout, framework or implementation left open by the user. Preserve essential task constraints explicitly requested by the user.",
-    "Artifacts stay at their targets; request contents, listings, transcripts or separate proof only if the user asked. workingDirectory has a separate phase after role/objective selection.",
+    fusedDirectory
+      ? "Artifacts stay at their targets; request contents, listings, transcripts or separate proof only if the user asked. Select workingDirectory together with the role and objective; it is a location boundary, not permission to broaden the task."
+      : "Artifacts stay at their targets; request contents, listings, transcripts or separate proof only if the user asked. workingDirectory has a separate phase after role/objective selection.",
     "Delegation is not completion: do not also answer the user or claim execution.",
     "Keep objective very short. State the required outcome and only essential targets, facts and constraints, each once. Do not include reasoning, justification, repetition or the delegated role’s plan. Complete the JSON immediately afterward.",
   ];

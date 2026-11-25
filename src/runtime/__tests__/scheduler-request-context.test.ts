@@ -89,7 +89,7 @@ describe("Root scheduled request context", () => {
       expect(
         fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep),
       ).toEqual(policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
-        "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+        "supervisor_fused_entry", "supervisor.response",
       ]);
       for (const [input] of fixture.invoke.mock.calls) {
         const messages = scheduledModelMessages(input);
@@ -100,7 +100,7 @@ describe("Root scheduled request context", () => {
           expect(JSON.stringify(messages)).not.toContain("Earlier preference: use brief answers.");
           continue;
         }
-        if (phase === "supervisor_procedure_gate") {
+        if (phase === "supervisor_fused_entry") {
           expect(originMessages(messages)).toEqual([]);
           expect(messages.filter(({ role }) => role !== "system")).toEqual([
             { role: "user", content: "Earlier preference: use brief answers." },
@@ -190,7 +190,7 @@ describe("Root scheduled request context", () => {
           }),
         ),
       );
-      expect(fixture.invoke.mock.calls).toHaveLength(policy === "execution-agent-v1" ? 2 : 4);
+      expect(fixture.invoke.mock.calls).toHaveLength(2);
       fixture.invoke.mock.calls.forEach(([input], index) => {
         const messages = scheduledModelMessages(input);
         expect(originMessages(messages)).toEqual([]);
@@ -201,7 +201,7 @@ describe("Root scheduled request context", () => {
           expect(JSON.stringify(messages)).not.toContain(SCHEDULED_PROMPT);
           return;
         }
-        if (phase === "supervisor_procedure_gate") {
+        if (phase === "supervisor_fused_entry") {
           expect(messages.filter(({ role }) => role !== "system")).toEqual([
             { role: "user", content: SCHEDULED_PROMPT },
             { role: "assistant", content: "The scheduled answer preserves the earlier preference." },

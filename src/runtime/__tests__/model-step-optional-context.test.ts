@@ -16,7 +16,7 @@ const historyMessages = [
   { id: "source-assistant", role: "assistant" as const, content: "EXACT_SOURCE_BODY: unicode אבג and original wording.", createdAt: "2026-10-20T00:00:01.000Z", requestId: "source-request" },
 ];
 
-type Phase = "supervisor_delegation" | "supervisor_working_directory";
+type Phase = "supervisor_delegation" | "supervisor_fused_routing";
 function fixture(phase: Phase, mandatoryFits = true) {
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(async (input) => {
     const invocation = resolveModelInvocation(input);
@@ -32,7 +32,7 @@ function fixture(phase: Phase, mandatoryFits = true) {
   return { ...createArtifactReadmissionFixture({ contextWindowTokens: 40_000, historyMessages, countInputTokens }), countInputTokens };
 }
 
-test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
+test.each(["supervisor_fused_routing"] as const)(
   "%s drops optional paths on measured hard overflow, preserving exact mandatory source above the compaction trigger", async (phase) => {
     const f = fixture(phase);
     const before = f.request.contextCompactionStore?.snapshot?.();
@@ -54,7 +54,7 @@ test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
   },
 );
 
-test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
+test.each(["supervisor_fused_routing"] as const)(
   "%s still rejects mandatory hard overflow after optional omission", async (phase) => {
     const f = fixture(phase, false);
     await expect(f.run()).rejects.toThrow("request_context_final_envelope_exceeds_window");

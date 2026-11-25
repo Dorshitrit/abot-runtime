@@ -9,7 +9,7 @@ import { resolveRequestExecutionPolicy } from "../../request/role-executor-compo
 import { GENERIC_WORKER_EXECUTOR } from "../../steps/worker-decision/index.js";
 import { createTestRequestExecutionScopeWithCapabilities } from "./request-execution-scope.js";
 import { runnerConfig, modelPolicy } from "./supervisor-runner-model-phases.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import type { dependencyObservationFixture } from "./super-dependency-observation-fixture.js";
 
 type State = Awaited<ReturnType<typeof dependencyObservationFixture>>;
@@ -37,12 +37,11 @@ export async function createDependencyObservationConsumer(
       runtimePaths: { rootDir: root, agentWorkDir: root } }),
   };
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async input => {
-    if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, true,
-      "The selected earlier work supplied the prerequisite observations.", "Apply the requested current edit.");
-    if (input.modelStep === "worker.decision") return reply({ action: "invoke_capability",
+    if (input.modelStep === "worker.decision") return workerFusedReply(input, { action: "invoke_capability",
       capabilityId: "update_target", intent: "Apply the requested current edit.",
       authoringObjective: "Use the selected prerequisite observations in the current edit.",
-      selectionControls: { path: "target.txt" } });
+      selectionControls: { path: "target.txt" } },
+      "The selected earlier work supplied the prerequisite observations.", "Apply the requested current edit.");
     if (input.modelStep === "capability.controls") return reply({ action: "invoke_capability",
       controls: { instruction: "Use the selected observations to replace the current target line." } });
     if (input.modelStep === "tool_payload.raw") return { text: input.format

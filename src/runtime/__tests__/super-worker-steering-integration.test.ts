@@ -16,7 +16,7 @@ import {
   modelPolicy,
   separateSupervisorRunnerModelPhases,
 } from "./support/supervisor-runner-model-phases.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -146,8 +146,8 @@ test.each(["supervisor", "planner"] as const)(
             "Stopped at the user's request; original tasks remain incomplete.",
         });
       }
-      if (input.modelStep === "worker.evidence")
-        return workerEvidenceReply(input, false);
+      if (input.modelStep === "worker.decision")
+        return workerFusedReply(input, { action: "return_result" });
       if (input.modelStep === "worker.result") {
         workerResults += 1;
         expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toHaveLength(0);
@@ -220,13 +220,24 @@ test("Planner replaces only remaining work after a yielded child and the same st
       expect(
         capsules(input, "runtime_child_result").map((value) => value.outcome),
       ).toEqual(["yielded", "completed"]);
+      const report = JSON.parse(capsules(input, "runtime_child_result").at(-1)!.summary as string);
+      expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+        evidence: { dependencyResults: [expect.objectContaining({ outcome: "yielded" })] } });
+      expect(JSON.stringify(report)).not.toContain("STALE");
       return reply({
         action: "return_result",
         result: "The replacement assignment finished.",
       });
     }
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, false);
+    if (input.modelStep === "worker.decision") {
+      if (workerResults === 1) {
+        expect(capsules(input, "runtime_worker_assignment")[0]).toMatchObject({
+          objective: "Summarize only the retained result.",
+        });
+        expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toHaveLength(0);
+      }
+      return workerFusedReply(input, { action: "return_result" });
+    }
     if (input.modelStep === "worker.result") {
       expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toHaveLength(0);
       workerResults += 1;
@@ -235,12 +246,8 @@ test("Planner replaces only remaining work after a yielded child and the same st
           steerId: "redirect",
           text: "Only summarize the retained result.",
         });
-      if (workerResults === 2)
-        expect(JSON.stringify(input.messages)).toContain(
-          "Summarize only the retained result.",
-        );
       return {
-        text: workerResults === 1 ? "STALE" : "The requested summary.",
+        text: "STALE",
         meta: {},
       };
     }
@@ -251,7 +258,7 @@ test("Planner replaces only remaining work after a yielded child and the same st
   await expect(
     runRequestRunner(createFixture(invoke, steering)),
   ).resolves.toEqual({ output: "The requested summary." });
-  expect(workerResults).toBe(2);
+  expect(workerResults).toBe(1);
   expect(plannerDecisions).toBe(3);
 });
 
@@ -259,7 +266,6 @@ test("Supervisor delegates an added requirement after Worker yield without a use
   const steering = createRequestSteeringInbox({ requestId: "steering-chain" });
   let rootDecisions = 0;
   let workerEvidence = 0;
-  let workerResults = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (input.modelStep === "supervisor.decision") {
       rootDecisions += 1;
@@ -288,9 +294,13 @@ test("Supervisor delegates an added requirement after Worker yield without a use
       expect(
         capsules(input, "runtime_child_result").map((child) => child.outcome),
       ).toEqual(["yielded", "completed"]);
+      expect(JSON.parse(capsules(input, "runtime_child_result").at(-1)!.summary as string)).toMatchObject({
+        kind: "runtime_worker_execution_report_v1",
+        evidence: { dependencyResults: [expect.objectContaining({ outcome: "yielded" })] },
+      });
       return reply({ action: "respond" });
     }
-    if (input.modelStep === "worker.evidence") {
+    if (input.modelStep === "worker.decision") {
       workerEvidence += 1;
       if (workerEvidence === 1)
         steering.append({
@@ -303,14 +313,7 @@ test("Supervisor delegates an added requirement after Worker yield without a use
         );
         expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toEqual([]);
       }
-      return workerEvidenceReply(input, false);
-    }
-    if (input.modelStep === "worker.result") {
-      workerResults += 1;
-      return {
-        text: "The requested technology and GPT article summary.",
-        meta: {},
-      };
+      return workerFusedReply(input, { action: "return_result" });
     }
     if (input.modelStep === "supervisor.response") {
       expect(
@@ -330,5 +333,5 @@ test("Supervisor delegates an added requirement after Worker yield without a use
   });
   expect(rootDecisions).toBe(3);
   expect(workerEvidence).toBe(2);
-  expect(workerResults).toBe(1);
+  expect(invoke.mock.calls.some(([input]) => input.modelStep === "worker.result")).toBe(false);
 });

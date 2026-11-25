@@ -1,6 +1,6 @@
 import { boundedInteger, boundedText, fail, hasExactKeys, identifier, isPlainObject } from "./contract-fields.js";
 import { parseToolNormalInvocationInputSchema } from "./input-schema.js";
-import { validateToolNormalInvocationPropertyValue } from "./input-value.js";
+export { validateToolNormalInvocationInput } from "./input-value.js";
 import { parseOptionalToolOutputChannels } from "./output-channels.js";
 import {
   TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as MAX_STRING_LENGTH_BOUND,
@@ -11,7 +11,6 @@ import {
   type ToolNormalInvocationContract,
   type ToolNormalInvocationFixedValue,
   type ToolNormalInvocationInput,
-  type ToolNormalInvocationInputValidation,
   type ToolNormalInvocationOperation,
   type ToolNormalInvocationPropertyInput,
 } from "./contracts.js";
@@ -484,39 +483,6 @@ export function parseToolNormalInvocationForDefinition(
     }
   }
   return contract;
-}
-
-function invalid(issue: string): ToolNormalInvocationInputValidation {
-  return Object.freeze({ ok: false as const, issue });
-}
-
-/** Deterministic post-provider validation for the exact v1 input object. */
-export function validateToolNormalInvocationInput(
-  operation: ToolNormalInvocationOperation,
-  raw: unknown,
-): ToolNormalInvocationInputValidation {
-  if (!isPlainObject(raw)) return invalid("input must be an object");
-  const propertyNames = Object.keys(operation.input.properties);
-  const unknown = Object.keys(raw).find(
-    (name) => !propertyNames.includes(name),
-  );
-  if (unknown) return invalid(`input contains unknown property ${unknown}`);
-  const missing = operation.input.required.find(
-    (name) => !Object.hasOwn(raw, name),
-  );
-  if (missing) return invalid(`input is missing required property ${missing}`);
-  const value: Record<string, unknown> = {};
-  for (const [name, entry] of Object.entries(raw)) {
-    const schema = operation.input.properties[name];
-    if (!schema) continue;
-    const issue = validateToolNormalInvocationPropertyValue(schema, entry, `input.${name}`);
-    if (issue) return invalid(issue);
-    value[name] = Array.isArray(entry) ? Object.freeze([...entry]) : entry;
-  }
-  return Object.freeze({
-    ok: true as const,
-    value: Object.freeze(value),
-  });
 }
 
 export function validateToolNormalInvocationPayload(

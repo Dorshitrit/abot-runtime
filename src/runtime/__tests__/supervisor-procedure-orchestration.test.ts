@@ -1,6 +1,5 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { CORE_SKILL_READ_MESSAGE_KIND } from "../context/core-skill-read-context.js";
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -37,13 +36,13 @@ function capturedGuidance(input: ProcedureModelInput): readonly ChatMessage[] {
 }
 
 
-test("a false procedure gate retains its recommendation after a Skill read and creates no child", async () => {
+test("direct routing retains its recommendation after a Skill read and creates no child", async () => {
   let gateGuidance: readonly ChatMessage[] | undefined;
   const f = createProcedureOrchestrationFixture((input) => {
-    if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+    if (supervisorFormatName(input) === "supervisor_fused_routing") {
       gateGuidance = capturedGuidance(input);
       expect(JSON.stringify(input.messages)).not.toContain(PROCEDURE_OLD_HISTORY);
-      return { requiresProcedure: false, responseRecommendation: recommendation };
+      return { action: "respond", responseRecommendation: recommendation };
     }
     expect(input.modelStep).toBe("supervisor.response");
     expect(capturedGuidance(input)).toEqual(gateGuidance);
@@ -54,7 +53,7 @@ test("a false procedure gate retains its recommendation after a Skill read and c
   }, { skills: true });
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
   expect(f.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+    "supervisor_fused_entry", "supervisor_fused_routing", "supervisor.response",
   ]);
   expect(f.store.read).toHaveBeenCalledOnce();
   expect(f.getAdapters).not.toHaveBeenCalled();
@@ -62,40 +61,39 @@ test("a false procedure gate retains its recommendation after a Skill read and c
   expect(f.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(finalAnswer);
 });
 
-test("one Skill read reaches gate, delegation, Worker and the returning Supervisor without extra calls", async () => {
+test("one Skill read reaches fused routing, Worker and the returning Supervisor without extra calls", async () => {
   let routedAfterReturn = false;
   let gateGuidance: readonly ChatMessage[] | undefined;
+  const workerCapabilityScope = { catalogGroupIds: ["write"] };
   const f = createProcedureOrchestrationFixture((input) => {
     const phase = supervisorFormatName(input);
-    if (phase === "supervisor_procedure_gate") {
+    if (phase === "supervisor_fused_routing") {
       gateGuidance = capturedGuidance(input);
-      expect(JSON.stringify(input.messages)).not.toContain(PROCEDURE_OLD_HISTORY);
-      return { requiresProcedure: true };
-    }
-    if (phase === "supervisor_delegation") {
       const text = JSON.stringify(input.messages);
       expect(text).not.toContain(PROCEDURE_OLD_HISTORY);
       expect(capturedGuidance(input)).toEqual(gateGuidance);
-      expect(text).not.toContain("runtime_capability_brief");
+      expect(text).toContain("runtime_capability_brief");
       for (const capability of PROCEDURE_CAPABILITIES) expect(text).not.toContain(capability.capabilityId);
       expect(procedureMessages(input).filter(({ role, content }) => role === "user" && content === PROCEDURE_PROMPT))
         .toHaveLength(1);
       expect(procedureMessages(input).some(({ content }) => content === PROCEDURE_SOURCE)).toBe(true);
-      expect(JSON.stringify(input.format)).not.toContain("workerCapabilityScope");
-      return { action: "invoke_role", roleId: "worker", objective };
+      expect(JSON.stringify(input.format)).toContain("workerCapabilityScope");
+      return { action: "invoke_role", roleId: "worker", objective, workerCapabilityScope, workingDirectory: "." };
     }
-    if (phase === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-    if (input.modelStep === "worker.evidence") {
+    if (input.modelStep === "worker.decision") {
       const text = JSON.stringify(input.messages);
-      for (const capability of PROCEDURE_CAPABILITIES) expect(text).toContain(capability.capabilityId);
+      for (const capability of PROCEDURE_CAPABILITIES) {
+        if (capability.catalogGroups?.includes("write")) expect(text).toContain(capability.capabilityId);
+        else expect(text).not.toContain(capability.capabilityId);
+      }
       expect(capturedGuidance(input)).toEqual(gateGuidance);
       expect(procedureCapsules(input).find(({ kind }) => kind === "runtime_request_source_v1"))
         .toMatchObject({ currentRequest: PROCEDURE_PROMPT, precedingTurn: {
           assistant: { id: "prior-assistant", content: PROCEDURE_SOURCE, requestId: "prior" },
         } });
       expect(procedureCapsules(input).find(({ kind }) => kind === "runtime_worker_assignment"))
-        .toMatchObject({ objective });
-      return workerEvidenceDecision(input, false);
+        .toMatchObject({ objective, workingDirectory: "." });
+      return { assessment: { requiresExecution: false, established: "", remaining: "", evidenceRefs: [] }, selection: { action: "return_result" } };
     }
     if (input.modelStep === "worker.result") return "The bounded assignment returned its result.";
     if (phase === "supervisor_decision") {
@@ -114,21 +112,20 @@ test("one Skill read reaches gate, delegation, Worker and the returning Supervis
   }, { skills: true });
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
   expect(f.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation",
-    "supervisor_working_directory", "worker.evidence", "worker.result", "supervisor_decision", "supervisor.response",
+    "supervisor_fused_entry", "supervisor_fused_routing", "worker.decision", "worker.result", "supervisor_decision", "supervisor.response",
   ]);
   expect(f.store.read).toHaveBeenCalledOnce();
 });
 
-test.each(["gate", "delegation"] as const)("steering during %s discards the stale procedure before child dispatch", async (checkpoint) => {
+test.each(["entry", "routing"] as const)("steering during fused %s discards the stale procedure before child dispatch", async (checkpoint) => {
   const updated = "Answer only the new question; do not perform the earlier assignment.";
   let gates = 0;
   let delegations = 0;
   const f = createProcedureOrchestrationFixture((input) => {
     const phase = supervisorFormatName(input);
-    if (phase === "supervisor_procedure_gate") {
+    if (phase === "supervisor_fused_entry") {
       if (++gates === 1) {
-        if (checkpoint === "gate")
+        if (checkpoint === "entry")
           expect(f.requestSteering.append({ steerId: "supersede-gate", text: updated }).ok).toBe(true);
         return { requiresProcedure: true };
       }
@@ -136,11 +133,15 @@ test.each(["gate", "delegation"] as const)("steering during %s discards the stal
       expect(JSON.stringify(input.messages)).toContain(updated);
       return { requiresProcedure: false, responseRecommendation: recommendation };
     }
-    if (phase === "supervisor_delegation") {
-      expect(checkpoint).toBe("delegation");
-      expect(++delegations).toBe(1);
-      expect(f.requestSteering.append({ steerId: "supersede-delegation", text: updated }).ok).toBe(true);
-      return { action: "invoke_role", roleId: "worker", objective: "STALE_PROCEDURE_OBJECTIVE" };
+    if (phase === "supervisor_fused_routing") {
+      expect(checkpoint).toBe("routing");
+      if (++delegations === 1) {
+        expect(f.requestSteering.append({ steerId: "supersede-delegation", text: updated }).ok).toBe(true);
+        return { action: "invoke_role", roleId: "worker", objective: "STALE_PROCEDURE_OBJECTIVE", workerCapabilityScope: { catalogGroupIds: ["write"] }, workingDirectory: "." };
+      }
+      expect(delegations).toBe(2);
+      expect(JSON.stringify(input.messages)).toContain(updated);
+      return { action: "respond", responseRecommendation: recommendation, acknowledgement: "I will answer the updated request." };
     }
     expect(input.modelStep).toBe("supervisor.response");
     expect(JSON.stringify(input.messages)).toContain(updated);
@@ -148,9 +149,9 @@ test.each(["gate", "delegation"] as const)("steering during %s discards the stal
     return finalAnswer;
   });
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
-  expect(gates).toBe(2);
-  expect(delegations).toBe(checkpoint === "delegation" ? 1 : 0);
-  expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
+  expect(gates).toBe(checkpoint === "entry" ? 2 : 1);
+  expect(delegations).toBe(checkpoint === "routing" ? 2 : 0);
+  expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
   expect(JSON.stringify(vi.mocked(f.request.onEvent).mock.calls)).not.toContain('"name":"role.delegated"');
   expect(f.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(finalAnswer);
 });

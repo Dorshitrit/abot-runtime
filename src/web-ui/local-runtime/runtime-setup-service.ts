@@ -100,6 +100,7 @@ export class RuntimeSetupService {
               supportsThinking: existingModel.supportsThinking,
               reasoningBudget: existingModel.reasoningBudget,
               ...(existingModel.promptCache ? { promptCache: true } : {}),
+              ...(existingModel.reasoningSummary !== undefined ? { reasoningSummary: existingModel.reasoningSummary } : {}),
               ...(existingModel.baseUrl
                 ? { baseUrl: existingModel.baseUrl }
                 : {}),

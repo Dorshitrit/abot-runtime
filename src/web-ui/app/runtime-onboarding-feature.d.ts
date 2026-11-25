@@ -24,6 +24,7 @@ export declare function createRuntimeOnboardingFeature(options: {
     config: Record<string, unknown> | null;
     runtimeAvailability: RuntimeAvailability;
   };
+  onFirstModelReady?(environmentId: string): Promise<boolean> | undefined;
   reloadModels(): unknown | Promise<unknown>;
   reloadCatalog(): unknown | Promise<unknown>;
   setMessageStatus(message: string): void;

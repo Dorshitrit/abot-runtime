@@ -1,3 +1,4 @@
+import type { ModelIssueObserver } from "../protocol/model-issue.js";
 import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type {
   AgentMode,
@@ -24,10 +25,12 @@ export type ModelMetricMessage = {
 };
 
 export type InvokeModelGatewayParams = StreamCallbacks & {
+  onIssue?: ModelIssueObserver;
   structuredOutputRepair?: ModelStructuredOutputRepair;
   text?: string;
   messages?: unknown;
   promptCacheBoundaryBeforeMessageIndex?: number;
+  promptCacheScope?: string;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;
@@ -42,6 +45,8 @@ export type InvokeModelGatewayParams = StreamCallbacks & {
 };
 
 export type InvokeRawModelGatewayParams = {
+  onIssue?: ModelIssueObserver;
+  promptCacheScope?: string;
   prompt: string;
   agentMode: AgentMode;
   taskType?: string;

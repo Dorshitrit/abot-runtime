@@ -1,3 +1,4 @@
+import { readAgentSessionIds } from "../../runtime/agents/session-association.js";
 import { projectAssistantReadEvidence, type AssistantReadEvidence } from "./assistant-read-evidence.js";
 import { sessionListOverview } from "./overview.js";
 import { sessionMetadataPage } from "./pagination.js";
@@ -59,9 +60,12 @@ export class WebSessionReadStates {
   initialize(environmentId: string): Promise<void> {
     return this.store(environmentId).initialize();
   }
+  forgetForDeletion(environmentId: string, sessionId: string): Promise<void> {
+    return this.store(environmentId).forget(sessionId);
+  }
   async forget(environmentId: string, sessionId: string): Promise<void> {
     await captureReadStateAvailability(() =>
-      this.store(environmentId).forget(sessionId),
+      this.forgetForDeletion(environmentId, sessionId),
     );
   }
   async reset(environmentId: string, sessionId: string): Promise<void> {
@@ -135,10 +139,11 @@ export class WebSessionReadStates {
   }
 
   async list(environmentId: string, query?: SidebarSessionPageQuery, catalog?: RuntimeProjectCatalog) {
-    const { sessionsDir } =
+    const { sessionsDir, runtimeDir } =
       this.getEnvironment(environmentId).services.config.paths;
     const records = await listSessionMetadata(sessionsDir);
-    const projectedSessions = records.filter((record) => record.interactive)
+    const agentSessions = await readAgentSessionIds(runtimeDir);
+    const projectedSessions = records.filter((record) => record.interactive && !agentSessions.has(record.summary.id))
       .filter((record) => !isSparkSession(record.summary));
     const limit = webPageSize(this.getEnvironment(environmentId).services.config);
     const page = this.listPage(projectedSessions, query, limit, catalog);

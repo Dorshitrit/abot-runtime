@@ -4,6 +4,7 @@ import { failureResponseText, presentFailureText } from "./failure-presentation.
 import { basketActivitySummary, basketStatusLabel } from "./tool-basket-activity-fields.js";
 import { textOf } from "./text-format.js";
 import { isStopResult } from "./request-stop-state.js";
+import { FILE_PAYLOAD_TOOL_REQUEST_LABEL, isFilePayloadToolRequest } from "./file-payload-handoff.js";
 import {
   isRoleDelegationEvent,
   projectRoleDelegationEvent,
@@ -155,6 +156,7 @@ function isMissingSkillLookup(message) {
 }
 
 export function formatEventLabel(message) {
+  if (isFilePayloadToolRequest(message)) return FILE_PAYLOAD_TOOL_REQUEST_LABEL;
   const basketStatus = basketStatusLabel(message);
   if (basketStatus !== undefined) return basketStatus;
   const receipt = projectRoleReturnEvent(message);
@@ -223,6 +225,7 @@ function uncompletedToolLabel(message, name) {
 }
 
 export function formatEventDetail(message) {
+  if (isFilePayloadToolRequest(message)) return "";
   if (basketStatusLabel(message) !== undefined) return "";
   const basketSummary = basketActivitySummary(message);
   if (basketSummary !== undefined) return basketSummary;
@@ -261,6 +264,7 @@ export function formatEventDetail(message) {
 }
 
 export function eventTone(message) {
+  if (isFilePayloadToolRequest(message)) return "neutral";
   if (isRoleReturnEvent(message)) return "neutral";
   const name = textOf(message.name || message.type);
   const normalized = name.toLowerCase();
@@ -292,6 +296,7 @@ export function eventTone(message) {
 }
 
 export function isUncompletedToolEvent(message) {
+  if (isFilePayloadToolRequest(message)) return false;
   const name = textOf(message.eventName || message.name || message.type);
   if (!name.startsWith("tool.")) return false;
   if (message.ok === false || message.toolActivity?.ok === false) return true;
@@ -332,6 +337,7 @@ export function isLowValueActivityEvent(message) {
     name === "context.window.snapshot" ||
     name === "context.window.provider_usage" ||
     name === "model.step.timed_out" ||
+    name === "model.issue.observed" ||
     name === "answer.started" ||
     name === "token" ||
     name === "request.completed" ||

@@ -1,4 +1,5 @@
 import type { UserInteractionProposal } from "../user-interactions/contracts.js";
+import type { MemoryCandidate } from "../long-term-memory/contracts.js";
 import type {
   RoleCallFrame,
   RoleCallLedger,
@@ -25,6 +26,7 @@ export type RootActivation = Readonly<{
 export type RootDecisionActivation = RootActivation &
   Readonly<{
     decision: RootContractDecision;
+    memoryCandidates?: readonly MemoryCandidate[];
     interaction?: UserInteractionProposal;
     decisionSteeringVersion: number;
     requiresFreshPresentation: boolean;

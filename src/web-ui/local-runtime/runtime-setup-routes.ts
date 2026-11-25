@@ -1,3 +1,4 @@
+import { createManagedLlamaHandoff, type ConfigurationHandoff } from "../managed-llama/configuration-handoff.js";
 import { withHttpRequestAbortSignal } from "./request-abort.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
@@ -10,7 +11,10 @@ import { runtimeSetupContextWindowErrorDetails } from "./runtime-setup-context-w
 import { RuntimeSetupService } from "./runtime-setup-service.js";
 
 export class RuntimeSetupRoutes {
-  constructor(private readonly service: RuntimeSetupService) {}
+  constructor(
+    private readonly service: RuntimeSetupService,
+    private readonly resolveSaveInput: ConfigurationHandoff = createManagedLlamaHandoff("runtime"),
+  ) {}
 
   status() {
     return this.service.status();
@@ -57,7 +61,7 @@ export class RuntimeSetupRoutes {
       }
       sendJson(params.response, 200, {
         ok: true,
-        ...(await this.service.save(body)),
+        ...(await this.service.save(this.resolveSaveInput(body))),
       });
     } catch (error) {
       const isPublicError =

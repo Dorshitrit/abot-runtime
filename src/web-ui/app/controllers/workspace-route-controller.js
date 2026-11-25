@@ -19,6 +19,7 @@ export function createWorkspaceRouteController({
   restoreLastSession,
   schedules,
   automations,
+  agents,
 }) {
   let initialRoute = readWorkspaceRoute(viewport.location);
   let pendingInitialHistory = null;
@@ -41,6 +42,7 @@ export function createWorkspaceRouteController({
       job: schedules.selectedJobId(),
       automation: automations?.selectedAutomationId() || "",
       run: automations?.selectedRunId() || "",
+      agent: agents?.selectedId() || "",
     };
   }
 
@@ -254,6 +256,7 @@ export function createWorkspaceRouteController({
     if (route.workspace === "schedules") {
       return await schedules.openJob(route.job || "");
     }
+    if (route.workspace === "agents") return await agents?.openRoute(route.agent || "") ?? false;
     if (route.workspace === "automations") {
       return await automations.openRoute(route.automation || "", route.run || "");
     }

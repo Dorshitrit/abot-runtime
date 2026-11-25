@@ -2,6 +2,7 @@ export function createNotificationPresence({
   getEnvironmentId,
   getSessionId,
   getWorkspace,
+  getAgentId = () => "",
   isConnected,
   send,
   documentRoot = document,
@@ -15,6 +16,7 @@ export function createNotificationPresence({
   function hasActiveConversation() {
     if (documentRoot.visibilityState !== "visible") return false;
     if (!documentRoot.hasFocus()) return false;
+    if (getWorkspace() === "agents") return Boolean(getAgentId());
     if (getWorkspace() !== "chat") return false;
     return Boolean(getSessionId());
   }
@@ -30,7 +32,7 @@ export function createNotificationPresence({
     const payload = {
       type: "notification_presence",
       environment,
-      sessionId: getSessionId() || "",
+      ...(getWorkspace() === "agents" && getAgentId() ? { agentId: getAgentId() } : { sessionId: getSessionId() || "" }),
       active: leaving ? false : hasActiveConversation(),
     };
     const serialized = JSON.stringify(payload);

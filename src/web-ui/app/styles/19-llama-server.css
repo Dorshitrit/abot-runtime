@@ -1,0 +1,26 @@
+.llama-server-panel { gap: 18px; }
+.llama-server-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.llama-server-heading h2 { margin: 0; font-size: var(--font-size-4xl); font-weight: 500; }
+.llama-server-heading > button { border: 0; background: transparent; font-size: 24px; }
+.llama-server-settings { display: grid; gap: 18px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.llama-server-settings legend { margin-bottom: 14px; font-size: var(--font-size-lg); }
+.llama-server-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px; }
+.llama-server-models { display: grid; gap: 12px; }
+.llama-server-model { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.llama-server-model header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.llama-server-model strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--font-size-md); }
+.llama-server-model .runtime-setup-field { font-size: var(--font-size-sm); }
+.llama-server-add > :not(summary) { margin-top: 14px; }
+.llama-server-add summary { cursor: pointer; font-size: var(--font-size-md); }
+.llama-server-candidates { display: grid; gap: 10px; }
+.llama-server-candidates > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.llama-server-candidates span { overflow-wrap: anywhere; min-width: 0; font-size: var(--font-size-sm); }
+.llama-server-candidates button { flex-shrink: 0; }
+.llama-server-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+.llama-server-actions button { width: 100%; min-width: 0; min-height: 44px; justify-self: stretch; }
+.llama-server-primary { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+.llama-server-panel fieldset:disabled { opacity: 0.7; }
+@media (max-width: 420px) {
+  .llama-server-actions { grid-template-columns: 1fr; }
+  .llama-server-candidates > div { align-items: stretch; flex-direction: column; }
+}

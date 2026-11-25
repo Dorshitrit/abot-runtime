@@ -72,6 +72,7 @@ describe("add model wizard", () => {
         providerId: "cloud",
         apiKey: "synthetic-private-key",
         contextWindowTokens: 32768,
+        reasoningSummary: null,
       },
     ]);
     expect(harness.wizard.close()).toBe(false);
@@ -116,6 +117,7 @@ describe("add model wizard", () => {
         model: "new-model",
         providerId: "cloud",
         contextWindowTokens: 32768,
+        reasoningSummary: null,
       },
     ]);
     expect(harness.dependencies.applySetup).toHaveBeenCalledOnce();
@@ -224,6 +226,7 @@ describe("add model wizard", () => {
         model: "cloud-model",
         providerId: "cloud",
         contextWindowTokens: 32768,
+        reasoningSummary: null,
       },
     ]);
   });

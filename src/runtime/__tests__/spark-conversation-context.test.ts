@@ -68,7 +68,7 @@ describe("SPARK canonical conversation policy", () => {
       const root = policy === "execution-agent-v1" ? "execution" : "supervisor";
       expect(value.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual(
         policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
-          "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+          "supervisor_fused_entry", "supervisor.response",
         ],
       );
       const policyBlock = buildSparkConversationInstructions("spark").join("\n");
@@ -84,7 +84,7 @@ describe("SPARK canonical conversation policy", () => {
           expect(messages.filter(({ role }) => role !== "system")).toEqual([{ role: "user", content: prompt }]);
           continue;
         }
-        if (phase === "supervisor_procedure_gate") {
+        if (phase === "supervisor_fused_entry") {
           expect(messages[0].content).not.toContain(policyBlock);
           expect(messages.filter(({ role }) => role !== "system")).toEqual([
             { role: "assistant", content: "An earlier idea you may want to consider." },

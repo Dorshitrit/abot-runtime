@@ -44,8 +44,8 @@ test("full target preserves exact bytes and selected bounds, with one selected-f
   expect(result).toEqual({ targetParam: "path", targetPath: "target.txt", presentation: "bounded",
     content: source, sourceRange: { contextStartLine: 1, contextEndLine: 7,
       writableStartLine: 3, writableEndLine: 4, totalLines: 7 } });
-  expect(fs.readFile).toHaveBeenCalledExactlyOnceWith(join(root, "target.txt"), "utf8");
-  expect(fs.stat).toHaveBeenCalledExactlyOnceWith(join(root, "target.txt"));
+  expect(fs.readFile).toHaveBeenCalledExactlyOnceWith(await fs.realpath(join(root, "target.txt")), "utf8");
+  expect(fs.stat).toHaveBeenCalledExactlyOnceWith(await fs.realpath(join(root, "target.txt")));
 });
 
 test.each([false, undefined])("option %s retains the exact bounded projection", async option => {
@@ -66,7 +66,7 @@ test.each([false, true])("missing and now-out-of-range targets remain unavailabl
   await fs.writeFile(join(root, "target.txt"), "short\nnow");
   expect(await resolve(option)).toBeUndefined();
   await fs.unlink(join(root, "target.txt"));
-  expect(await resolve(option)).toBeUndefined();
+  await expect(resolve(option)).rejects.toMatchObject({ code: "payload_target_context_missing", targetPath: "target.txt" });
 });
 
 test.each([undefined, "not-json", "[]", '{"start_line":0,"end_line":4}',

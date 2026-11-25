@@ -144,7 +144,7 @@ describe("private manual-unread authority", () => {
     const restarted = f.restart();
     expect((await restarted.getUnreadReplies()).map((item) => item.id)).toEqual(["automatic"]);
     expect(await restarted.markRepliesRead(["manual", "automatic"]))
-      .toEqual({ updated: 1, unreadCount: 1 });
+      .toEqual({ updated: 1, unreadCount: 1, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
     expect(await restarted.get("manual")).toMatchObject({ readAt: null });
     expect(await restarted.get("automatic")).toMatchObject({ readAt: NOW });
     expect((await restarted.list()).items.every((item) => !("manualUnreadIds" in item))).toBe(true);
@@ -160,7 +160,7 @@ describe("private manual-unread authority", () => {
     ]);
     expect((await f.store.getUnreadReplies("chat")).map((item) => item.id)).toEqual(["reply"]);
     expect(await f.store.markRepliesRead(["reply", "failure", "approval", "proposal", "missing"]))
-      .toEqual({ updated: 1, unreadCount: 4 });
+      .toEqual({ updated: 1, unreadCount: 4, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
     expect(await f.store.get("approval")).toMatchObject({ readAt: null });
   });
 
@@ -179,7 +179,7 @@ describe("private manual-unread authority", () => {
     });
     const page = await f.store.list();
     expect((await f.saved()).manualUnreadIds).toEqual(["live"]);
-    expect(Object.keys(page).sort()).toEqual(["items", "nextCursor", "preferences", "unreadCount"]);
+    expect(Object.keys(page).sort()).toEqual(["issueCoverage", "items", "nextCursor", "preferences", "readBoundary", "unreadCount", "unreadErrorCount"]);
   });
 
   test("an explicit read clears its override independently of automatic reading", async () => {
@@ -215,7 +215,7 @@ describe("private manual-unread authority", () => {
     expect(saved.readSyncInitialized).toBe(true);
     expect(saved.manualUnreadIds).toEqual(["legacy-unread", "legacy-approval"]);
     expect(await f.store.markRepliesRead(["legacy-unread", "legacy-read"]))
-      .toEqual({ updated: 0, unreadCount: 2 });
+      .toEqual({ updated: 0, unreadCount: 2, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
     expect(await f.store.get("legacy-read")).toMatchObject({ readAt: legacyReadAt });
     expect(await f.store.get("legacy-unread")).toMatchObject({ readAt: null });
   });
@@ -226,7 +226,7 @@ describe("private manual-unread authority", () => {
     const restarted = f.restart();
     expect((await restarted.getUnreadReplies()).map((item) => item.id)).toEqual(["new"]);
     expect(await restarted.markRepliesRead(["legacy", "new"]))
-      .toEqual({ updated: 1, unreadCount: 1 });
+      .toEqual({ updated: 1, unreadCount: 1, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
     expect((await f.saved()).manualUnreadIds).toEqual(["legacy"]);
     expect(await restarted.get("legacy")).toMatchObject({ readAt: null });
   });
@@ -246,7 +246,7 @@ describe("private manual-unread authority", () => {
     await f.store.upsert(reply("first-new"));
     expect((await f.saved()).readSyncInitialized).toBe(true);
     expect((await f.saved()).manualUnreadIds).toEqual([]);
-    expect(await f.store.markRepliesRead(["first-new"])).toEqual({ updated: 1, unreadCount: 0 });
+    expect(await f.store.markRepliesRead(["first-new"])).toEqual({ updated: 1, unreadCount: 0, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
   });
 
   test("new stores begin initialized without legacy unread overrides", async () => {

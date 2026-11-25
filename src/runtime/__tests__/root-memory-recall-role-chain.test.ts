@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -237,8 +237,8 @@ test.each([false, true])(
           });
           return { action: "return_result", result: PLANNER_RESULT };
         }
-        if (input.modelStep === "worker.evidence") {
-          return workerEvidenceDecision(input, false);
+        if (input.modelStep === "worker.decision") {
+          return workerFusedDecision(input, { action: "return_result" });
         }
         if (input.modelStep === "worker.result") return WORKER_RESULT;
         expect(input.modelStep).toBe("reviewer.decision");
@@ -290,14 +290,13 @@ test.each([false, true])(
       .map(([input]) => input.modelStep);
     expect(modelSteps).toEqual([
       "planner.decision",
-      "worker.evidence",
+      "worker.decision",
       "worker.result",
       "planner.decision",
       "supervisor.decision",
       "supervisor.decision",
       "reviewer.decision",
       "supervisor.decision",
-      "supervisor.response",
       "supervisor.response",
     ]);
     expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);

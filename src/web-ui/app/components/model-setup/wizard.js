@@ -1,6 +1,8 @@
 import { createChatgptSetupBinding } from "../chatgpt-accounts/setup-binding.js";
+import { createManagedLlamaSetup } from "../runtime-setup/managed-llama-setup.js";
 import { createConnectionInspection } from "../runtime-setup/connection-inspection.js";
 import { setupPromptCacheState, updateSetupPromptCacheField } from "../runtime-setup/prompt-cache-fields.js";
+import { setupReasoningSummaryState, updateSetupReasoningSummaryField } from "../runtime-setup/reasoning-summary-fields.js";
 import { setupReasoningState, updateSetupReasoningField } from "../runtime-setup/reasoning-fields.js";
 import { defaultSetupProviderAddress } from "../runtime-setup/validation.js";
 import { textOf } from "../../lib/text-format.js";
@@ -41,6 +43,7 @@ export function createModelSetupWizard({
   loadSetup,
   inspectConnection,
   chatgptClient,
+  managedLlamaClient,
   saveModel,
   applySetup,
   beginRuntimeMutation = () => true,
@@ -65,6 +68,23 @@ export function createModelSetupWizard({
   let modelForm = null;
   let formChoice = "";
   let requestedProviderId = "";
+
+  function managedAvailable() { return dialog.open && state.choice === "new:llamacpp" && !state.saved; }
+  const { binding: managed, invalidate: invalidateManaged, reset: resetManaged,
+    blocked: managedBlocked, gate: managedGate, mount: mountManaged,
+    change: managedChange, click: managedClick } = createManagedLlamaSetup({
+    container: dialog, state, client: managedLlamaClient, getEnvironmentId,
+    isAvailable: managedAvailable, isHostBusy: () => state.busy || state.checkingConnection,
+    isForward: control => ["next", "finish"].includes(control.dataset.modelAction) && state.step > 0,
+    modelField: "model", idPrefix: "addModelSetupManaged",
+    onReady: ready => {
+      if (!state.profileId && !state.profileEdited) state.profileId = suggestIdentifier(ready.model, state.profileIds);
+      clearSecret();
+      formChoice = "";
+      render();
+    },
+  });
+
   const connectionInspection = createConnectionInspection({
     state, container: dialog, inspectConnection, getEnvironmentId,
     onChange: () => { formChoice = ""; render(); },
@@ -82,6 +102,7 @@ export function createModelSetupWizard({
   };
 
   function reset() {
+    resetManaged();
     chatgpt.reset();
     connectionInspection.reset();
     clearSecret();
@@ -89,6 +110,7 @@ export function createModelSetupWizard({
     Object.assign(state, {
       ...setupReasoningState(),
       ...setupPromptCacheState(),
+      ...setupReasoningSummaryState(),
       providers: [],
       profileIds: [],
       choice: "",
@@ -114,7 +136,8 @@ export function createModelSetupWizard({
   }
 
   function close(completed = false) {
-    if (state.busy || state.checkingConnection) return false;
+    if (state.busy || state.checkingConnection || managed.isBusy()) return false;
+    resetManaged();
     const wasOpen = dialog.open;
     generation += 1;
     chatgpt.reset();
@@ -140,13 +163,14 @@ export function createModelSetupWizard({
   }
 
   function readRequest() {
+    if (managed.isBusy() || managedBlocked()) return null;
     const result = validateModelDraft(state);
     if (!result.valid) {
       clearSecret();
       showFieldError(result);
       return null;
     }
-    const apiKey = readConnectionSecret(modelForm);
+    const apiKey = state.managedLlama ? "" : readConnectionSecret(modelForm);
     if (requiresModelSaveCredential(state) && !apiKey) {
       showFieldError({
         field: "api-key",
@@ -154,7 +178,13 @@ export function createModelSetupWizard({
       });
       return null;
     }
-    return modelSetupInput(state, result, apiKey);
+    const input = modelSetupInput(state, result, apiKey);
+    if (state.managedLlama && managedAvailable() && managed.state.mode === "managed") {
+      input.managedLlama = true;
+      if (state.managedLlamaRevision) input.managedLlamaRevision = state.managedLlamaRevision;
+      delete input.apiKey;
+    }
+    return input;
   }
 
   const settleStaleOperation = (operation) => {
@@ -224,6 +254,7 @@ export function createModelSetupWizard({
       state.loaded || !state.error;
     dialog.querySelector("[data-wizard-footer]").innerHTML =
       modelSetupFooter(state);
+    mountManaged();
     dialog
       .querySelector(".runtime-setup-panel")
       .setAttribute("aria-busy", Boolean(state.busy).toString());
@@ -286,7 +317,8 @@ export function createModelSetupWizard({
   }
 
   function next() {
-    if (state.busy || state.checkingConnection || !state.loaded) return;
+    if (state.busy || state.checkingConnection || managed.isBusy() || !state.loaded) return;
+    if (state.step > 0 && managedBlocked()) return;
     if (state.step === 0 && state.choice) {
       state.step = 1;
       state.error = "";
@@ -306,8 +338,12 @@ export function createModelSetupWizard({
   }
 
   function input(event) {
-    if (state.busy || state.saved || state.step !== 1) return;
+    if (state.busy || managed.isBusy() || state.saved || state.step !== 1) return;
+    if (event.target.dataset.managedLlamaField) { invalidateManaged(); managedGate(); return; }
     const field = event.target.dataset.runtimeSetupField;
+    if (!field) return;
+    invalidateManaged();
+    managedGate();
     if (["ollama-base-url", "llamacpp-base-url", "api-key"].includes(field)) connectionInspection.reset();
     if (field === "api-key") {
       event.target.removeAttribute("aria-invalid");
@@ -335,6 +371,7 @@ export function createModelSetupWizard({
     if (field === "connection-id") state.newProviderId = value;
     if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
     updateSetupPromptCacheField(state, field, event.target.checked);
+    updateSetupReasoningSummaryField(state, field, value);
     if (updateSetupReasoningField(state, field, event.target.type === "checkbox" ? event.target.checked : value)) {
       const apiKey = readConnectionSecret(modelForm);
       formChoice = "";
@@ -350,6 +387,8 @@ export function createModelSetupWizard({
 
   dialog.addEventListener("input", input);
   dialog.addEventListener("change", (event) => {
+    if (managedChange(event)) return;
+    if (managed.isBusy()) return;
     if (
       state.busy ||
       state.checkingConnection ||
@@ -362,7 +401,7 @@ export function createModelSetupWizard({
     clearModelContextWindowFeedback(state, modelForm);
     state.saveOutcomeUncertain = false;
     const providerChanged = state.choice !== event.target.value;
-    if (providerChanged) state.model = "";
+    if (providerChanged) { resetManaged(); state.model = ""; }
     const resetSuggestedProfile = providerChanged && !state.profileEdited;
     if (resetSuggestedProfile) state.profileId = "";
     state.choice = event.target.value;
@@ -389,6 +428,8 @@ export function createModelSetupWizard({
     next();
   });
   dialog.addEventListener("click", (event) => {
+    if (managedClick(event)) return;
+    if (managed.isBusy()) return;
     const action = event.target.closest?.("[data-model-action]")?.dataset
       .modelAction;
     if (!action || state.busy || state.checkingConnection) return;
@@ -396,7 +437,7 @@ export function createModelSetupWizard({
     if (action === "cancel") close();
     if (action === "reload") void load();
     if (action === "next") next();
-    if (action === "finish" && state.step === 2) void flow.finish();
+    if (action === "finish" && state.step === 2 && !managedBlocked()) void flow.finish();
     if (action === "back" && !state.saved) {
       if (state.step === 1) clearSecret();
       state.step = Math.max(0, state.step - 1);
@@ -413,8 +454,9 @@ export function createModelSetupWizard({
     open,
     close: () => close(),
     isOpen: () => dialog.open,
-    isBusy: () => Boolean(state.busy),
+    isBusy: () => Boolean(state.busy) || managed.isBusy(),
     dispose: () => {
+      resetManaged();
       chatgpt.reset();
       generation += 1;
       clearSecret();

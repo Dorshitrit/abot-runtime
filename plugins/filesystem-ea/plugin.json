@@ -55,7 +55,7 @@
           "skills": [],
           "operations": {
             "read_text": {
-              "summary": "Read exact UTF-8 text without line prefixes. Without a selector, read lines 1-120 or EOF; max_bytes alone caps that preview. Line bounds are one-based. For an explicit UTF-8 byte window, set start_byte and optionally max_bytes; use next_byte to continue. Complete selected windows return range_ref; truncated line/default reads do not. Byte controls cannot combine with explicit line/locator controls.",
+              "summary": "Read exact UTF-8 text without line prefixes. Without a selector, read lines 1-120 or EOF; max_bytes alone caps that preview. Line bounds are one-based. A locator overrides line bounds; omit it for a numeric range. For an explicit UTF-8 byte window, set start_byte and optionally max_bytes; use next_byte to continue. Complete selected windows return range_ref; truncated line/default reads do not. Byte controls cannot combine with explicit line/locator controls.",
               "outputChannels": {
                 "text": "content",
                 "data": "metadata"
@@ -104,6 +104,10 @@
                 },
                 "required": [
                   "path"
+                ],
+                "anyOf": [
+                  { "propertyNames": { "enum": ["path", "start_byte", "max_bytes"] } },
+                  { "propertyNames": { "enum": ["path", "start_line", "end_line", "locator", "context_lines"] } }
                 ]
               },
               "selectionControlIds": [
@@ -181,7 +185,7 @@
                 "param": "payload",
                 "instructions": "Author only the requested file content using the prepared source contract. No commentary or markdown wrapping.",
                 "minBytes": 0,
-                "maxBytes": 2097152
+                "maxBytes": 262144
               }
             }
           }
@@ -224,7 +228,7 @@
           },
           "operations": {
             "edit_text": {
-              "summary": "Replace one observed range in an existing file. Select path and the range_ref returned by read_text, then describe the change in operationObjective. The author receives that exact range and returns its complete replacement as plain text. Content outside the selected range stays unchanged.",
+              "summary": "Replace one observed range in an existing file. Select path and a range_ref returned for that same path in this request by read_text or a successful edit_text, then describe the change in operationObjective. The author receives that exact range and returns its complete replacement as plain text. Content outside the selected range stays unchanged. A successful edit returns a fresh range_ref for its exact replacement text; previous references remain bound to their original file revision.",
               "outputChannels": {
                 "text": "metadata",
                 "data": "metadata"
@@ -240,8 +244,9 @@
                   },
                   "range_ref": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
+                    "minLength": 42,
+                    "maxLength": 42,
+                    "pattern": "^range:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                   }
                 },
                 "required": [
@@ -260,7 +265,7 @@
                 "param": "payload",
                 "instructions": "Author only the requested file content using the prepared source contract. No commentary or markdown wrapping.",
                 "minBytes": 0,
-                "maxBytes": 2097152
+                "maxBytes": 262144
               }
             }
           }

@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -129,10 +129,6 @@ function createScript(
       }),
     },
     {
-      step: "supervisor.decision",
-      output: JSON.stringify({ workingDirectory: "." }),
-    },
-    {
       step: "planner.decision",
       output: decision({
         action: "invoke_role",
@@ -145,7 +141,6 @@ function createScript(
       }),
     },
   ];
-  script.push({ step: "worker.evidence", output: (input) => workerEvidenceReply(input, failureStep === "worker.decision", RESULT).text });
   if (failureStep === "worker.decision") {
     script.push(
       ...invalidAttempts(
@@ -157,6 +152,7 @@ function createScript(
     );
   } else {
     script.push(
+      { step: "worker.decision", output: (input) => workerFusedReply(input, { action: "return_result" }, RESULT).text },
       ...(failureStep === "worker.result"
         ? invalidAttempts(
             failureStep,

@@ -12,9 +12,11 @@ import {
   finiteNumber,
   hasExactKeys,
   identifier,
+  isFixedWidthInputPattern,
   isPlainObject,
 } from "./contract-fields.js";
 import { normalizeToolInputDocumentation } from "./input-documentation.js";
+import { normalizeToolInputPropertyModes } from "./input-property-modes.js";
 
 const MAX_ENUM_VALUES = 64;
 const MAX_ENUM_VALUE_LENGTH = 256;
@@ -73,12 +75,16 @@ function parseStringInput(
       ),
     });
   }
-  if (!hasExactKeys(raw, ["type", "minLength", "maxLength"])) {
+  if (!hasExactKeys(raw, ["type", "minLength", "maxLength"], ["pattern"])) {
     fail(
       toolName,
       path,
-      "bounded string input must contain exactly type, minLength and maxLength",
+      "bounded string input must contain exactly type, minLength, maxLength and, optionally, pattern",
     );
+  }
+  const pattern = raw.pattern;
+  if (Object.hasOwn(raw, "pattern") && !isFixedWidthInputPattern(pattern)) {
+    fail(toolName, `${path}.pattern`, "expected an anchored, fixed-width string pattern");
   }
   const minLength = boundedInteger(
     toolName,
@@ -101,6 +107,7 @@ function parseStringInput(
     type: "string" as const,
     minLength,
     maxLength,
+    ...(typeof pattern === "string" ? { pattern } : {}),
   });
 }
 
@@ -246,7 +253,7 @@ export function parseToolNormalInvocationInputSchema(
       "additionalProperties",
       "properties",
       "required",
-    ]) ||
+    ], ["anyOf"]) ||
     raw.type !== "object" ||
     raw.additionalProperties !== false ||
     !isPlainObject(raw.properties) ||
@@ -296,10 +303,15 @@ export function parseToolNormalInvocationInputSchema(
       `references unknown property ${unknownRequired}`,
     );
   }
+  const modes = normalizeToolInputPropertyModes(raw.anyOf, Object.keys(properties), required);
+  if (!modes.ok) fail(toolName, `${path}.anyOf`, modes.issue);
+  if (Object.hasOwn(raw, "anyOf") && modes.value === undefined)
+    fail(toolName, `${path}.anyOf`, "expected a property-name mode array");
   return Object.freeze({
     type: "object" as const,
     additionalProperties: false as const,
     properties: Object.freeze(properties),
     required: Object.freeze(required),
+    ...(modes.value ? { anyOf: modes.value } : {}),
   });
 }

@@ -48,6 +48,39 @@ test("a stable regular owner returns its verified handle with no-follow when ava
   expect(close).not.toHaveBeenCalled();
 });
 
+test("an initial Windows owner stat denial becomes missing only after a fresh observation", async () => {
+  const missing = denial("ENOENT");
+  namedInfo.mockRejectedValueOnce(denial()).mockRejectedValueOnce(missing);
+  await expect(openLockOwnerFile(ownerPath)).rejects.toBe(missing);
+  expect(namedInfo).toHaveBeenCalledTimes(2);
+  expect(openFile).not.toHaveBeenCalled();
+});
+
+test.each(["same owner", "unobservable"] as const)(
+  "an initial owner stat denial stays denied when the fresh name is %s",
+  async (outcome) => {
+    const original = denial();
+    namedInfo.mockRejectedValueOnce(original);
+    if (outcome === "same owner") namedInfo.mockResolvedValueOnce(regular());
+    else namedInfo.mockRejectedValueOnce(denial("EACCES"));
+    await expect(openLockOwnerFile(ownerPath)).rejects.toBe(original);
+    expect(namedInfo).toHaveBeenCalledTimes(2);
+    expect(openFile).not.toHaveBeenCalled();
+  },
+);
+
+test.each([["linux", "EPERM"], ["win32", "EACCES"]])(
+  "%s initial owner stat %s is propagated without another observation",
+  async (platform, code) => {
+    vi.stubGlobal("process", { ...process, platform });
+    const original = denial(code);
+    namedInfo.mockRejectedValueOnce(original);
+    await expect(openLockOwnerFile(ownerPath)).rejects.toBe(original);
+    expect(namedInfo).toHaveBeenCalledTimes(1);
+    expect(openFile).not.toHaveBeenCalled();
+  },
+);
+
 test("pending deletion is observed again only after closing the failed observer handle", async () => {
   const { close } = ownerHandle();
   const original = denial();

@@ -128,6 +128,7 @@ export function modelSetupInput(state, validated, apiKey) {
     ...(validated.input.supportsThinking !== undefined ? { supportsThinking: validated.input.supportsThinking } : {}),
     ...(validated.input.reasoningBudget ? { reasoningBudget: validated.input.reasoningBudget } : {}),
     ...(validated.input.promptCache !== undefined ? { promptCache: validated.input.promptCache } : {}),
+    ...(validated.input.reasoningSummary !== undefined ? { reasoningSummary: validated.input.reasoningSummary } : {}),
     ...connection,
     ...(apiKey ? { apiKey } : {}),
   };

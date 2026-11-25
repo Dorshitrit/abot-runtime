@@ -44,6 +44,17 @@ function register(
   }).getNormalInvocations()[0]!.contract.operations[0]!;
 }
 
+test("enforces fixed-width identifier patterns in inputs and their documented examples", () => {
+  const schema = { ...stringInput, pattern: "^ref:[0-9a-f]{4}$" };
+  const operation = register({ id: { ...schema, example: "ref:f3a9" } }, ["id"]);
+  expect(validateToolNormalInvocationInput(operation, { id: "ref:f3a9" }).ok).toBe(true);
+  expect(validateToolNormalInvocationInput(operation, { id: "ref:f3g9" }).ok).toBe(false);
+  expect(() => register({ id: { ...schema, example: "ref:f3g9" } })).toThrow();
+  for (const pattern of ["ref:[a-z]{4}", "^(a+)+$", "^[z-a]{4}$", 42]) {
+    expect(() => register({ id: { ...schema, pattern } })).toThrow(/pattern/u);
+  }
+});
+
 describe("plugin input documentation", () => {
   test("preserves old contracts and does not turn examples into defaults", () => {
     const plain = register({ term: stringInput });

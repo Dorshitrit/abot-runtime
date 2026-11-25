@@ -10,6 +10,7 @@ import {
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import type { ModelGatewayClient } from "../ports.js";
 import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
+import { readSourceIssueId } from "../../shared/source-issue.js";
 import { createInvalidOutputRequest } from "./support/invalid-output-request.js";
 import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import { semanticContractFixture } from "./support/semantic-compaction-contract-fixture.js";
@@ -81,6 +82,8 @@ describe("model step timeout lifecycle event", () => {
     await vi.advanceTimersByTimeAsync(5);
     await expected;
     expect(run.events()).toEqual([{
+      issueId: expect.any(String),
+      occurredAt: expect.any(Number),
       requestId: run.request.requestId,
       invocationId: expect.any(String),
       modelStep,
@@ -90,10 +93,14 @@ describe("model step timeout lifecycle event", () => {
       configurationProfileId: "test",
       calibrationSlotId: "configured.slot",
       profileId: "test",
+      providerId: "local",
       model: "test",
       provider: "ollama",
     }]);
     expect(run.events()[0].invocationId.length).toBeGreaterThan(0);
+    const failure = await run.result.catch((error: unknown) => error);
+    expect(readSourceIssueId(failure)).toBe(run.events()[0].issueId);
+    expect(readSourceIssueId(new Error("unrelated later failure"))).toBeUndefined();
     expect(invoke).toHaveBeenCalledOnce();
     expect(run.accept).not.toHaveBeenCalled();
     expect(run.parent.signal.aborted).toBe(false);

@@ -16,6 +16,11 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   root.classList.add("home-workspace");
   root.innerHTML = `<div class="home-workspace-body">
     <div class="home-workspace-content">
+      <section class="home-connections" aria-label="Connections" hidden>
+        <section class="home-connection-slot" data-home-computer hidden aria-label="Computer access"></section>
+        <section class="home-connection-slot" data-home-socket hidden aria-label="Socket connection"></section>
+        <section class="home-connection-slot" data-home-llama hidden aria-label="Local llama.cpp server"></section>
+      </section>
       <section class="home-panel home-learning-panel" data-dashboard-learning hidden><div data-dashboard-learning-content></div></section>
       <section class="home-automation-status" aria-label="Automations in progress" aria-live="polite" data-dashboard-automations hidden></section>
       <section class="home-panel home-resources-panel" aria-label="Resources needing attention" data-dashboard-resources hidden></section>
@@ -33,6 +38,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     </section>
   </div>`;
   const overview = root.querySelector(".home-overview");
+  const connections = root.querySelector(".home-connections");
   const activity = root.querySelector("[data-dashboard-activity]");
   const conversations = root.querySelector("[data-dashboard-conversations]");
   const approvals = root.querySelector("[data-dashboard-approvals]");
@@ -100,6 +106,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   function render(snapshot) {
     currentSnapshot = snapshot;
     const setupRequired = snapshot.composerAvailable === false;
+    connections.hidden = setupRequired;
     const resourceAttention = snapshot.resourceAttention || {};
     resourcesPanel.hidden = setupRequired || !hasDashboardResourceAttention(resourceAttention);
     const pickerState = resourceAttention.picker || { open: false };
@@ -171,5 +178,5 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     compactWidgets.refresh();
   }
 
-  return { render, composerHost, setupHost, compactWidgets };
+  return { render, composerHost, setupHost, compactWidgets, socketHost: root.querySelector("[data-home-socket]"), llamaHost: root.querySelector("[data-home-llama]") };
 }

@@ -89,17 +89,15 @@ test.each([
       } },
       { step: "execution.response" as const, output: (input: KnowledgeModelInput) => { check(input); return answer; } },
     ] : [
-      { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) =>
-        decision(defaultSupervisorPresentation(input)) },
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) => {
-        expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
+        expect(supervisorFormatName(input)).toBe("supervisor_fused_entry");
         for (const doc of docs) expect(JSON.stringify(messages(input))).not.toContain(doc.content);
-        return decision({ action: "read_skills", skillIds });
+        return decision({ ...defaultSupervisorPresentation(input), action: "read_skills", skillIds });
       } },
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) => {
-        expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+        expect(supervisorFormatName(input)).toBe("supervisor_fused_routing");
         check(input);
-        return decision({ requiresProcedure: false, responseRecommendation: "Explain the two supplied references." });
+        return decision({ action: "respond", responseRecommendation: "Explain the two supplied references." });
       } },
       { step: "supervisor.response" as const, output: (input: KnowledgeModelInput) => {
         check(input); return answer;

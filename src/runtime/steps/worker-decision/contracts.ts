@@ -141,6 +141,8 @@ export type WorkerResultAuthorSource = WorkerDecisionCallIdentity &
     requestToolResultsContextMessage?: ChatMessage;
     operationSupervisionEvidenceContextMessage?: ChatMessage;
     coreSkillReadMessages?: readonly ChatMessage[];
+    /** Current admitted handoff projection, refreshed after decision compaction. */
+    handoffContextMessages?: readonly ChatMessage[];
   }>;
 
 export type WorkerDecisionDiagnosticContext = Readonly<{

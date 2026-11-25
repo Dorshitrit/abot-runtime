@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import * as capabilityComposition from "../request/worker-capability-composition.js";
@@ -48,9 +48,9 @@ async function runAuthoring(f: Fixture, options: {
         options.inspectResponse?.(input);
         return { text: "The requested Skill operation is complete.", meta: {} };
       }
-      if (input.modelStep === "worker.evidence") {
-        phases.push("worker.evidence");
-        return workerEvidenceReply(input, false);
+      if (input.modelStep === "worker.decision") {
+        phases.push("worker.decision");
+        return workerFusedReply(input, { action: "return_result" });
       }
       if (input.modelStep === "worker.result") {
         phases.push("worker.result");
@@ -60,20 +60,20 @@ async function runAuthoring(f: Fixture, options: {
       const phase = supervisorFormatName(input);
       if (!phase) throw new Error("Missing supervisor format");
       phases.push(phase);
-      if (phase === "supervisor_presentation") return { text: decision(defaultSupervisorPresentation(input)), meta: {} };
-      if (phase === "supervisor_procedure_gate") return { text: decision({ requiresProcedure: true }), meta: {} };
-      if (phase === "supervisor_delegation") {
+      if (phase === "supervisor_fused_routing") {
         expect(JSON.stringify(input.format)).not.toContain('"author_skill"');
-        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change." }), meta: {} };
+        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change.", workingDirectory: ".", workerCapabilityScope: { catalogGroupIds: ["knowledge"] } }), meta: {} };
       }
-      if (phase === "supervisor_working_directory") return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
-      if (phase === "supervisor_skill_selection") {
+      if (phase === "supervisor_fused_entry" || phase === "supervisor_skill_selection") {
         expect(phases).not.toContain("supervisor_skill_authoring");
         expect(JSON.stringify(input.format)).not.toContain('"create_skill"');
         const read = discoveryCalls++ === 0 && options.discoveryIds;
-        return { text: decision(read ? { action: "read_skills", skillIds: read } : { action: "continue" }), meta: {} };
+        return { text: decision({ ...(phase === "supervisor_fused_entry" ? defaultSupervisorPresentation(input) : {}),
+          ...(read ? { action: "read_skills", skillIds: read }
+            : phase === "supervisor_fused_entry" ? { requiresProcedure: true } : { action: "continue" }) }), meta: {} };
       }
-      if (phase === "supervisor_decision") {
+      if (phase === "supervisor_decision" || phase === "supervisor_resume_skill_routing") {
+        if (phase === "supervisor_resume_skill_routing") discoveryCalls += 1;
         expect(phases.filter((entry) => entry === phase)).toHaveLength(1);
         expect(capsules(input, "runtime_child_result")).toContainEqual(expect.objectContaining({ roleId: "worker" }));
         options.inspectRouting?.(input);
@@ -95,8 +95,8 @@ async function runAuthoring(f: Fixture, options: {
   expect(events.filter(({ type }) => type === "failed")).toEqual([]);
   expect(events).toContainEqual(expect.objectContaining({ type: "completed" }));
   expect(discoveryCalls).toBe(options.expectedDiscoveryCalls ?? 2);
-  expect(phases.filter((phase) => ["supervisor_procedure_gate", "supervisor_delegation", "worker.evidence", "worker.result", "supervisor_decision"].includes(phase)))
-    .toEqual(["supervisor_procedure_gate", "supervisor_delegation", "worker.evidence", "worker.result", "supervisor_decision"]);
+  expect(phases.filter((phase) => ["supervisor_fused_routing", "worker.decision", "worker.result", "supervisor_decision", "supervisor_resume_skill_routing"].includes(phase)))
+    .toEqual(["supervisor_fused_routing", "worker.decision", "worker.result", ...(options.expectedDiscoveryCalls === 1 ? ["supervisor_decision"] : ["supervisor_resume_skill_routing"]) ]);
   expect(phases.slice(phases.indexOf("supervisor_skill_authoring") + 1))
     .toEqual(options.body ? ["raw", "response"] : ["response"]);
   return { phases, events };

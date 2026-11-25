@@ -55,6 +55,38 @@ function fakeDocument(): Document {
 }
 
 describe("web ui tool approval controller", () => {
+  test("approval renders captured input without requiring an earlier activity projection", () => {
+    const command = "  printf '<script>not executable HTML</script>'\n" + "x".repeat(3_000);
+    const cwd = " /tmp/approval workspace ";
+    const card = createToolApprovalCard({
+      event: { approvalId: "captured", tool: "exec", summary: "Inspect the workspace",
+        meta: { command, commandTruncated: false, cwd, cwdTruncated: false } },
+      onDecision: vi.fn(),
+      documentRoot: { createElement: (tag: string) => new ContextElement(tag) } as unknown as Document,
+    });
+    expect(card.querySelector(".conversation-tool-preview")!.textContent).toBe(command);
+    expect(card.textContent).toContain(cwd);
+    expect(card.textContent).toContain("Prepared command");
+    expect(card.textContent).not.toContain("Sent command");
+    expect(card.querySelector("script")).toBeNull();
+  });
+
+  test.each([
+    { label: "missing captured details", meta: undefined, unavailable: "Input details were not recorded for this approval." },
+    { label: "opaque legacy command", meta: { params: { command: "string(len=123)" } }, unavailable: "Not recorded in this event" },
+  ])("$label is explicit and arbitrary parameters are not disclosed", ({ meta, unavailable }) => {
+    const card = createToolApprovalCard({
+      event: { approvalId: "legacy", tool: "custom_tool", summary: "Requested action",
+        params: { secret: "private-parameter" }, meta },
+      onDecision: vi.fn(),
+      documentRoot: { createElement: (tag: string) => new ContextElement(tag) } as unknown as Document,
+    });
+    expect(card.textContent).toContain(unavailable);
+    expect(card.textContent).not.toContain("private-parameter");
+    expect(card.textContent).not.toContain("string(len=");
+    expect(card.querySelector(".conversation-tool-preview")).toBeNull();
+  });
+
   test("approval discloses the bound computer and command before execution", () => {
     const computerName = "Owner <script>computer</script>";
     const toolActivity = projectToolActivityEvent({
@@ -129,7 +161,7 @@ describe("web ui tool approval controller", () => {
     expect(header.children[0]?.textContent).toBe("file writer");
     expect(explanation.tagName).toBe("DETAILS");
     expect(explanation.children[0]?.textContent).toBe("Action details");
-    expect(explanation.attributes.has("open")).toBe(false);
+    expect(explanation.attributes.has("open")).toBe(true);
     expect(detail.textContent).toBe("Write the requested file");
     expect(detail.dir).toBe("auto");
     expect(approveButton.disabled).toBe(false);

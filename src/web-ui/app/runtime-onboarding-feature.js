@@ -13,6 +13,7 @@ export function createRuntimeOnboardingFeature({
   reloadCatalog,
   setMessageStatus,
   onStateChange,
+  onFirstModelReady,
 }) {
   const usesBridgeBackend = () => state.config?.backend === "bridge";
   let selectedGuide = null;
@@ -37,6 +38,8 @@ export function createRuntimeOnboardingFeature({
     return createRuntimeSetupGuide({
       ...common,
       chatgptClient: runtimeClient,
+      managedLlamaClient: runtimeClient,
+      onFirstModelReady,
       loadSetup: () => runtimeClient.getRuntimeSetup(),
       inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
       openConfiguration: () => dom.modelsWorkspaceButton?.click(),

@@ -27,6 +27,7 @@ import { readStoredSourceMessage } from "./super-source-message.js";
 import { assertBasketReferenceSource } from "./basket-reference-source.js";
 import { CORE_SKILL_READ_MESSAGE_KIND } from "../core-skill-read-context.js";
 import { assertCoreSkillReadSource } from "./core-skill-read-source.js";
+import { assertDependencyResultSource, isDependencyResultSource } from "./super-dependency-result-source.js";
 
 export type SuperCompactionIntegrityInput = Readonly<{
   requestId: string;
@@ -196,6 +197,10 @@ function assertOwnedSource(
     );
   if (isSupervisorReceiptCompactionSource(source)) {
     assertSupervisorReceiptCompactionSource({ source, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
+    return;
+  }
+  if (isDependencyResultSource(source)) {
+    assertDependencyResultSource({ source, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
     return;
   }
   const execution = params.head.state.capabilityExecutions.find(

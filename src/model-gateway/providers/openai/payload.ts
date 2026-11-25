@@ -14,6 +14,8 @@ import { projectOpenAIFunctionOutput } from "./function-output.js";
 import type { ModelGatewayRequest } from "../../types.js";
 import { markOpenAIPromptCacheItem, normalizeOpenAIPromptCacheItem, resolveOpenAIPromptCacheBoundary } from "./prompt-cache.js";
 import { projectResolvedModelParameters } from "../parameter-projection.js";
+import { omitOpenAIReasoningSummary, resolveOpenAIReasoningSummary } from "./reasoning-summary-options.js";
+import { resolveOpenAIPromptCacheKey } from "./prompt-cache-key.js";
 
 export type OpenAIPayloadBuildOptions = Readonly<{
   onFormatProjection?: (
@@ -134,6 +136,7 @@ export function buildOpenAIResponsesPayload(
   const temperature = readFiniteNumber(generation.temperature);
   const topP = readFiniteNumber(generation.topP);
   const reasoningEffort = invocation.think;
+  const reasoningSummary = resolveOpenAIReasoningSummary(invocation);
   const formatProjection = projectOpenAIResponsesFormat(
     resolveModelGatewayFormat(requestBody.format, invocation.format),
   );
@@ -144,7 +147,8 @@ export function buildOpenAIResponsesPayload(
   const canUseSamplingControls =
     reasoningEffort === undefined ||
     reasoningEffort === "none";
-  const shouldProjectOpenAIReasoning = reasoningEffort !== undefined;
+  const shouldProjectOpenAIReasoning = reasoningEffort !== undefined || reasoningSummary !== undefined;
+  const promptCacheKey = resolveOpenAIPromptCacheKey(requestBody.promptCacheScope);
 
   const projectedInput = resolveInputWithProviderInstructions(
     requestBody,
@@ -156,6 +160,7 @@ export function buildOpenAIResponsesPayload(
     input: projectedInput.input,
     ...(projectedInput.cacheBreakpointApplied ? { prompt_cache_options: { mode: "implicit" } } : {}),
     stream: true,
+    ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
   };
   if (canUseSamplingControls && temperature !== undefined) {
     payload.temperature = temperature;
@@ -169,7 +174,10 @@ export function buildOpenAIResponsesPayload(
     delete payload.top_p;
   }
   if (shouldProjectOpenAIReasoning) {
-    payload.reasoning = { effort: reasoningEffort };
+    payload.reasoning = {
+      ...(reasoningEffort !== undefined ? { effort: reasoningEffort } : {}),
+      ...(reasoningSummary !== undefined ? { summary: reasoningSummary } : {}),
+    };
   }
   const functionOutput = projectOpenAIFunctionOutput(requestBody.modelStep, formatProjection.format);
   if (functionOutput) {
@@ -187,10 +195,12 @@ export function buildOpenAIInputTokenCountPayload(
   requestBody: ModelGatewayRequest,
 ): Record<string, unknown> {
   const payload = { ...buildOpenAIResponsesPayload(requestBody) };
+  omitOpenAIReasoningSummary(payload);
   delete payload.stream;
   delete payload.temperature;
   delete payload.top_p;
   delete payload.prompt_cache_options;
+  delete payload.prompt_cache_key;
   delete payload.max_output_tokens;
   return payload;
 }

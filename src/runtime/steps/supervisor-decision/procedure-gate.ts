@@ -87,6 +87,7 @@ function isDirectResponseDecision(record: Record<string, unknown> | undefined): 
 }
 
 type ProcedureGateContextOptions = Readonly<{
+  entryInstructions?: string;
   diagnostic: SupervisorDecisionDiagnosticContext;
   skillReadHead?: RoleCallLedgerHead;
   initialMemoryMessage?: ChatMessage;
@@ -122,11 +123,12 @@ export function buildSupervisorProcedureGateInput(request: RequestExecutionScope
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
   const context = projectRequestContext({
-    instructions: [PROCEDURE_GATE_INSTRUCTIONS,
+    instructions: [options.entryInstructions ?? PROCEDURE_GATE_INSTRUCTIONS,
       ...buildSupervisorMemoryAvailabilityInstructions(request.longTermMemory),
       ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION] : []),
       ...(memory ? [memory.instructions] : [])].join("\n"), format,
     prompt: request.prompt, budget,
+    ...(request.attachments ? { attachments: request.attachments } : {}),
     historyMessages: projectLatestSettledConversationTurn(request.historyMessages) ?? [],
     // Keep the source turn whole; exact admission rejects an oversized envelope.
     historyRetention: "compaction_managed",

@@ -1,10 +1,26 @@
 import { createPluginConfigurationRequests } from "./plugin-configuration.js";
+import { createManagedLlamaRequests } from "./managed-llama.js";
 /** Configuration transport; credentials are sent once and never retained here. */
 export function createConfigurationRequests({ requestApi, environmentQuery }) {
   const scoped = (path, environmentId) =>
     path + "?environment=" + environmentQuery(environmentId);
   return {
     ...createPluginConfigurationRequests({ requestApi, environmentQuery }),
+    ...createManagedLlamaRequests({ requestApi, environmentQuery }),
+    getSocketConnection(environmentId) {
+      return requestApi(scoped("/socket-connection", environmentId));
+    },
+    previewSocketConnection(bundle, environmentId) {
+      return requestApi(scoped("/socket-connection/preview", environmentId), {
+        method: "POST", body: JSON.stringify({ bundle }),
+      });
+    },
+    changeSocketConnection(action, input, environmentId) {
+      if (!["connect", "pause", "resume", "forget"].includes(action)) throw new Error("Unknown Socket action");
+      return requestApi(scoped("/socket-connection/" + action, environmentId), {
+        method: "POST", body: JSON.stringify(input),
+      });
+    },
     inspectModelConnection(input, environmentId) {
       return requestApi(scoped("/runtime/setup/connection", environmentId), {
         method: "POST", body: JSON.stringify(input),

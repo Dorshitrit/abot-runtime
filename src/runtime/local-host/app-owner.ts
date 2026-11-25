@@ -1,3 +1,6 @@
+import { createSocketConnectionService } from "../socket-connection/service.js";
+import { createLocalOwnerBridge } from "./app-bridge.js";
+import { createLocalOwnerAgents } from "./app-agents.js";
 import { createLocalRuntimeMaintenance, isLocalMaintenanceMethod } from "./app-maintenance.js";
 import type WebSocket from "ws";
 import {
@@ -95,10 +98,29 @@ export async function createLocalRuntimeOwner(
     throw error;
   }
   let shutdown: Promise<void> | undefined;
-  return {
+  let retiredAgents: Promise<void> | undefined;
+  const agents = createLocalOwnerAgents(application.services, (method, args, peer) => owner.call(method, args, peer),
+    publish, operation => activity.run(operation));
+  listeners.add(agents.receive);
+  const bridge = createLocalOwnerBridge(config, peer => controls.hasActivePeer(peer));
+  const socket = createSocketConnectionService(config, {
+    start: (connection, preserveIdentity) => bridge.start(connection, owner, preserveIdentity),
+    pause: bridge.pause, stop: bridge.stop, getStatus: bridge.getStatus, fence: bridge.fence,
+  });
+  const owner: LocalRuntimeOwner = {
     call(method, args, peer) {
-      if (isLocalMaintenanceMethod(method)) return maintenance.call(method, args);
+      if (isLocalMaintenanceMethod(method)) {
+        if (agents.isBusy()) return Promise.reject(new Error("runtime_maintenance_busy"));
+        return maintenance.call(method, args);
+      }
       return activity.run(async () => {
+        if (method === "bridge.start") {
+          if (args.length !== 1) throw new Error("runtime_bridge_connection_invalid");
+          await socket.startLegacy(args[0]);
+          return null;
+        }
+        if (method.startsWith("socketConnection.")) return socket.call(method, args);
+        if (method.startsWith("agents.")) return agents.call(method, args);
         if (method === "sparkHomeHost.register") {
           if (args.length) throw new Error("spark_home_host_registration_invalid");
           homeAppearance.register(peer);
@@ -188,7 +210,7 @@ export async function createLocalRuntimeOwner(
             method,
             args,
           );
-        return dispatchLocalServiceCall(application.services, method, args);
+        return dispatchLocalServiceCall(application.services, method, args, overrides.sessions);
       });
     },
     subscribe(listener) {
@@ -198,6 +220,7 @@ export async function createLocalRuntimeOwner(
     stop() {
       if (shutdown) return shutdown;
       activity.stop();
+      const closingBridge = socket.stop();
       nativePermissions.stop();
       application.services.requestAdmission?.close();
       memory.stop();
@@ -207,20 +230,28 @@ export async function createLocalRuntimeOwner(
       unsubscribeBasket?.();
       unsubscribeHome();
       listeners.clear();
-      shutdown = application.stop();
+      retiredAgents = agents.stop();
+      void retiredAgents.catch(() => {}); // Retirement holds the environment lease if cleanup fails.
+      shutdown = Promise.all([closingBridge, application.stop()]).then(() => {});
       return shutdown;
     },
     isIdle() {
-      if (!activity.isIdle()) return false;
+      if (!activity.isIdle() || agents.isBusy()) return false;
       return application.services.requestAdmission?.isIdle() ?? true;
     },
     async whenIdle() {
       await Promise.all([
+        retiredAgents,
         activity.whenIdle(),
         application.services.requestAdmission?.whenIdle(),
       ]);
     },
   };
+  // Existing scheduled Agents resume with the environment, even when no Web client is running.
+  // A damaged optional workspace remains independently diagnosable through its own client.
+  await socket.recover().catch(() => console.warn("Socket connection recovery needs attention."));
+  await agents.recoverExisting().catch(() => console.error("Agent workspace recovery needs attention."));
+  return owner;
 }
 
 async function runPeerRequest(

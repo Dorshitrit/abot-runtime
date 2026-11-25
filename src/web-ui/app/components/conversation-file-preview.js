@@ -176,7 +176,8 @@ export function createConversationFilePreview({
 
   function render(state) {
     panel.hidden = !state.open;
-    host.classList.toggle("has-file-preview", state.open);
+    host.classList.toggle("has-conversation-file-preview", state.open);
+    host.classList.toggle("has-file-preview", state.open || host.classList.contains("has-project-changes-preview"));
     if (!state.open) {
       current = null;
       body.replaceChildren();

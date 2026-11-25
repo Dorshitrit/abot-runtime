@@ -36,7 +36,7 @@ import {
 import { createWebUiShutdown } from "./server-shutdown.js";
 import { ExternalBridgeWebBackend } from "./external-bridge-backend.js";
 import { WebClientStateRoutes } from "./client-state/routes.js";
-import { LocalRuntimeWebBackend } from "./local-runtime-backend.js";
+import { LocalRuntimeWebBackend, type LocalRuntimeBackendOptions } from "./local-runtime-backend.js";
 import { resolveWebUiAddress } from "./web-ui-address.js";
 import { createLinkPreviewRouteHandler } from "./link-preview/routes.js";
 import { WebSystemHostService } from "./system-host-service.js";
@@ -72,6 +72,7 @@ type WebUiServerOptions = {
   rootDir?: string;
   configPath?: string;
   setupCommandMode?: WebUiSetupCommandMode;
+  runtimeBridge?: LocalRuntimeBackendOptions["runtimeBridge"];
   providerAdapters?: ModelProviderAdapterRegistry;
   onRuntimeSetup?: (configPath: string) => Promise<RuntimeSetupActivation>;
   createRuntimeSetupRestorePoint?: () => RuntimeSetupGatewayRestorePoint;
@@ -92,6 +93,7 @@ type ResolvedWebUiServerOptions = Required<
     | "rootDir"
     | "configPath"
     | "providerAdapters"
+    | "runtimeBridge"
     | "onRuntimeSetup"
     | "createRuntimeSetupRestorePoint"
     | "checkRuntimeSetupActivation"
@@ -285,6 +287,8 @@ export function startWebUiServer(
     options.backend === "runtime"
       ? new LocalRuntimeWebBackend({
           chatGptAuthRoutes: chatGptWeb?.routes,
+          allowPublishedLoopback,
+          runtimeBridge: overrides.runtimeBridge,
           rootDir: options.rootDir,
           configPath: options.configPath,
           defaultEnvironmentId: options.defaultEnvironmentId,

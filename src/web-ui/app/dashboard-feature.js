@@ -1,3 +1,5 @@
+import { createSocketConnectionFeature } from "./components/socket-connection/feature.js";
+import { createManagedServerHome } from "./components/managed-llama-server/home.js";
 import { createWorkspaceConversationOpener } from "./controllers/workspace-conversation-opener.js";
 import { createDashboardWorkspace } from "./components/dashboard/workspace.js";
 import { createDashboardResourcesController } from "./controllers/dashboard-resources-controller.js";
@@ -97,18 +99,29 @@ export function createDashboardFeature({
       },
     },
   });
+  const socket = view.socketHost && createSocketConnectionFeature({ panel: view.socketHost, client,
+    getEnvironmentId: selectedEnvironmentId, supported: () => state.config?.backend === "runtime", ready: isComposerAvailable });
+  const llama = view.llamaHost && createManagedServerHome({ panel: view.llamaHost, client,
+    getEnvironmentId: selectedEnvironmentId, supported: () => state.config?.backend === "runtime", ready: isComposerAvailable });
   controller.publish();
   document.addEventListener("visibilitychange", controller.visibilityChanged);
   return {
     ...controller,
     compactWidgets: view.compactWidgets,
+    setReady() { controller.setReady(); socket?.sync(); llama?.sync(); },
+    offerSocketSetup: (environment) => socket?.offerSetup(environment),
+    runtimeAvailabilityChanged() { controller.runtimeAvailabilityChanged(); socket?.sync(); llama?.sync(); },
     setActive(value) {
       view.compactWidgets.setWorkspace(value ? "home" : "other");
       controller.setActive(value);
+      socket?.setActive(value);
+      llama?.setActive(value);
     },
     environmentChanged() {
       view.compactWidgets.close({ restoreFocus: false });
       controller.environmentChanged();
+      socket?.sync();
+      llama?.sync();
     },
     composerHost: view.composerHost,
     setupHost: view.setupHost,

@@ -8,7 +8,7 @@ export function createChatRequestController({
   const optimisticRows = new WeakMap();
   function prepareView(attempt) {
     if (!isCurrentComposerScope(attempt.payload.scope)) return;
-    conversationView.reset();
+    conversationView.reset({ preserveProjectChanges: true });
     applyConversationChrome();
     renderSessions();
     optimisticRows.set(attempt, conversationSession.appendLocalUserMessage(attempt.payload));

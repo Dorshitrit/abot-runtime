@@ -15,6 +15,7 @@ import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type { ModelStepOutputDiagnostics } from "../../model/invoke-step.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import { classifyRuntimeErrorType } from "../../observability/error-type.js";
+import { buildWorkerExecutionReport } from "./execution-report.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import {
   isWorkerCapabilityAssignmentProvenanceValid,
@@ -31,10 +32,7 @@ import {
   buildWorkerResultInstructions,
   buildWorkerResultRepairHint,
 } from "./prompt.js";
-import {
-  buildWorkerEvidenceAssessmentMessage,
-  type WorkerEvidenceAssessmentReceipt,
-} from "./evidence-assessment.js";
+import { buildWorkerEvidenceAssessmentMessage, type WorkerEvidenceAssessmentReceipt } from "./evidence-assessment.js";
 
 const WORKER_RESULT_MAX_REPAIR_ATTEMPTS = 1;
 
@@ -64,6 +62,15 @@ export async function runWorkerResultAuthor(
     validateSource(options.source, options.diagnostic, request.requestId);
     if (options.evidenceAssessment?.decision.requiresExecution) {
       throw new Error("worker_result_evidence_requires_execution");
+    }
+    if (options.evidenceAssessment && hasWorkerExecutionReportSource(options.source, options.evidenceAssessment)) {
+      request.abortSignal.throwIfAborted();
+      const report = buildWorkerExecutionReport(options.source, options.evidenceAssessment);
+      traceDebug("runtime.worker", "result.report_assembled", { ...diagnostic,
+        sourceRevision: options.source.requestToolResults.sourceRevision,
+        resultLength: report.length,
+      });
+      return report;
     }
     const budget = resolveModelContextBudget({
       runnerConfig: request.runnerConfig,
@@ -213,6 +220,17 @@ export async function runWorkerResultAuthor(
   }
 }
 
+/** No execution history means the Worker still owns any original content it was assigned. */
+function hasWorkerExecutionReportSource(
+  source: WorkerResultAuthorSource,
+  assessment: WorkerEvidenceAssessmentReceipt,
+): boolean {
+  if (source.requestToolResults.results.some((result) => result.callId === source.callId)) return true;
+  if (source.requestToolResults.results.some((result) => assessment.decision.evidenceRefs.includes(result.executionId))) return true;
+  if (source.dependencyResults.length > 0) return true;
+  return source.operationSupervisionEvidenceContextMessage !== undefined;
+}
+
 function validateCompleteWorkerResult(
   text: string,
   _diagnostics: ModelStepOutputDiagnostics,
@@ -269,8 +287,8 @@ function validateSource(
     source.requestToolResults.sourceRevision < 0 ||
     !Array.isArray(source.requestToolResults.results) ||
     !Object.isFrozen(source.requestToolResults.results) ||
-    source.requestToolResults.results.length > 0 !==
-      Boolean(source.requestToolResultsContextMessage) ||
+    (source.requestToolResults.results.length > 0 &&
+      !source.requestToolResultsContextMessage) ||
     (source.requestToolResultsContextMessage !== undefined &&
       (!Object.isFrozen(source.requestToolResultsContextMessage) ||
         source.requestToolResultsContextMessage.role !== "user" ||

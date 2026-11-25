@@ -118,6 +118,24 @@ test("fresh linked runner model defaults change the snapshot; runtime timeout ed
   expect(capture()).not.toBe(previous);
 });
 
+test("runner safety reserve changes invalidate the gateway snapshot and survive reload", async () => {
+  const previous = capture();
+  const config = await fixture.readConfig();
+  const runnerPath = resolve(dirname(fixture.configPath), config.requestRunner.configRef);
+  const original = await readFile(runnerPath, "utf8");
+  const runner = JSON.parse(original);
+  runner.context.safetyReserveTokens += 123;
+  await writeFile(runnerPath, JSON.stringify(runner));
+  invalidateRequestRunnerConfig({ configPath: runnerPath });
+  const changed = capture();
+  expect(changed).not.toBe(previous);
+  invalidateRequestRunnerConfig({ configPath: runnerPath });
+  expect(capture()).toBe(changed);
+  await writeFile(runnerPath, original);
+  invalidateRequestRunnerConfig({ configPath: runnerPath });
+  expect(capture()).toBe(previous);
+});
+
 test.each([
   ["MODEL_GATEWAY_URL", "http://127.0.0.1:3100"],
   ["MODEL_GATEWAY_TRACE_FILE", "/tmp/changed-gateway-trace.jsonl"],

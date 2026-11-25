@@ -1,4 +1,5 @@
 import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
+import { workerFusedSelectionSchemas } from "./support/worker-fused-decision-schema.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
@@ -1606,7 +1607,7 @@ describe("generic Worker capability decision boundary", () => {
     );
   });
 
-  test("carries exact cross-call intervention evidence outside compacted results into Worker result authoring", async () => {
+  test("carries exact cross-call intervention evidence outside compacted results into the Worker report", async () => {
     const { ledger, call: firstCall } = await openWorkerLedger(
       undefined,
       "project",
@@ -1752,13 +1753,14 @@ describe("generic Worker capability decision boundary", () => {
       ),
     });
 
-    expect(decision).toEqual({
-      action: "return_result",
-      result: "Returned the exact value established by capability-execution-2.",
-    });
-    const seenEvidence = invoke.mock.calls.map(([input]) => runtimeMessageByKind(
+    expect(decision.action).toBe("return_result");
+    if (decision.action !== "return_result") throw new Error("expected_worker_report");
+    const report = JSON.parse(decision.result);
+    expect(report.kind).toBe("runtime_worker_execution_report_v1");
+    expect(invoke).toHaveBeenCalledTimes(1);
+    const seenEvidence = [...invoke.mock.calls.map(([input]) => runtimeMessageByKind(
       input.messages, OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
-    ));
+    )), report.evidence.operationSupervision];
     expect(seenEvidence).toHaveLength(2);
     for (const evidence of seenEvidence) {
       expect(evidence).toMatchObject({
@@ -3580,32 +3582,17 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        modelStep: WORKER_DECISION_MODEL_STEP,
-        format: expect.objectContaining({
-          schema: expect.objectContaining({
-            properties: expect.objectContaining({
-              decision: expect.objectContaining({
-                anyOf: expect.arrayContaining([
-                  expect.objectContaining({
-                    properties: expect.objectContaining({
-                      action: { type: "string", enum: ["invoke_capability"] },
-                      capabilityId: {
-                        type: "string",
-                        enum: ["example.observe"],
-                      },
-                    }),
-                  }),
-                ]),
-              }),
-            }),
-          }),
+    const selectionInput = invoke.mock.calls[0]![0];
+    expect(selectionInput.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
+    expect(workerFusedSelectionSchemas(selectionInput.format)).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        properties: expect.objectContaining({
+          action: { type: "string", enum: ["invoke_capability"] },
+          capabilityId: { type: "string", enum: ["example.observe"] },
         }),
-      }),
+      })]),
     );
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(2);
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
 
@@ -3653,7 +3640,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: { path: "products.json" },
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(1);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -3725,7 +3712,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       "example.observe",
     );
@@ -3799,7 +3786,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -3896,7 +3883,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: { query: "current cobalt value" },
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -4095,7 +4082,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Create the required artifact.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(6);
+    expect(invoke).toHaveBeenCalledTimes(5);
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(1, "example.observe");
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(2, "example.mutate");
     expect(rejectedExecute).not.toHaveBeenCalled();
@@ -4248,7 +4235,7 @@ describe("generic Worker capability decision boundary", () => {
         { capabilityId: "example.wait.secondary", controls: {} },
       ],
     });
-    expect(invoke).toHaveBeenCalledTimes(5);
+    expect(invoke).toHaveBeenCalledTimes(4);
     expect(rejectedExecute).not.toHaveBeenCalled();
     expect(selectedExecute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
@@ -4297,7 +4284,7 @@ describe("generic Worker capability decision boundary", () => {
         .join("\n");
       const format = JSON.stringify(input.format);
       if (invocation === 1) {
-        expect(input.format).toMatchObject({ name: "worker_decision" });
+        expect(input.format).toMatchObject({ name: "worker_evidence_and_selection" });
         expect(messages).toContain("availableCapabilityCatalog");
         expect(messages).toContain(
           '"columns":["capabilityId","summary","effect","catalogGroups"]',
@@ -4313,7 +4300,7 @@ describe("generic Worker capability decision boundary", () => {
         expect(format).toContain("write.one");
         expect(format).not.toContain("select_capability_group");
         expect(format).not.toContain("reselect_capability_group");
-        expect(format).not.toContain("return_result");
+        expect(format).toContain("return_result");
         expect(format).toContain("return_failure");
         return {
           text: workerDecisionText({
@@ -4379,7 +4366,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Read the required current value.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 
   test("exposes only the Worker call scoped catalog to selection and guidance", async () => {
@@ -4498,7 +4485,7 @@ describe("generic Worker capability decision boundary", () => {
       const messages = asChatMessages(input.messages)
         .map(({ content }) => content)
         .join("\n");
-      expect(input.format).toMatchObject({ name: "worker_decision" });
+      expect(input.format).toMatchObject({ name: invocation === 1 ? "worker_evidence_and_selection" : "worker_decision" });
       expect(JSON.stringify(input.format)).not.toContain(
         "select_capability_group",
       );
@@ -4533,7 +4520,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Read one bounded value.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 
   test("executes one canonical capability sub-turn and consumes its result on Worker re-entry", async () => {
@@ -4592,39 +4579,6 @@ describe("generic Worker capability decision boundary", () => {
           meta: {},
         };
       }
-      if (!secondCall) {
-        throw new Error("resumed Worker call missing");
-      }
-      if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
-        expect(input).not.toHaveProperty("format");
-        expect(messages).toHaveLength(6);
-        const authorAssignment = runtimeMessageByKind(messages, "runtime_worker_result_assignment");
-        expect(authorAssignment).toEqual({
-          kind: "runtime_worker_result_assignment",
-          callId: secondCall.callId,
-          parentCallId: secondCall.parentCallId,
-          depth: secondCall.depth,
-          invocationAttempt: secondCall.activationCount,
-          objective: secondCall.objective,
-        });
-        expect(JSON.stringify(authorAssignment)).not.toContain("availableCapabilities");
-        expect(runtimeMessageByKind(messages, "runtime_request_tool_results_v1")).toMatchObject({
-          kind: "runtime_request_tool_results_v1",
-          results: [
-            {
-              executionId: "capability-execution-1",
-              summary: opaqueObservation,
-            },
-          ],
-        });
-        expect(
-          messages.filter(({ content }) => content.includes(opaqueObservation)),
-        ).toHaveLength(1);
-        return {
-          text: "Consumed canonical evidence from capability-execution-1.",
-          meta: {},
-        };
-      }
       throw new Error("unexpected_model_step_after_ready_evidence");
     });
     invoke.withEvidenceDecisions(true, false);
@@ -4679,7 +4633,7 @@ describe("generic Worker capability decision boundary", () => {
       },
     });
 
-    const evidenceCalls = invoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence");
+    const evidenceCalls = invoke.mock.calls.filter(([input]) => input.modelStep === WORKER_DECISION_MODEL_STEP);
     expect(evidenceCalls).toHaveLength(2);
     const reentryMessages = asChatMessages(evidenceCalls[1]![0].messages);
     expect(runtimeMessageByKind(reentryMessages, "runtime_worker_assignment")).toMatchObject({
@@ -4689,10 +4643,16 @@ describe("generic Worker capability decision boundary", () => {
       results: [{ executionId: "capability-execution-1", summary: opaqueObservation }],
     });
     expect(reentryMessages.filter(({ content }) => content.includes(opaqueObservation))).toHaveLength(1);
-    expect(secondDecision).toEqual({
-      action: "return_result",
-      result: "Consumed canonical evidence from capability-execution-1.",
+    expect(secondDecision.action).toBe("return_result");
+    if (secondDecision.action !== "return_result") throw new Error("expected_worker_report");
+    const report = JSON.parse(secondDecision.result);
+    expect(report).toMatchObject({
+      kind: "runtime_worker_execution_report_v1", callId: secondCall.callId,
+      parentCallId: secondCall.parentCallId, invocationAttempt: secondCall.activationCount,
+      evidence: { requestToolResults: { results: [{ executionId: "capability-execution-1", summary: opaqueObservation }] } },
     });
+    expect(report).not.toHaveProperty("availableCapabilities");
+    expect(report.evidence.requestToolResults).toEqual(runtimeMessageByKind(reentryMessages, "runtime_request_tool_results_v1"));
     expect(execute).toHaveBeenCalledExactlyOnceWith({
       context: Object.freeze({ marker: "context-1" }),
       call: firstCall,
@@ -4701,7 +4661,7 @@ describe("generic Worker capability decision boundary", () => {
       controls: {},
       settledCapabilityResults: [],
     });
-    expect(invoke).toHaveBeenCalledTimes(5);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(ledger.current()).toBe(settledHead);
     expect(ledger.current().state.capabilityExecutions).toEqual([
       expect.objectContaining({

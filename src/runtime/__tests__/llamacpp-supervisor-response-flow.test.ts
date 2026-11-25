@@ -7,9 +7,9 @@ import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/d
 import { createRequestExecutionScope } from "../request/execution-scope.js";
 import { runRequestRunner } from "../request/runner.js";
 import { createGateway, modelPolicy, type Exchange, type GatewayReply } from "./support/llamacpp-gateway-fixture.js";
-import { createRootInvalidOutputRequest } from "./support/root-invalid-output-fixture.js";
+import { createRootInvalidOutputRequest, INVALID_OUTPUT_RUNNER_CONFIG } from "./support/root-invalid-output-fixture.js";
 import { PROCEDURE_CAPABILITIES, PROCEDURE_SKILL } from "./support/supervisor-procedure-orchestration-fixture.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 
 beforeEach(() => { configureDebugLogger({ enabled: false }); configureModelIoTrace({ enabled: false }); });
 afterEach(() => { vi.unstubAllGlobals(); resetDebugLoggerConfig(); resetModelIoTraceConfig(); });
@@ -34,9 +34,8 @@ const decision = (data: Record<string, unknown>) => JSON.stringify({ decision: d
 
 async function completeAfterRecall(template: TemplateMode, decisions: GatewayReply[]) {
   const gateway = createGateway(template, [
-    decision({ acknowledgement: "I will check the catalog requirements.", title: "Catalog format" }),
-    decision({ action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId] }),
-    decision({ requiresProcedure: true }), decision({ action: "recall_memory", query }),
+    decision({ acknowledgement: "I will check the catalog requirements.", title: "Catalog format", action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId] }),
+    decision({ action: "recall_memory", query }),
     ...decisions, JSON.stringify({ memoryCandidates: [] }), answer,
   ]);
   const memory = createLongTermMemoryService({
@@ -45,21 +44,27 @@ async function completeAfterRecall(template: TemplateMode, decisions: GatewayRep
   });
   const base = createRootInvalidOutputRequest(gateway.client.invoke, "supervisor-worker-v1", {
     prompt, modelPolicy, modelGatewayClient: gateway.client, longTermMemory: memory, shouldGenerateSessionTitle: true,
-    workerCapabilityProvider: { getDescriptors: () => PROCEDURE_CAPABILITIES, getAdapters: () => [] },
+    // Exercise the supported separate authoring path and its transport projections.
+    runnerConfig: { ...INVALID_OUTPUT_RUNNER_CONFIG, steps: { ...INVALID_OUTPUT_RUNNER_CONFIG.steps, "supervisor.response": { timeoutMs: 20_001 } } },
+    workerCapabilityProvider: {
+      getDescriptors: () => PROCEDURE_CAPABILITIES,
+      getAdapters: () => PROCEDURE_CAPABILITIES.map(descriptor => ({ descriptor,
+        execute: async () => { throw new Error("unexpected_fixture_capability_execution"); } })),
+    },
   });
   const request = createRequestExecutionScope({
     seed: base, executionPolicy: base.executionPolicy,
     knowledgeSkillStore: { list: () => [PROCEDURE_SKILL], read: () => PROCEDURE_SKILL },
     createWorkerCapabilities: () => base.workerCapabilities.provider,
   });
-  expect((await runRequestRunner(request)).output).toBe(answer);
+  expect((await runRequestRunner(request)).output, JSON.stringify(gateway.exchanges.filter(e => e.path === "/chat").map(e => ({ step: e.request.modelStep, format: e.request.format?.name })))).toBe(answer);
   return { gateway, request };
 }
 
 test.each(["first-system-only", "all-roles"] as const)(
   "SUPER finishes directly after reading a skill and recalling memory on %s", async template => {
     const { gateway, request } = await completeAfterRecall(template, [
-      decision({ requiresProcedure: false, responseRecommendation: recommendation }),
+      decision({ action: "respond", responseRecommendation: recommendation }),
     ]);
     const candidate = checkedResponsePhase(gateway.exchanges, "supervisor_memory_candidates");
     const final = checkedResponsePhase(gateway.exchanges);
@@ -119,12 +124,11 @@ test.each(["first-system-only", "all-roles"] as const)(
     const objective = "Inspect which local catalog format the request requires.";
     const summary = "The request calls for local JSON.";
     const { gateway } = await completeAfterRecall(template, [
-      decision({ requiresProcedure: true }), decision({ action: "invoke_role", roleId: "worker", objective }),
-      JSON.stringify({ workingDirectory: "." }),
+      decision({ action: "invoke_role", roleId: "worker", objective, workingDirectory: ".", workerCapabilityScope: { catalogGroupIds: ["read"] } }),
       input => {
-        expect(input.modelStep).toBe("worker.evidence");
-        return workerEvidenceReply({ modelStep: "worker.evidence", messages: input.messages,
-          agentMode: "reasoning", abortSignal: new AbortController().signal }, false).text;
+        expect(input.modelStep).toBe("worker.decision");
+        return decision(workerFusedDecision({ ...input,
+          agentMode: "reasoning", abortSignal: new AbortController().signal } as Parameters<typeof workerFusedDecision>[0], { action: "return_result" }));
       },
       summary, decision({ action: "respond" }),
     ]);

@@ -1,4 +1,5 @@
 import { isProviderContextOverflowError, ProviderContextOverflowError } from "../protocol/provider-context-overflow.js";
+import { isProviderStreamDisconnectionError, ProviderStreamDisconnectionError } from "../protocol/provider-stream-disconnection.js";
 import type { ModelGatewayEvent } from "../types.js";
 import {
   ModelProviderContextWindowExceededError,
@@ -31,6 +32,9 @@ export function toolMediaSafeError(error: unknown, input: unknown): unknown {
   }
   if (error instanceof ModelProviderEnvelopeInspectionError) {
     return new ModelProviderEnvelopeInspectionError();
+  }
+  if (isProviderStreamDisconnectionError(error)) {
+    return new Error("tool_media_provider_error: content omitted", { cause: new ProviderStreamDisconnectionError() });
   }
   const safe = new Error("tool_media_provider_error: content omitted",
     isProviderContextOverflowError(error) ? { cause: new ProviderContextOverflowError() } : undefined);

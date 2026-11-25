@@ -39,6 +39,7 @@ export function createFileSessionStore(
       service.compareAndSwapSessionMemoryCheckpoint.bind(service),
     deleteSession: service.deleteSession.bind(service),
     deleteSessionWithStats: service.deleteSessionWithStats.bind(service),
+    purgeDeletedSessionSidecars: service.purgeDeletedSessionSidecars.bind(service),
     resetSession: service.resetSession.bind(service),
     clearSessionMessages: service.clearSessionMessages.bind(service),
     deleteMessage: service.deleteMessage.bind(service),

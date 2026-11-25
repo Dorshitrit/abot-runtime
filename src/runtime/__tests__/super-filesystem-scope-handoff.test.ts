@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -27,18 +27,14 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
   const calls: readonly FilesystemScriptCall[] = [
     {
       step: "supervisor.decision",
-      format: "supervisor_delegation",
+      format: "supervisor_fused_routing",
       output: decision({
         action: "invoke_role",
         roleId: "planner",
+        workingDirectory: join(root, "LUNA"),
         objective: "Create the exact LUNA artifact.",
         acknowledgement: "I will create the requested file.",
       }),
-    },
-    {
-      step: "supervisor.decision",
-      format: "supervisor_working_directory",
-      output: JSON.stringify({ workingDirectory: join(root, "LUNA") }),
     },
     {
       step: "planner.decision",
@@ -53,30 +49,28 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
         workerCapabilityScope: { catalogGroupIds: ["write"] },
       }),
     },
-    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     {
       step: "worker.decision",
-      output: decision({
+      output: (input) => workerFusedReply(input, {
         action: "invoke_capability",
         capabilityId: "write_complete_file",
         intent: "Write the exact file.",
         authoringObjective: `Write exactly ${JSON.stringify(body)}.`,
         selectionControls: { path: "index.html" },
-      }),
+      }).text,
     },
     { step: "tool_payload.raw", output: body },
-    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, false).text },
-    {
-      step: "worker.result",
-      output: "Created index.html with the exact content.",
-    },
+    { step: "worker.decision", output: (input) => workerFusedReply(input, { action: "return_result" }).text },
     {
       step: "planner.decision",
       output: (input) => {
-        expect(capsules(input, "runtime_child_result").at(-1)).toMatchObject({
+        const child = capsules(input, "runtime_child_result").at(-1)!;
+        expect(child).toMatchObject({
           roleId: "worker",
           outcome: "completed",
         });
+        expect(JSON.parse(child.summary as string)).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+          executionOutcomes: [{ capabilityId: "write_complete_file", outcome: "succeeded", observedEffect: "mutation" }] });
         return decision({
           action: "return_result",
           result: "The requested artifact was created.",
@@ -157,11 +151,11 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
   const scripted = fixture.script(calls, (input) => {
     if (
       typeof input.format === "object" &&
-      input.format?.name === "supervisor_working_directory"
+      input.format?.name === "supervisor_fused_routing"
     ) {
       assertFilesystemScope(input, root, null, true, {});
     } else if (
-      ["worker.evidence", "worker.decision", "worker.result", "capability.controls", "tool_payload.raw"].includes(
+      ["worker.decision", "capability.controls", "tool_payload.raw"].includes(
         input.modelStep!,
       )
     ) {
@@ -171,7 +165,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
     } else {
       expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
     }
-    if (["worker.evidence", "worker.decision", "worker.result"].includes(input.modelStep!)) {
+    if (input.modelStep === "worker.decision") {
       expect(capsules(input, "runtime_worker_assignment")).toEqual([
         expect.objectContaining({
           workingDirectory: "LUNA",

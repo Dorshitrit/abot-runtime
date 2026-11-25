@@ -1,15 +1,21 @@
 import type { ModelStep } from "../../shared/model-steps.js";
+import { randomUUID } from "node:crypto";
+import { attachSourceIssueId } from "../../shared/source-issue.js";
 
 /** Identifies a deadline owned by one model step, never the request budget. */
 export class ModelStepTimeoutError extends Error {
   readonly stage = "model_step_timeout";
+  readonly issueId = randomUUID();
+  readonly occurredAt = Date.now();
 
   constructor(
     readonly code: string,
     readonly modelStep: ModelStep,
+    readonly timeoutMs?: number,
   ) {
     super(code);
     this.name = "ModelStepTimeoutError";
+    attachSourceIssueId(this, this.issueId);
   }
 }
 
@@ -37,7 +43,7 @@ export function createModelStepAbort(params: {
 
   const timeout = setTimeout(() => {
     controller.abort(
-      new ModelStepTimeoutError(params.timeoutReason, params.modelStep),
+      new ModelStepTimeoutError(params.timeoutReason, params.modelStep, params.timeoutMs),
     );
   }, params.timeoutMs);
 

@@ -10,7 +10,7 @@ export type ComposerChatAttempt = ComposerSubmissionAttempt<ComposerSubmissionSe
 
 export interface ChatRequestControllerOptions {
   client: ComposerChatClient;
-  conversationView: { reset(): void };
+  conversationView: { reset(options?: { preserveProjectChanges?: boolean }): void };
   conversationSession: ComposerChatSession;
   isCurrentComposerScope(scope: ComposerScope): boolean;
   applyConversationChrome(): void;

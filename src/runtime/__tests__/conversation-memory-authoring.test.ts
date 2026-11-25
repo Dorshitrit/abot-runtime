@@ -181,7 +181,7 @@ describe("shared conversation memory authoring", () => {
     f.invoke.mockImplementation(async (input) => {
       // Exercise the real local-provider schema boundary before its model call.
       toOllamaFormat(input.format);
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer.", memoryCandidates: [PROPOSAL] } : {}) } }), meta: {} };
       if (!input.format) return { text: "Complete answer", meta: {} };
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Complete answer" } : {}), memoryCandidates: [PROPOSAL] }), meta: {} };
     });
@@ -189,7 +189,7 @@ describe("shared conversation memory authoring", () => {
     expect(result.output).toBe("Complete answer");
     expect(result.memoryCandidates?.[0]?.assessment).toMatchObject({ target: { id: "canonical-candidate", version: "3" }, evidence: { sourceSessionId: f.request.sessionId, sourceRequestId: f.request.requestId } });
     expect(f.prepare).toHaveBeenCalledOnce();
-    expect(f.invoke).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 3 : 2);
+    expect(f.invoke).toHaveBeenCalledTimes(2);
     for (const [input] of f.invoke.mock.calls) {
       const messages = modelMessages(input);
       expect(messages.filter(({ role, content }) => role === "user" && content === f.request.prompt)).toHaveLength(1);
@@ -197,19 +197,19 @@ describe("shared conversation memory authoring", () => {
         content.startsWith(`{"kind":"${REFERENCE_KIND}"`) ||
         content.startsWith(`${REFERENCE_KIND} (plain text)`));
       const isAuthoring = input.format !== undefined && input.modelStep?.endsWith(".response");
-      const offersDirectAuthoring = policy === "execution-agent-v1" && input.modelStep === "execution.decision";
+      const offersDirectAuthoring = input.modelStep?.endsWith(".decision");
       expect(references).toHaveLength(isAuthoring || offersDirectAuthoring ? 1 : 0);
     }
     scheduleFinalResponseMemory({ service: f.memory, candidates: result.memoryCandidates, requestId: f.request.requestId, sessionId: f.request.sessionId });
     expect(f.memory.scheduleCandidates).toHaveBeenCalledWith(expect.objectContaining({ candidates: result.memoryCandidates }));
   });
 
-  test.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])("%s binds an explicit request in the existing response authoring call", async (policy) => {
+  test.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])("%s binds an explicit request in the existing authoring call", async (policy) => {
     const f = fixture(policy);
     const prompt = "Remember that I prefer brief explanations.";
     const request = deriveTestRequestExecutionScope(f.request, { prompt });
     f.invoke.mockImplementation(async (input) => {
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer.", memoryCandidates: [{ ...PROPOSAL, content: "I prefer brief explanations.", target: null, explicitRequestQuote: prompt }] } : {}) } }), meta: {} };
       if (!input.format) return { text: "Complete answer", meta: {} };
       toOllamaFormat(input.format);
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Complete answer" } : {}), memoryCandidates: [{
@@ -218,7 +218,7 @@ describe("shared conversation memory authoring", () => {
     });
     const result = await runRequestRunner(request);
     expect(result.memoryCandidates?.[0]?.assessment?.explicitlyRequested).toBe(true);
-    expect(f.invoke).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 3 : 2);
+    expect(f.invoke).toHaveBeenCalledTimes(2);
   });
 
   test.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])("%s disabled memory leaves model topology and output unchanged", async (policy) => {
@@ -257,7 +257,7 @@ describe("shared conversation memory authoring", () => {
       return structuredClone(KNOWLEDGE);
     });
     f.invoke.mockImplementation(async (input) => {
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer.", memoryCandidates: [{ ...PROPOSAL, content: "Prefers fuller explanations." }] } : {}) } }), meta: {} };
       if (!input.format) return { text: "Updated answer", meta: {} };
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Updated answer" } : {}), memoryCandidates: [{ ...PROPOSAL, content: "Prefers fuller explanations." }] }), meta: {} };
     });
@@ -265,7 +265,8 @@ describe("shared conversation memory authoring", () => {
     expect(result.output).toBe("Updated answer");
     expect(f.prepare).toHaveBeenCalledTimes(policy === "execution-agent-v1" ? 1 : 2);
     expect(result.memoryCandidates?.[0]?.assessment?.evidence.evidenceDigest).toBe(createHash("sha256").update(JSON.stringify([f.request.prompt, "I now prefer fuller explanations."])).digest("hex"));
-    expect(f.invoke.mock.calls.filter(([input]) => input.format && input.modelStep?.endsWith(".response"))).toHaveLength(1);
+    const authoringStep = policy === "supervisor-worker-v1" ? "supervisor.decision" : "execution.response";
+    expect(f.invoke.mock.calls.filter(([input]) => input.format && input.modelStep === authoringStep)).toHaveLength(1);
   });
 });
 

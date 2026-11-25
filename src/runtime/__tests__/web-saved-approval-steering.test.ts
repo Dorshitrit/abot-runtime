@@ -132,5 +132,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     expect(f.requests.activityDetails()).toEqual([]);
     expect(f.model.invokeRaw).not.toHaveBeenCalled();
   },
-  20000,
+  // Native Windows fixture setup verifies ownership and ACLs via PowerShell.
+  // Keep the per-transition waits bounded while allowing that setup to finish.
+  process.platform === "win32" ? 60_000 : 20_000,
 );

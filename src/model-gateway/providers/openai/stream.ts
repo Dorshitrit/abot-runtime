@@ -20,19 +20,23 @@ export async function forwardOpenAIResponsesStream(
       writeNormalizedOpenAIEvents(normalizer.finish(), sink);
       break;
     }
+    let event: unknown;
     try {
-      const event = JSON.parse(dataLine) as unknown;
-      writeNormalizedOpenAIEvents(normalizer.consume(event), sink);
+      event = JSON.parse(dataLine);
     } catch {
       // Keep gateway behavior: ignore malformed upstream stream chunks.
+      continue;
     }
+    writeNormalizedOpenAIEvents(normalizer.consume(event), sink);
     if (normalizer.hasTerminated) break;
   }
+  options.disconnectionEvidence?.assertNotDisconnected(options.functionOutputName);
   writeNormalizedOpenAIEvents(normalizer.end(), sink);
 }
 
 type CollectedOpenAIResponse = {
   text: string;
+  thinking: string;
   usage?: ModelTokenUsage;
   doneReason?: string;
 };
@@ -42,6 +46,9 @@ function applyCollectedEvent(
   event: NormalizedOpenAIStreamEvent,
 ): void {
   switch (event.type) {
+    case "thinking":
+      collected.thinking += event.text;
+      return;
     case "content":
       collected.text += event.text;
       return;
@@ -64,7 +71,7 @@ export async function collectOpenAIResponsesStream(
   doneReason?: string;
 }> {
   const normalizer = new OpenAIResponsesStreamNormalizer(options);
-  const collected: CollectedOpenAIResponse = { text: "" };
+  const collected: CollectedOpenAIResponse = { text: "", thinking: "" };
 
   for await (const dataLine of readOpenAIDataFrames(body)) {
     if (dataLine === "[DONE]") {
@@ -87,12 +94,13 @@ export async function collectOpenAIResponsesStream(
     if (normalizer.hasTerminated) break;
   }
 
+  options.disconnectionEvidence?.assertNotDisconnected(options.functionOutputName);
   for (const event of normalizer.end()) {
     applyCollectedEvent(collected, event);
   }
   return {
     text: collected.text,
-    thinking: "",
+    thinking: collected.thinking,
     ...(collected.usage ? { usage: collected.usage } : {}),
     ...(collected.doneReason ? { doneReason: collected.doneReason } : {}),
   };

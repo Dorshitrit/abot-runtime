@@ -46,7 +46,9 @@ async function openObservedLockOwner(
  * This guards lock ownership; it is not a general filesystem sandbox.
  */
 export async function openLockOwnerFile(path: string): Promise<FileHandle> {
-  const before = await lstat(path, { bigint: true });
+  const before = await lstat(path, { bigint: true }).catch(
+    (error) => rethrowLockObservationError(path, error),
+  );
   if (!before.isFile()) throw lockOwnerOpenError("ELOOP");
   const noFollow = constants.O_NOFOLLOW;
   const flags = typeof noFollow === "number"

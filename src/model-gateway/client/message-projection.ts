@@ -177,6 +177,7 @@ export function buildChatGatewayRequestBody(
     structuredOutputRepair?: ModelStructuredOutputRepair;
     text?: string;
     promptCacheBoundaryBeforeMessageIndex?: number;
+    promptCacheScope?: string;
     agentMode: AgentMode;
     taskType?: string;
     modelStep?: ModelStep;
@@ -198,6 +199,7 @@ export function buildChatGatewayRequestBody(
       ? { promptCacheBoundaryBeforeMessageIndex: params.promptCacheBoundaryBeforeMessageIndex }
       : {}),
     ...(requestId ? { debugRequestId: requestId } : {}),
+    ...(params.promptCacheScope ? { promptCacheScope: params.promptCacheScope } : {}),
     agentMode: params.agentMode,
     ...(typeof params.taskType === "string"
       ? { taskType: params.taskType }

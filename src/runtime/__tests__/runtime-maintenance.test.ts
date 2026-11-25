@@ -1,6 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { FileAgentStateStore } from "../agents/file-store.js";
+import { agentDefinition } from "./support/agents-foundation-fixture.js";
 import { createFileSessionStore } from "../adapters/file-session-store.js";
 import { createFileAttachmentStore } from "../attachments/store.js";
 import { createSessionLifecycleStore } from "../session/session-lifecycle-store.js";
@@ -52,7 +54,7 @@ async function fixture() {
   await sessions.appendMessage(SPARK_SESSION_ID, "user", "SPARK history", { attachments: [sparkAttachment] });
   const activity = new LocalRuntimeOwnerActivity();
   const verifyScope = vi.fn(async () => undefined);
-  const config = { runtimeId: "dev", paths: { rootDir: directory, sessionsDir: join(directory, "sessions"),
+  const config = { runtimeId: "dev", paths: { rootDir: directory, runtimeDir: directory, sessionsDir: join(directory, "sessions"),
     attachmentsDir: join(directory, "attachments"), traceFile: join(directory, "logs/trace.jsonl"), sharedDir: join(directory, "shared") } } as RuntimeConfig;
   const schedulerStore = createFileSchedulerStore(join(directory, "scheduler"));
   releases.push(await schedulerStore.acquire!());
@@ -299,4 +301,20 @@ test("invalid automation preparation evidence rejects reset before deleting conv
   await writeFile(join(f.directory, "automation-snapshot-preparations", "candidate.json"), JSON.stringify({ kind: "unknown", runId: "candidate" }));
   await expect(f.maintenance.resetSessions()).rejects.toThrow("automation_snapshot_marker_invalid");
   expect((await f.backing.getSessionById("ordinary"))?.messages).toHaveLength(1);
+});
+
+test("the owner checks saved Agent session ownership before enumerating or deleting any ordinary data", async () => {
+  const f = await fixture();
+  const agentFile = join(f.directory, "agents", "state.json");
+  const store = new FileAgentStateStore(agentFile);
+  await store.commitApplication({ kind: "register_agent", agentId: "retained", definition: agentDefinition() });
+  await store.commitApplication({ kind: "bind_session", agentId: "retained", sessionId: "private-history", purpose: "Saved work" });
+  await f.sessions.getOrCreateSession("private-history");
+  const list = vi.spyOn(f.sessions, "getAllSessions");
+  await expect(f.maintenance.resetSessions()).rejects.toThrow("agents_sessions_prevent_bulk_reset");
+  await writeFile(agentFile, "invalid", "utf8");
+  await expect(f.maintenance.resetSessions()).rejects.toThrow("agent_session_index_unavailable");
+  expect(list).not.toHaveBeenCalled();
+  expect(await f.sessions.getSessionById("ordinary")).not.toBeNull();
+  expect(await f.sessions.getSessionById("private-history")).not.toBeNull();
 });

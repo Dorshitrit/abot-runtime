@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { defaultProviderAddress, parseProviderCredentialEnvironment } from "./runtime-setup-provider-options.js";
 import { applySetupPromptCache } from "./runtime-setup-prompt-cache.js";
+import { applySetupReasoningSummary } from "../src/model-gateway/providers/openai/setup-reasoning-summary.js";
 import { buildSetupModelReasoning, type SetupModelOptions } from "./runtime-setup-model-options.js";
 
 export type Provider = string;
@@ -194,6 +195,7 @@ export function buildModelConfig(
   };
   if (applyCreationTemperature) applyLocalTemperatureDefault(modelConfig, provider);
   applySetupPromptCache(modelConfig, provider, modelOptions.promptCache);
+  applySetupReasoningSummary(modelConfig, provider, modelOptions.reasoningSummary);
   if (!shouldApplyOpenAiStepTimeouts) return modelConfig;
   return {
     ...modelConfig,

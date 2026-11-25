@@ -5,6 +5,8 @@ import {
 } from "../orchestration/role-calls/index.js";
 import type { WorkerCapabilityCatalogGroup } from "../orchestration/worker-capabilities/index.js";
 
+const ALL_GROUPS_SELECTION_LIMIT = 3;
+
 export type WorkerCapabilityScopeDecisionContract = Readonly<{
   catalogGroupIds: readonly string[];
   required: boolean;
@@ -64,6 +66,15 @@ export function parseWorkerCapabilityScopeDecision(
     )
   ) {
     return undefined;
+  }
+  // Only a validated selection of every offered group is clipped.
+  if (
+    parsed.catalogGroupIds.length === contract.catalogGroupIds.length &&
+    parsed.catalogGroupIds.length > ALL_GROUPS_SELECTION_LIMIT
+  ) {
+    return parseRoleCallWorkerCapabilityScope({
+      catalogGroupIds: parsed.catalogGroupIds.slice(0, ALL_GROUPS_SELECTION_LIMIT),
+    });
   }
   return parsed;
 }

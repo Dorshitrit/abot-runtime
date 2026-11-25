@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { runAddRuntimeModel } from "../../scripts/add-runtime-model.js";
 import { runInitRuntime } from "../../scripts/init-runtime.js";
 import { runConfigureLongTermMemory } from "../../scripts/configure-long-term-memory.js";
+import { resolveConfiguredRuntimeConnection } from "../bridge/configured-runtime-connection.js";
 import { resolveProviderAdapters } from "../model-gateway/server.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
 import { recoverRuntimeSetupEdit } from "../web-ui/local-runtime/runtime-setup-edit-recovery.js";
@@ -10,6 +11,7 @@ import { closeRuntimeSetupServices } from "../web-ui/runtime-setup-shutdown.js";
 import { RuntimeSetupGateway } from "../web-ui/runtime-setup-gateway.js";
 import { startWebUiServer } from "../web-ui/server.js";
 import { resolveWebUiAddress } from "../web-ui/web-ui-address.js";
+import { runSocketConnectionCli } from "./socket-connection.js";
 import { runHostCompanionCli } from "./host-companion.js";
 import { runtimeStartupDiagnostic } from "./startup-diagnostic.js";
 import { runtimePackageVersion } from "./package-version.js";
@@ -24,6 +26,7 @@ function printHelp(): void {
       "  abot add-model --profile <profile-id> --provider <provider> --model <model-id> [options]",
       "  abot memory <status|models|enable|disable> [options]",
       "  abot start",
+      "  abot socket <connect|status|pause|resume|forget>",
       "  abot --version",
       "  abot host <connect|status|disconnect|uninstall|run>",
       "",
@@ -31,7 +34,8 @@ function printHelp(): void {
       "  init       Create the first machine-local runtime configuration.",
       "  add-model  Add a provider/model profile without replacing existing ones.",
       "  memory     Configure passive long-term memory embeddings.",
-      "  start      Start the local model gateway and Web UI.",
+      "  start      Start the local model gateway, Web UI and configured Socket connection.",
+      "  socket     Manage this environment’s Socket connection.",
       "  host       Pair this computer with a local Docker Runtime.",
     ].join("\n"),
   );
@@ -66,6 +70,7 @@ async function runStart(args: string[]): Promise<void> {
     host: webAddress.listenHost,
     port: webAddress.port,
     setupCommandMode: "package",
+    runtimeBridge: (config, target) => resolveConfiguredRuntimeConnection(config, target, rootDir),
     providerAdapters,
     onRuntimeSetup: (configPath) => gateway.activate(configPath),
     createRuntimeSetupRestorePoint: () => gateway.createRestorePoint(),
@@ -122,6 +127,7 @@ export async function runAbotCli(
     await runStart(args);
     return;
   }
+  if (command === "socket") return runSocketConnectionCli(args);
   if (command === "host") {
     await runHostCompanionCli(args);
     return;

@@ -261,6 +261,7 @@ export function createConfigurationFeature({
     loadSetup: () => runtimeClient.loadModelSetup(selectedEnvironmentId()),
     inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
     chatgptClient: runtimeClient,
+    managedLlamaClient: runtimeClient,
     saveModel: (input) =>
       runtimeClient.addRuntimeModel(input, selectedEnvironmentId()),
     applySetup: () =>

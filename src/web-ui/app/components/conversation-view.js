@@ -413,12 +413,12 @@ export function createConversationView({
     updateJumpToLatest();
   }
 
-  function reset() {
+  function reset({ preserveProjectChanges = false } = {}) {
     holdingPosition = false;
     renderedMessageLayout = "";
     outsideReasoningBubbles.clear();
     filePreview.reset();
-    projectChanges?.reset();
+    if (!preserveProjectChanges) projectChanges?.reset();
     viewState.followMessages = true;
     viewState.scrollSettleVersion += 1;
     cancelScheduledMessageRender();

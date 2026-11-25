@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { vi } from "vitest";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
@@ -124,18 +124,19 @@ export function stagedSuperFixture(
         });
       return decision({ action: "return_result", result: STAGED_FACT });
     }
-    if (step === "worker.evidence") {
-      if (workerTurns !== 3) return workerEvidenceReply(input, true);
-      workerTurns = 0;
-      return workerEvidenceReply(input, false, STAGED_FACT);
-    }
     if (step === "worker.decision") {
+      const fused = formatName === "worker_evidence_and_selection";
+      if (fused && workerTurns === 3) {
+        workerTurns = 0;
+        return workerFusedReply(input, { action: "return_result" }, STAGED_FACT);
+      }
       workerTurns += 1;
-      return decision({
+      const selection = {
         action: "invoke_capability",
         capabilityId: descriptor.capabilityId,
         intent: "Inspect the canonical target.",
-      });
+      };
+      return fused ? workerFusedReply(input, selection) : decision(selection);
     }
     if (step === "capability.controls") {
       controlsTurns += 1;
@@ -156,7 +157,6 @@ export function stagedSuperFixture(
     }
     if (step.startsWith("super.compact."))
       return { text: STAGED_FACT, meta: {} };
-    if (step === "worker.result") return { text: STAGED_FACT, meta: {} };
     if (step === "reviewer.decision") {
       const audit = decodeCapsules(messages).find(
         ({ kind }) => kind === "runtime_reviewer_audit_v4",
@@ -201,7 +201,7 @@ export function stagedSuperFixture(
     if (input.modelStep?.startsWith("super.compact.")) {
       inputTokens = Buffer.byteLength(JSON.stringify(input.messages), "utf8") * 2;
     } else if (
-      input.modelStep === "worker.evidence" &&
+      input.modelStep === "worker.decision" &&
       decodeCapsules(input.messages as readonly ChatMessage[]).some(
         (capsule) =>
           capsule.kind === "runtime_request_tool_results_v1" &&

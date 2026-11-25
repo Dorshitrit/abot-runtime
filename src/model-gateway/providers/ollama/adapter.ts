@@ -1,3 +1,4 @@
+import { observeParameterOmissions } from "../parameter-issues.js";
 import { fetchOllamaProviderResponse, resolveOllamaHttpFailurePresentation, isOllamaProviderRequestFailure } from "./request-failures.js";
 import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
 import type { ResolvedModelParameters } from "../../../shared/model-parameters.js";
@@ -80,6 +81,7 @@ export function createOllamaProviderAdapter(options: {
         },
       };
       const payload = buildProviderPayload(params, payloadOptions);
+      observeParameterOmissions({ ...params, parameters: parameterResolution, operation: params.endpoint });
       emitOllamaRequestProjection({
         invocationParams: params,
         payload,

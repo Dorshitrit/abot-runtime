@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { KnowledgeSkillDocument, KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
@@ -78,10 +78,10 @@ test("a failed read after child return suppresses later selection while retainin
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(input.messages)).toContain(guide.content);
       if (input.modelStep === "worker.result") return "The runtime owns canonical state.";
-      if (input.modelStep === "worker.evidence") {
+      if (input.modelStep === "worker.decision") {
         workers++;
         expect(harness.requestSteering.append({ steerId: `after-worker-${workers}`, text: `Finish after Worker ${workers}.` }).ok).toBe(true);
-        return workerEvidenceDecision(input, false);
+        return workerFusedDecision(input, { action: "return_result" });
       }
       expect(input.modelStep).toBe("supervisor.decision");
       routes++;
@@ -100,7 +100,7 @@ test("a failed read after child return suppresses later selection while retainin
   expect(selections).toBe(2);
   expect(routes).toBe(3);
   expect(store.read.mock.calls).toEqual([[guide.skillId], ["missing-guide"]]);
-  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(2);
+  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(2);
   expect(JSON.stringify(harness.gatewayInvoke.mock.calls.at(-1)![0].messages)).toContain(guide.content);
   expect(skillEvents(harness)).toEqual([
     ["runtime.state", { stage: "supervisor", phase: "skills", message: "Read Skills: First guide" }],
@@ -124,12 +124,12 @@ test.each([false, true])("a new request can read the same Skill after a prior re
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ++selections === 1
       ? { action: "read_skills", skillIds: [guide.skillId] } : { action: "continue" },
-    classifyProcedure(input) {
+    delegate(input) {
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
         .toEqual([expect.objectContaining({
           authority: "passive_reference", purpose: "skill_guidance", document: guide,
         })]);
-      return { requiresProcedure: false, responseRecommendation: "Answer the request using the guide." };
+      return { action: "respond", responseRecommendation: "Answer the request using the guide." };
     },
     onInput(input) {
       if (input.modelStep === "supervisor.response") expect(JSON.stringify(input.messages)).toContain(guide.content);
@@ -173,7 +173,7 @@ test("a child return permits one additional Skill batch in the same request", as
       if (supervisorFormatName(input) === "supervisor_working_directory")
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(input.messages)).toContain(guide.content);
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return "The first guide was applied.";
       expect(input.modelStep).toBe("supervisor.decision");
       routes++;

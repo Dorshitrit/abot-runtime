@@ -57,6 +57,7 @@ export async function cleanupConsumedSessionContinuations(
 export async function cleanupSessionContinuations(
   sessionsDir: string,
   sessionId: string,
+  required = false,
 ): Promise<void> {
   assertValidSessionId(sessionId);
   try {
@@ -72,6 +73,7 @@ export async function cleanupSessionContinuations(
       },
     );
   } catch (error) {
+    if (required) throw error;
     console.warn("Session continuation cleanup remains pending.", {
       sessionId,
       error: error instanceof Error ? error.name : "unknown",

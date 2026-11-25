@@ -1,0 +1,36 @@
+.socket-home-card { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 46px; padding: 6px 16px; }
+.socket-home-card[hidden], .socket-home-card [hidden], .socket-connection-dialog [hidden] { display: none; }
+.socket-home-card::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.socket-home-card[data-socket-state="connected"]::before { background: var(--green); }
+.socket-home-card[data-socket-state="reconnecting"]::before, .socket-home-card[data-socket-state="connecting"]::before, .socket-home-card[data-socket-state="paused"]::before { background: var(--amber, var(--accent)); }
+.socket-home-card > div { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.socket-home-card h2 { flex: 0 0 auto; margin: 0; font-size: var(--font-size-sm); font-weight: 500; white-space: nowrap; }
+.socket-home-card p { min-width: 0; margin: 0; color: var(--muted); font-size: var(--font-size-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.socket-home-card > button { justify-self: end; min-width: 0; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--font-size-xs); white-space: nowrap; }
+.socket-home-card > button:hover:not(:disabled) { background: transparent; border-color: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.socket-home-card > button:focus-visible { background: transparent; outline-color: var(--accent); outline-offset: 3px; }
+@media (max-width: 440px) {
+  .socket-home-card { padding-inline: 12px; }
+  .socket-home-card > div { gap: 10px; }
+}
+.socket-connection-dialog { width: min(440px, calc(100vw - 32px)); max-height: min(86dvh, 700px); overflow: auto; margin: auto; padding: 22px; color: var(--text); border: 1px solid var(--line); border-radius: 16px; background: var(--panel-solid); }
+.socket-connection-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.socket-connection-dialog header, .socket-connection-dialog footer { display: flex; align-items: center; gap: 8px; }
+.socket-connection-dialog header { justify-content: space-between; }
+.socket-connection-dialog h2 { margin: 0; font-size: 19px; }
+.socket-connection-dialog p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.socket-connection-dialog label { display: grid; gap: 6px; margin: 15px 0; font-size: 12px; }
+.socket-connection-dialog input { width: 100%; max-width: 100%; box-sizing: border-box; }
+.socket-connection-dialog dl { padding: 10px 0; border-block: 1px solid var(--line); }
+.socket-connection-dialog dl div { display: grid; grid-template-columns: minmax(110px, 35%) 1fr; gap: 8px; padding: 4px 0; }
+.socket-connection-dialog dt, .socket-connection-dialog dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.socket-connection-dialog dt { color: var(--muted); }
+.socket-connection-dialog footer { justify-content: flex-end; flex-wrap: wrap; margin-top: 18px; }
+.socket-connection-dialog [data-sc="forget"] { color: var(--danger); }
+.socket-connection-dialog [data-sc="close"] { width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: transparent; font-size: 21px; line-height: 1; }
+.socket-connection-dialog [data-sc="close"]:hover { background: var(--control-bg); color: var(--text); }
+.socket-connection-dialog button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.socket-connection-dialog .socket-connection-input-mode { padding: 4px 0; border: 0; background: transparent; color: var(--accent); font-size: var(--font-size-xs); }
+.socket-connection-dialog .socket-connection-input-mode:hover { text-decoration: underline; text-underline-offset: 3px; }
+.socket-connection-dialog[data-step="manage"] footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; align-items: stretch; gap: 8px; }
+.socket-connection-dialog[data-step="manage"] footer button { width: 100%; min-width: 0; padding: 6px 8px; font-size: var(--font-size-xs); }

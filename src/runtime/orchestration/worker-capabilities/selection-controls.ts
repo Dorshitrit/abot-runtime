@@ -4,6 +4,7 @@ import {
   type WorkerCapabilityControlsValidation,
 } from "./controls.js";
 import type { WorkerCapabilityControlsSchema } from "./contracts.js";
+import { projectToolInputPropertyModes } from "../../../capabilities/normal-invocation/input-property-modes.js";
 
 export type WorkerCapabilitySelectionControlIdsNormalization =
   | Readonly<{ ok: true; value: readonly string[] }>
@@ -167,6 +168,7 @@ function projectSchema(
       ),
     ),
   );
+  const modes = projectToolInputPropertyModes(schema.anyOf, Object.keys(properties));
   return Object.freeze({
     type: "object" as const,
     additionalProperties: false as const,
@@ -174,6 +176,7 @@ function projectSchema(
     required: Object.freeze(
       schema.required.filter((controlId) => include(controlId)),
     ),
+    ...(modes ? { anyOf: modes } : {}),
   });
 }
 

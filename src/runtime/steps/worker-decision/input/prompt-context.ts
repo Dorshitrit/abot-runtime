@@ -12,6 +12,7 @@ import {
   type WorkerCapabilityDescriptor,
 } from "../../../orchestration/worker-capabilities/index.js";
 import { projectCapabilityControlsInputReference } from "./controls-input-reference.js";
+import { projectSuperWorkerControlsOutputContract } from "./controls-output-contract.js";
 import {
   buildWorkerCapabilityExecutionInstructions,
   buildWorkerDecisionInstructions,
@@ -50,6 +51,7 @@ export function prepareWorkerPromptContext(
     capabilityCatalogProjection,
   } = session.contract;
   const { requestToolResultsMessage } = references;
+  const controlsOutputContract = projectSuperWorkerControlsOutputContract(session);
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -68,6 +70,7 @@ export function prepareWorkerPromptContext(
         hasRequestToolResults: requestToolResultsMessage !== undefined,
         returnResultAvailable: allowedActions.includes("return_result"),
         returnFailureAvailable: allowedActions.includes("return_failure"),
+        controlsOutputContractAvailable: controlsOutputContract !== undefined,
       })
     : options.evidenceAssessment
       ? buildWorkerEvidenceCapabilitySelectionInstructions()
@@ -84,6 +87,7 @@ export function prepareWorkerPromptContext(
       });
   const builtInInstructions = [
     baseInstructions,
+    ...(controlsOutputContract ? [controlsOutputContract] : []),
     ...(capabilityExecutionPending && options.evidenceAssessment
       ? [WORKER_ACCEPTED_EVIDENCE_INSTRUCTION]
       : []),

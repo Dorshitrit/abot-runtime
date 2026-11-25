@@ -1,7 +1,4 @@
-import {
-  type CapabilityControl,
-  type CapabilityControlsSchema,
-} from "../../orchestration/capability-adapters/index.js";
+import { projectStrictControlsSchema } from "../../model/decision-schema.js";
 import {
   executionOperationObjectiveSchema,
   requiresExecutionOperationObjective,
@@ -54,7 +51,7 @@ export function projectCapabilitySelectionProperties(
           : {}),
         ...(partition.selectionControlIds.length > 0
           ? {
-              selectionControls: projectControlsSchema(
+              selectionControls: projectStrictControlsSchema(
                 partition.selectionSchema,
               ),
             }
@@ -62,39 +59,4 @@ export function projectCapabilitySelectionProperties(
       });
     }),
   );
-}
-
-function projectControlsSchema(
-  schema: CapabilityControlsSchema,
-): Record<string, unknown> {
-  const required = new Set(schema.required);
-  const properties = Object.fromEntries(
-    Object.entries(schema.properties).map(([controlId, control]) => [
-      controlId,
-      required.has(controlId)
-        ? projectControlSchema(control)
-        : { anyOf: [projectControlSchema(control), { type: "null" }] },
-    ]),
-  );
-  return {
-    type: "object",
-    properties,
-    required: Object.keys(properties),
-    additionalProperties: false,
-  };
-}
-
-function projectControlSchema(
-  control: CapabilityControl,
-): Record<string, unknown> {
-  if (control.type === "array")
-    return {
-      type: "array",
-      items: projectControlSchema(control.items),
-      minItems: control.minItems,
-      maxItems: control.maxItems,
-    };
-  if (control.type === "string" && "enum" in control)
-    return { type: "string", enum: [...control.enum] };
-  return { ...control };
 }

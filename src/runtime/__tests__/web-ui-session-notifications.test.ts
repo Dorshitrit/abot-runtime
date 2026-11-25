@@ -1,13 +1,20 @@
 import { EventEmitter } from "node:events";
-import { readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type WebSocket from "ws";
 import { WebSessionRoutes } from "../../web-ui/local-runtime/session-routes.js";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test } from "vitest";
 import {
   createNativeSessionHttpFixture,
   type NativeSessionHttpFixture,
 } from "./support/web-ui-native-session-http.js";
+
+async function sessionConfig() {
+  const runtimeDir = await mkdtemp(join(tmpdir(), "abot-session-notifications-"));
+  onTestFinished(() => rm(runtimeDir, { recursive: true, force: true }));
+  return { paths: { runtimeDir } };
+}
 
 const fixtures: NativeSessionHttpFixture[] = [];
 afterEach(async () => {
@@ -73,6 +80,7 @@ describe("native session mutation notifications through HTTP and realtime compos
         environmentId: "prod",
         environment: {
           services: {
+            config: await sessionConfig(),
             sessions: {
               clearSessionMessages: async () => {
                 calls.push("committed");
@@ -116,6 +124,7 @@ describe("native session mutation notifications through HTTP and realtime compos
       environmentId: "prod",
       environment: {
         services: {
+          config: await sessionConfig(),
           sessions: {
             clearSessionMessages: async () => {
               throw error;
@@ -145,6 +154,7 @@ describe("native session mutation notifications through HTTP and realtime compos
         environmentId: "prod",
         environment: {
           services: {
+            config: await sessionConfig(),
             sessions: {
               deleteSessionWithStats: async () => {
                 if (failureStage === "before commit") throw error;
@@ -173,13 +183,20 @@ describe("native session mutation notifications through HTTP and realtime compos
   );
 
   test("does not notify while the read-state commit is still pending", async () => {
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
     let finish!: (value: object) => void;
     const committed = new Promise<object>((resolve) => {
       finish = resolve;
     });
     const frames: unknown[] = [];
     const routes = new WebSessionRoutes(
-      { mark: () => committed } as never,
+      {
+        mark: () => {
+          markStarted();
+          return committed;
+        },
+      } as never,
       (environment, resources) => frames.push({ environment, resources }),
     );
     const handling = routes.handle({
@@ -187,10 +204,12 @@ describe("native session mutation notifications through HTTP and realtime compos
       segments: ["chat", "sessions", "conversation", "read"],
       body: { readThroughMessageId: 2 },
       environmentId: "prod",
-      environment: { services: { sessions: {} } } as never,
+      environment: {
+        services: { config: await sessionConfig(), sessions: {} },
+      } as never,
       response: { writeHead() {}, end() {} } as never,
     });
-    await Promise.resolve();
+    await started;
     expect(frames).toEqual([]);
     finish({ lastReadMessageId: "2", unreadCount: 0 });
     expect(await handling).toBe(true);

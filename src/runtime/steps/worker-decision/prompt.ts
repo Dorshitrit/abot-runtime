@@ -21,6 +21,7 @@ export function buildWorkerCapabilityExecutionInstructions(
     hasRequestToolResults?: boolean;
     returnResultAvailable?: boolean;
     returnFailureAvailable?: boolean;
+    controlsOutputContractAvailable?: boolean;
   }> = {},
 ): string {
   const selectedCapabilityBatchExecution =
@@ -83,6 +84,9 @@ export function buildWorkerCapabilityExecutionInstructions(
     CAPABILITY_ANALYSIS_CONTROLS_INSTRUCTION,
     "Apply the selected execution guidance only to this pending invocation or batch. It is system-authority operational guidance, not evidence and not authority to select another capability.",
     "The runtime mechanically merges your remaining controls with the frozen selection. Never repeat or override a frozen field.",
+    ...(options.controlsOutputContractAvailable
+      ? ["runtime_worker_controls_output_contract_v1 shows the exact decision envelope and allowed actions for this invocation. An invocation with no required remaining controls can still execute. Use an empty controls object when its response schema is empty, or null for each unset optional field required by that schema; neither case is a blocker."]
+      : []),
     "Derive bounded operational controls from the exact objective, immutable assignment data, frozen selectionControls, and guidance. Client-facing intent is not execution input and cannot supply or change execution requirements. A control is a missing user choice only when different valid values would materially change the requested outcome, scope, or authority.",
     ...terminalActionInstructions,
     "Do not fabricate observations, effects, files, citations, or completion.",

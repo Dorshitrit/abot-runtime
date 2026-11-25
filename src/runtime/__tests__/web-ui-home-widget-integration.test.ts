@@ -122,7 +122,7 @@ describe("Home widgets share existing dashboard owners", () => {
   });
 });
 
-test("computer access opens the existing manager in its widget and keeps Home polling after collapse", async () => {
+test("computer access opens the existing manager from its connection card and keeps polling after dismissal", async () => {
   vi.useFakeTimers();
   const h = createWorkspace();
   const snapshot = {
@@ -149,22 +149,43 @@ test("computer access opens the existing manager in its widget and keeps Home po
   const card = h.homeRegion.querySelector(".home-computer-access")!;
   expect(h.root.querySelectorAll("button[data-home-widget]")
     .filter((button) => !button.hidden).map((button) => button.dataset.homeWidget))
-    .toEqual(["conversations", "approvals", "activity", "automations", "computer"]);
-  expect(h.button("computer")!.textContent).toContain("MacBook");
+    .toEqual(["conversations", "approvals", "activity", "automations"]);
+  expect(h.button("computer")).toBeNull();
+  const trigger = h.root.querySelector('[data-home-connection="computer"]')!;
+  expect(trigger.textContent).toContain("MacBook");
   expect(runtimeClient.getSystemHostConnection).toHaveBeenCalledOnce();
   h.workspace.compactWidgets.setWorkspace("chat");
   h.homeRegion.hidden = true;
   expect(feature.open()).toBe(true);
   expect(homeWorkspaceButton.click).toHaveBeenCalledOnce();
-  expect(h.dialog()!.contains(card)).toBe(true);
+  const computerDialog = h.homeRegion.querySelector('dialog[aria-labelledby="home-computer-detail-title"]')!;
+  expect(computerDialog.contains(card)).toBe(true);
   expect(feature.state.managementOpen).toBe(true);
-  expect(h.documentRoot.activeElement).toBe(card);
+  expect(h.documentRoot.activeElement).toBe(computerDialog.querySelector("[data-home-widget-close]"));
   expect(runtimeClient.requestSystemHostPermissions).not.toHaveBeenCalled();
-  h.workspace.compactWidgets.close();
+  computerDialog.dispatch("cancel");
   expect(card.parentElement).toBe(h.homeRegion);
   expect(card.hidden).toBe(false);
   expect(h.homeRegion.querySelectorAll(".home-computer-access")).toEqual([card]);
   await vi.advanceTimersByTimeAsync(3000);
   expect(runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(2);
-  expect(h.button("computer")!.textContent).toContain("MacBook");
+  expect(trigger.textContent).toContain("MacBook");
+  expect(h.documentRoot.activeElement).toBe(trigger);
+
+  const sparkSlot = h.createElement("div");
+  h.homeRegion.append(sparkSlot);
+  const mounted = h.workspace.compactWidgets.mount(sparkSlot, "computer");
+  mounted.setActive(true);
+  trigger.dispatch("click");
+  expect(computerDialog.open).toBe(true);
+  const sparkTrigger = sparkSlot.querySelector("button")!;
+  sparkTrigger.dispatch("click");
+  const sharedDialog = h.homeRegion.querySelector('dialog[aria-labelledby="home-widget-detail-title"]')!;
+  expect(computerDialog.open).toBe(false);
+  expect(sharedDialog.open).toBe(true);
+  expect(sharedDialog.contains(card)).toBe(true);
+  sharedDialog.dispatch("cancel");
+  expect(card.parentElement).toBe(h.homeRegion);
+  expect(h.documentRoot.activeElement).toBe(sparkTrigger);
+  mounted.dispose();
 });

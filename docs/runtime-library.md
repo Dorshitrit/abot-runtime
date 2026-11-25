@@ -12,6 +12,18 @@ For prompt/policy contract ownership, see
 For invariant coverage, see
 [runtime-invariant-coverage.md](runtime-invariant-coverage.md).
 For bridge/runtime ownership, see [bridge-compatibility.md](bridge-compatibility.md).
+
+`createLocalRuntimeApplication(config)` stays local by default, even when config
+contains Socket credentials. Applications that intentionally serve remote
+clients can supply `{ bridge: { runtimeId, url, token } }` as its second argument,
+or call `await runtime.connectBridge(connection)` after starting. The managed
+environment owner holds one connection shared by its attached clients; duplicate
+requests with the same connection are idempotent and conflicting credentials
+are rejected. Automatic startup failures leave the local application available;
+explicit `connectBridge` failures reject for the caller to handle. Stop the
+owning application to close its transport. The packaged CLI enables this
+connection from consumer configuration; SDK/test callers must opt in.
+
 For current limitations, see [known-limitations.md](known-limitations.md).
 
 ## Basic Composition

@@ -107,7 +107,7 @@ export class DesktopNotificationDelivery {
         notificationId: item.id,
         title: item.title,
         body: [...item.body].slice(0, 240).join(""),
-        url: item.sourceUrl,
+        url: item.agentSource ? `/notifications?${new URLSearchParams({ environment: item.environmentId })}` : item.sourceUrl,
       },
       abortSignal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
     });

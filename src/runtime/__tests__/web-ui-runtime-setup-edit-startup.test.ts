@@ -105,6 +105,7 @@ test("abot start waits for recovery before reading credentials or activating the
     expect(startWeb).not.toHaveBeenCalled();
     gate.release();
     await vi.waitFor(() => expect(startWeb).toHaveBeenCalledOnce());
+    expect(startWeb).toHaveBeenCalledWith(expect.objectContaining({ runtimeBridge: expect.any(Function) }));
     expect(mock.loadEnv).toHaveBeenCalledWith(join(process.cwd(), ".env"));
     expect(mock.activate).toHaveBeenCalledOnce();
     expect(mock.loadEnv.mock.invocationCallOrder[0]).toBeLessThan(

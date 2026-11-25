@@ -8,7 +8,7 @@ import { runRequestRunner } from "../request/runner.js";
 import { createRequestSteeringInbox, REQUEST_STEERING_MESSAGE_KIND } from "../request/request-steering.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import { runnerConfig, modelPolicy, separateSupervisorRunnerModelPhases } from "./support/supervisor-runner-model-phases.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -48,7 +48,6 @@ test("latest steering supersedes a resumed Planner decision and only its fresh W
   let rootDecisions = 0;
   let plannerDecisions = 0;
   let workerDecisions = 0;
-  let workerResults = 0;
   const workerCallIds: unknown[] = [];
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (input.modelStep === "supervisor.decision") return reply(++rootDecisions === 1
@@ -81,11 +80,15 @@ test("latest steering supersedes a resumed Planner decision and only its fresh W
         extension: { items: [{ title: "Newest", objective: "Create only the newest artifact." }] }, selectedItemIndexes: [0],
       });
       expect(capsules(input, "runtime_child_result").map((value) => value.outcome)).toEqual(["yielded", "completed"]);
+      const report = JSON.parse(capsules(input, "runtime_child_result").at(-1)!.summary as string);
+      expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1", callId: "call-4",
+        executionOutcomes: [{ capabilityId: "fixture.write", outcome: "succeeded", observedEffect: "mutation" }] });
+      expect(report.evidence.requestToolResults.results[0].adapterResult.payload).toEqual({ artifact: "newest" });
       expect(JSON.stringify(input.messages)).not.toContain("STALE_PLANNER_TARGET");
       return reply({ action: "return_result", result: "The newest artifact was created." });
     }
-    if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, executeWrite.mock.calls.length === 0);
     if (input.modelStep === "worker.decision") {
+      if (executeWrite.mock.calls.length > 0) return workerFusedReply(input, { action: "return_result" });
       workerDecisions += 1;
       expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toHaveLength(0);
       const assignment = capsules(input, "runtime_worker_assignment")[0]!;
@@ -96,16 +99,11 @@ test("latest steering supersedes a resumed Planner decision and only its fresh W
         expect(encoded).toContain("fixture.read");
         expect(encoded).not.toContain("fixture.write");
         steering.append({ steerId: "replace", text: "Replace the read task with writing." });
-        return reply({ action: "invoke_capability", capabilityId: "fixture.read", intent: "Read the old artifact." });
+        return workerFusedReply(input, { action: "invoke_capability", capabilityId: "fixture.read", intent: "Read the old artifact." });
       }
       expect(encoded).toContain("fixture.write");
       expect(encoded).not.toContain("fixture.read");
-      return reply({ action: "invoke_capability", capabilityId: "fixture.write", intent: "Create the newest artifact." });
-    }
-    if (input.modelStep === "worker.result") {
-      workerResults += 1;
-      expect(JSON.stringify(input.messages)).not.toContain("STALE_PLANNER_TARGET");
-      return { text: "The newest artifact was created.", meta: {} };
+      return workerFusedReply(input, { action: "invoke_capability", capabilityId: "fixture.write", intent: "Create the newest artifact." });
     }
     if (input.modelStep === "supervisor.response") return { text: "The newest artifact was created.", meta: {} };
     throw new Error(`Unexpected model step ${input.modelStep}`);
@@ -123,7 +121,7 @@ test("latest steering supersedes a resumed Planner decision and only its fresh W
   await expect(runRequestRunner(request)).resolves.toEqual({ output: "The newest artifact was created." });
   expect(plannerDecisions).toBe(4);
   expect(workerDecisions).toBe(2);
-  expect(workerResults).toBe(1);
+  expect(invoke.mock.calls.some(([input]) => input.modelStep === "worker.result")).toBe(false);
   expect(workerCallIds).toEqual(["call-3", "call-4"]);
   expect(executeRead).not.toHaveBeenCalled();
   expect(executeWrite).toHaveBeenCalledTimes(1);

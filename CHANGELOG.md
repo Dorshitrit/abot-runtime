@@ -4,6 +4,66 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.5.0 - 2026-11-25
+
+ABot 2.5.0 adds persistent Agents and managed local llama.cpp servers, improves
+connection management, and strengthens model recovery and file authoring.
+
+### Added
+
+- Persistent Agents with separate conversations, reusable work sessions,
+  schedules, bounded delegation, shared budgets and durable progress.
+- Agent management, recent activity, floating chat windows and delegated
+  approval navigation in the Web UI, with remote access and notifications
+  through compatible Socket clients.
+- ABot-managed llama.cpp setup for supported macOS, Linux and Windows hosts,
+  including local GGUF discovery, multiple chat models, optional embeddings,
+  startup preferences and idle model sleep.
+- Runtime-owned Socket connection setup with bundle import or manual entry,
+  explicit environment binding, and persistent pause, resume and forget actions.
+- Grouped in-app notifications for model timeouts, reasoning rejections and
+  parameter omissions, with recurrence counts and configuration guidance.
+- Optional per-model OpenAI reasoning summaries.
+
+### Changed
+
+- Reduce SUPER model calls by combining compatible internal decisions and
+  reusing exact tool-result summaries while retaining separate response authoring.
+- Stabilize opt-in OpenAI Execution Agent prompt-cache prefixes while keeping
+  live context, current capability scope and the latest tool exchange available.
+- Calculate missing OpenAI output allowances from known model capacity and
+  remaining context while preserving explicit settings and omissions.
+- Present Home service connections as consistent cards with management dialogs.
+
+### Fixed
+
+- Retry a recognized interrupted provider stream once within the original
+  model-step deadline, preserving cancellation and settled results.
+- Preserve Agent conversation context, in-flight user corrections, work receipts
+  and delegated approvals across continuation and restart.
+- Reconcile shared Agent budgets and late usage without treating unknown usage
+  as zero or losing access to saved work.
+- Preserve EA file revisions through authoring, return fresh references after
+  successful range edits, and enforce generated-content limits consistently.
+- Allow EA file authoring to request scoped observation tools, preserving its
+  original assignment through continuation and saved approval state.
+- Preserve plugin error codes, permission denials and bounded payload failure
+  diagnostics, and show readable role failures in the interface.
+- Retain filesystem observations in failed EXEC results and preserve the chat
+  Git drawer across interface updates.
+- Improve managed llama.cpp settings recovery and Windows storage diagnostics.
+
+### Upgrade notes
+
+- Managed llama.cpp setup uses existing local model files and does not download
+  models. Linux and Windows managed binaries are CPU-only x64; macOS supports
+  arm64 and x64.
+- Socket access requires a compatible Socket installation and client. Forgetting
+  a local connection removes its saved credential but does not revoke it at
+  the server or unpair the phone.
+- OpenAI reasoning summaries remain opt-in. Explicit output-token values and
+  explicit omission retain their existing behavior.
+
 ## 2.4.0 - 2026-11-17
 
 ABot 2.4.0 adds dedicated Execution Agent file operations and model parameter

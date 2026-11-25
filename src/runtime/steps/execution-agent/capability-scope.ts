@@ -65,6 +65,19 @@ export function resolveExecutionCapabilityScope(
   });
 }
 
+/** Stable provider schema follows explicit scope transitions, never live execution limits. */
+export function resolveExecutionSchemaCapabilities(
+  request: RequestExecutionScope,
+  call: RoleCallFrame,
+): readonly CapabilityDescriptor[] {
+  if (call.workerCapabilityScope === undefined) return Object.freeze([]);
+  return projectCapabilityScope({
+    entries: resolveRequestWorkerCapabilities(request).provider.getDescriptors(),
+    scope: call.workerCapabilityScope,
+    descriptorOf: (entry) => entry,
+  }).entries;
+}
+
 export function assertExecutionAgentCanonicalSource(
   request: RequestExecutionScope,
   head: RoleCallLedgerHead,

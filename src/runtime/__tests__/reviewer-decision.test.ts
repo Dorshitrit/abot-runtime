@@ -1790,7 +1790,7 @@ describe("generic Reviewer decision boundary", () => {
         requestObjective: REQUEST_SOURCE_PROMPT,
         ledger,
         call,
-        referenceDataBudget: reviewerReferenceDataBudget,
+        referenceDataBudget: _label === "returned claim" ? { maxTokens: 0 } : reviewerReferenceDataBudget,
       });
       const format = createReviewerDecisionFormat(snapshot);
       const decisionSchema = (

@@ -2,6 +2,7 @@ import {
   isToolCatalogGroupId,
   type ToolCatalogGroup,
 } from "../../../../capabilities/tool-types.js";
+import { isToolControlsRefinement } from "../../../../capabilities/controls-refinement.js";
 import {
   isRoleCapabilityId,
   projectRoleCallAssignmentScope,
@@ -196,7 +197,7 @@ export function projectCapabilities(
         descriptor.effect !== "mutation" &&
         descriptor.effect !== "mixed") ||
       (descriptor.controlsRefinement !== undefined &&
-        descriptor.controlsRefinement !== "mechanical_when_complete") ||
+        !isToolControlsRefinement(descriptor.controlsRefinement)) ||
       (descriptor.requiresPayloadAuthoringObjective !== undefined &&
         descriptor.requiresPayloadAuthoringObjective !== true) ||
       !Array.isArray(descriptor.catalogGroups) ||

@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
+import { projectPromptCacheBoundary } from "./prompt-cache-boundary.js";
 
 type RepairIssue = Readonly<{
   code: string;
@@ -44,10 +45,18 @@ export function buildStructuredModelRepairHint(
 export function buildModelRepairAttemptMessages(
   originalMessages: readonly ChatMessage[],
   repairHint: string,
+  promptCacheBoundaryBeforeMessage?: ChatMessage,
 ): ChatMessage[] {
+  const repairMessage: ChatMessage = Object.freeze({ role: "system", content: repairHint });
+  if (hasRetainedRepairCacheBoundary(originalMessages, promptCacheBoundaryBeforeMessage))
+    return [...originalMessages, repairMessage];
   const firstTurn = originalMessages.findIndex((message) => message.role !== "system");
   const endOfInstructions = firstTurn === -1 ? originalMessages.length : firstTurn;
   const messages = [...originalMessages];
-  messages.splice(endOfInstructions, 0, Object.freeze({ role: "system", content: repairHint }));
+  messages.splice(endOfInstructions, 0, repairMessage);
   return messages;
+}
+
+function hasRetainedRepairCacheBoundary(messages: readonly ChatMessage[], beforeMessage?: ChatMessage): boolean {
+  return projectPromptCacheBoundary({ messages, beforeMessage }).promptCacheBoundaryBeforeMessageIndex !== undefined;
 }

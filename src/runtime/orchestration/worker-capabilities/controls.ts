@@ -1,3 +1,4 @@
+import { isFixedWidthInputPattern } from "../../../capabilities/normal-invocation/contract-fields.js";
 import {
   WORKER_CAPABILITY_CONTROL_ARRAY_MAX_ITEMS,
   WORKER_CAPABILITY_CONTROL_COUNT_MAX,
@@ -11,6 +12,10 @@ import {
   type WorkerCapabilityControlsSchema,
   type WorkerCapabilityScalarControl,
 } from "./contracts.js";
+import {
+  matchesToolInputPropertyModes,
+  normalizeToolInputPropertyModes,
+} from "../../../capabilities/normal-invocation/input-property-modes.js";
 
 export type WorkerCapabilityControlsSchemaNormalization =
   | Readonly<{ ok: true; value: WorkerCapabilityControlsSchema }>
@@ -34,6 +39,7 @@ export function normalizeWorkerCapabilityControlsSchema(
       "additionalProperties",
       "properties",
       "required",
+      ...(Object.hasOwn(input, "anyOf") ? ["anyOf"] : []),
     ]) ||
     input.type !== "object" ||
     input.additionalProperties !== false ||
@@ -64,6 +70,10 @@ export function normalizeWorkerCapabilityControlsSchema(
   ) {
     return failure("controls_schema_required_invalid");
   }
+  const modes = normalizeToolInputPropertyModes(input.anyOf, Object.keys(properties), input.required);
+  if (!modes.ok || (Object.hasOwn(input, "anyOf") && modes.value === undefined)) {
+    return failure("controls_schema_modes_invalid");
+  }
   return {
     ok: true,
     value: Object.freeze({
@@ -71,6 +81,7 @@ export function normalizeWorkerCapabilityControlsSchema(
       additionalProperties: false as const,
       properties: Object.freeze(properties),
       required: Object.freeze([...input.required] as string[]),
+      ...(modes.value ? { anyOf: modes.value } : {}),
     }),
   };
 }
@@ -94,6 +105,9 @@ export function validateWorkerCapabilityControls(
   );
   if (missingId) {
     return failure("controls_required_missing", missingId);
+  }
+  if (!matchesToolInputPropertyModes(schema.anyOf, suppliedIds)) {
+    return failure("controls_mode_invalid");
   }
 
   const controls: Record<string, unknown> = {};
@@ -229,8 +243,11 @@ function normalizeScalarControl(
         }),
       };
     }
+    const pattern = input.pattern;
+    const hasPattern = Object.hasOwn(input, "pattern");
     if (
-      !hasExactKeys(input, ["type", "minLength", "maxLength"]) ||
+      (hasPattern && !isFixedWidthInputPattern(pattern)) ||
+      !hasExactKeys(input, ["type", "minLength", "maxLength", ...(hasPattern ? ["pattern"] : [])]) ||
       !isBoundedInteger(
         input.minLength,
         0,
@@ -251,6 +268,7 @@ function normalizeScalarControl(
         type: "string" as const,
         minLength: input.minLength,
         maxLength: input.maxLength,
+        ...(typeof pattern === "string" ? { pattern } : {}),
       }),
     };
   }
@@ -362,7 +380,8 @@ function normalizeScalarValue(
         : failure("controls_enum_invalid");
     }
     return input.length >= control.minLength &&
-      (!("maxLength" in control) || input.length <= control.maxLength)
+      (!("maxLength" in control) || input.length <= control.maxLength) &&
+      (!("pattern" in control) || !control.pattern || new RegExp(control.pattern, "u").test(input))
       ? { ok: true, value: input }
       : failure("controls_string_invalid");
   }

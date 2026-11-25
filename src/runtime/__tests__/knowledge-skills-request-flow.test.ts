@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -14,7 +14,6 @@ import {
   KNOWLEDGE_FIXTURE_DOCUMENTS,
   messages,
   type KnowledgeModelInput,
-  type KnowledgeScriptEntry,
 } from "./support/knowledge-skills-request-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof createKnowledgeSkillsRequestFixture>>;
@@ -126,32 +125,18 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
   };
   await fixture.run("Consult the Studio and Computer references in two bounded tasks.", [
     { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_presentation");
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_entry");
       assertNoStoredContent(input);
-      return decision(defaultSupervisorPresentation(input));
-    } },
-    { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
       assertSupervisorCandidateMetadata(input);
-      return decision({ action: "read_skills", skillIds: [studio.skillId, computer.skillId] });
+      return decision({ ...defaultSupervisorPresentation(input), action: "read_skills", skillIds: [studio.skillId, computer.skillId] });
     } },
     { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
-      checkGuidance(input);
-      return decision({ requiresProcedure: true });
-    } },
-    { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_delegation");
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_routing");
       checkGuidance(input);
       return decision({
-        action: "invoke_role", roleId: "planner",
+        action: "invoke_role", roleId: "planner", workingDirectory: ".",
         objective: "Coordinate an explanation of the two supplied reference checks.",
       });
-    } },
-    { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_working_directory");
-      checkGuidance(input);
-      return JSON.stringify({ workingDirectory: "." });
     } },
     { step: "planner.decision", output: (input) => {
       checkGuidance(input);
@@ -168,10 +153,10 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
         selectedItemIndexes: [0],
       });
     } },
-    { step: "worker.evidence", output: (input) => {
+    { step: "worker.decision", output: (input) => {
       checkGuidance(input);
       expect(capsules(input, "runtime_worker_assignment")[0]?.objective).toBe(objective);
-      return workerEvidenceReply(input, false).text;
+      return workerFusedReply(input, { action: "return_result" }).text;
     } },
     { step: "worker.result", output: (input) => {
       checkGuidance(input);
@@ -209,28 +194,17 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
   async (policy) => {
     const fixture = await createFixture(policy);
     const rootStep = policy === "execution-agent-v1" ? "execution" : "supervisor";
-    const preparation: KnowledgeScriptEntry[] = policy === "execution-agent-v1" ? [] : [
-      { step: "supervisor.decision", output: (input) => {
-        expect(supervisorFormatName(input)).toBe("supervisor_presentation");
-        return decision(defaultSupervisorPresentation(input, "Hello."));
-      } },
-      { step: "supervisor.decision", output: (input) => {
-        expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
-        assertSupervisorCandidateMetadata(input);
-        return decision({ action: "continue" });
-      } },
-    ];
     await fixture.run("Say hello.", [
-      ...preparation,
       { step: rootStep + ".decision" as "execution.decision" | "supervisor.decision", output: (input) => {
         if (policy === "execution-agent-v1") assertAvailableSkills(input);
         else {
-          expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+          expect(supervisorFormatName(input)).toBe("supervisor_fused_entry");
+          assertSupervisorCandidateMetadata(input);
           assertNoStoredContent(input);
         }
         return decision(policy === "execution-agent-v1"
           ? { action: "respond" }
-          : { requiresProcedure: false, responseRecommendation: "Greet the user briefly." });
+          : { ...defaultSupervisorPresentation(input, "Hello."), requiresProcedure: false, responseRecommendation: "Greet the user briefly." });
       } },
       { step: rootStep + ".response" as "execution.response" | "supervisor.response", output: (input) => {
         assertNoStoredContent(input);

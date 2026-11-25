@@ -295,6 +295,7 @@ class RootExecutionSession {
     return Object.freeze({
       ...activation,
       decision: decisionOutcome.decision,
+      memoryCandidates: decisionOutcome.memoryCandidates,
       ...(decisionOutcome.interaction ? { interaction: decisionOutcome.interaction } : {}),
       decisionSteeringVersion: decisionOutcome.steeringVersion,
       requiresFreshPresentation,
@@ -643,6 +644,7 @@ class RootExecutionSession {
       : await this.policy.rootContract.authorResponse(this.request, {
           responseRecommendation: decision.responseRecommendation,
           responseRecommendationOrigin: decision.responseRecommendationOrigin,
+          memoryCandidates: activation.memoryCandidates,
           directResponse: decision.directResponse,
           memoryRecallMessage: projectRootMemoryRecallMessage({
             head: activation.head,

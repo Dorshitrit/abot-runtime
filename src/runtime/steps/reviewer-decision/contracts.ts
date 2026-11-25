@@ -92,6 +92,7 @@ export type ReviewerFact = Readonly<{
   subjectRefs: readonly string[];
   evidenceRefs: readonly string[];
   summary: string;
+  summaryContinuation?: string;
 }>;
 
 export type ReviewerReviewSnapshot = Readonly<{

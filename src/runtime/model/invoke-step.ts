@@ -30,6 +30,7 @@ import { ModelStepAttempt } from "./model-step-provider-attempt.js";
 import { projectInvocationReasoning } from "./invocation-reasoning-presentation.js";
 import { withModelInvocationAbort } from "./scoped-model-abort.js";
 import { ProviderContextRecovery, createProviderContextRecoveryPreparation } from "./provider-context-recovery.js";
+import { ProviderStreamRecovery } from "./provider-stream-recovery.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
 import { admitOptionalModelContext } from "./optional-context-admission.js";
 import {
@@ -155,6 +156,7 @@ class ModelStepInvocation<T> {
   private thinkingText = "";
   private supersededAttemptCount = 0;
   private readonly contextRecovery = new ProviderContextRecovery();
+  private readonly streamRecovery = new ProviderStreamRecovery();
 
   constructor(private readonly input: ModelStepInvocationConstructor<T>) {}
 
@@ -308,10 +310,13 @@ class ModelStepInvocation<T> {
       ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
       ...(params.format ? { requestFormat: params.format } : {}),
     });
-    const { assess, projectMedia } = createModelContextAssessment({
+    const invocationTailMessages = Object.freeze([...(params.createInvocationTailMessages?.() ?? [])]);
+    const { assess, projectEnvelope } = createModelContextAssessment({
+      onEvent: this.input.onContextEvent,
       request,
       params,
       admission,
+      invocationTailMessages,
       assertCurrent: assertNotAborted,
     });
     assertCurrent();
@@ -364,7 +369,7 @@ class ModelStepInvocation<T> {
       steeringVersion: steeringSnapshot.version,
       steeringUpdateCount: steeringSnapshot.updates.length,
       steeringContextIncluded,
-      messageCount: messages.length,
+      messageCount: messages.length + invocationTailMessages.length,
       measurement:
         assessment.budget.measuredInputTokens !== undefined
           ? "actual"
@@ -438,11 +443,12 @@ class ModelStepInvocation<T> {
     return new ModelStepAttempt({
       request,
       params,
-      messages: projectMedia(messages),
+      messages: projectEnvelope(messages),
       steeringSnapshot,
       identity: {
         invocationId,
         profileId: admission.invocation.profile.id,
+        providerId: admission.invocation.profile.providerId,
         provider: admission.invocation.profile.provider,
         model: admission.invocation.model,
       },
@@ -451,10 +457,16 @@ class ModelStepInvocation<T> {
         ? { onContextEvent: this.input.onContextEvent }
         : {}),
       contextRecovery: this.contextRecovery,
+      streamRecovery: this.streamRecovery,
+      assertCurrent,
+      onProviderRetry: () => {
+        request.onThinkingTrace({ step: params.modelStep, status: "error", text: this.thinkingText });
+        this.thinkingText = "";
+      },
       ...(contextCompaction ? {
         recoverContext: createProviderContextRecoveryPreparation({
           request, params, admission, messages, assessment, controller: contextCompaction,
-          assertCurrent,
+          assertCurrent, invocationTailMessages,
           identity: {
             requestId: request.requestId, invocationId, modelStep: params.modelStep,
             profileId: admission.invocation.profile.id, provider: admission.invocation.profile.provider,

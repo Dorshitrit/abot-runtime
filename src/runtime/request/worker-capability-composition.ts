@@ -25,7 +25,7 @@ import type {
   ToolRegistry,
 } from "../ports.js";
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
-import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
+import type { WorkerCapabilityAdapterProvider, WorkerCapabilityPayloadAuthor } from "../orchestration/worker-capabilities/index.js";
 import { createRequestRuntimeToolRegistry } from "../capabilities/request-runtime-tool-registry.js";
 import { routeFilePayloadAuthor } from "./execution-file-payload/author.js";
 import {
@@ -137,7 +137,7 @@ export function createRequestWorkerCapabilityProvider(
       },
     );
 
-  function selectPayloadAuthor() {
+  function selectPayloadAuthor(): WorkerCapabilityPayloadAuthor {
     const legacy = createRequestWorkerCapabilityPayloadAuthor(
       params.request,
       params.executionPolicyAuthority?.capabilityAuthorities,
@@ -145,7 +145,7 @@ export function createRequestWorkerCapabilityProvider(
       params.executionPolicyAuthority,
     );
     if (params.executionPolicyAuthority?.rootContractId !== "execution_agent") return legacy;
-    return routeFilePayloadAuthor(params.request, legacy, params.executionPolicyAuthority);
+    return routeFilePayloadAuthor(params.request, legacy, params.executionPolicyAuthority, () => provider);
   }
   const getAvailableTools = () =>
     projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.());

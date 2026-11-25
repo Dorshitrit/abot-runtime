@@ -29,7 +29,15 @@ describe("core passive memory availability at root decisions", () => {
     expect(enabled.decisions).toHaveLength(1);
     expect(disabled.decisions).toHaveLength(1);
     if (policy === "supervisor-worker-v1") {
-      expect(enabled.decisions[0]!.format).toEqual(disabled.decisions[0]!.format);
+      const enabledVariants = decisionVariants(enabled.decisions[0]!.format);
+      const disabledVariants = decisionVariants(disabled.decisions[0]!.format);
+      const ready = enabledVariants.filter(variant => variant.properties.requiresProcedure?.const === false);
+      expect(ready).toHaveLength(1);
+      expect(ready[0]).toMatchObject({ properties: { memoryCandidates: { type: "array" } }, required: expect.arrayContaining(["memoryCandidates"]) });
+      expect(enabledVariants.map(variant => {
+        const { memoryCandidates: _memory, ...properties } = variant.properties;
+        return { ...variant, properties, required: variant.required?.filter(key => key !== "memoryCandidates") };
+      })).toEqual(disabledVariants);
     } else {
       const enabledVariants = decisionVariants(enabled.decisions[0]!.format);
       const disabledVariants = decisionVariants(disabled.decisions[0]!.format);
@@ -48,15 +56,13 @@ describe("core passive memory availability at root decisions", () => {
     expect(enabled.memory.scheduleCandidates).not.toHaveBeenCalled();
     expect(enabled.result.output).toBe(disabled.result.output);
     expect(enabled.result.memoryCandidates).toBeUndefined();
-    const expectedEnabledCalls = policy === "supervisor-worker-v1" ? 3 : 2;
-    expect(enabled.invoke).toHaveBeenCalledTimes(expectedEnabledCalls);
+    expect(enabled.invoke).toHaveBeenCalledTimes(2);
     expect(disabled.invoke).toHaveBeenCalledTimes(2);
 
     const enabledMessages = modelMessages(enabled.decisions[0]!);
     const disabledMessages = modelMessages(disabled.decisions[0]!);
     expect(enabledMessages[0]!.role).toBe("system");
-    if (policy === "supervisor-worker-v1") expect(enabledMessages).toEqual(disabledMessages);
-    else expect(enabledMessages[0]!.content).not.toBe(disabledMessages[0]!.content);
+    expect(enabledMessages[0]!.content).not.toBe(disabledMessages[0]!.content);
     expect(enabledMessages.slice(1)).toEqual(disabledMessages.slice(1));
     for (const messages of [enabledMessages, disabledMessages]) {
       expect(messages.filter(({ role, content }) => role === "user" && content === prompt)).toHaveLength(1);
@@ -78,7 +84,8 @@ describe("core passive memory availability at root decisions", () => {
 });
 
 type DecisionVariant = {
-  properties: { action: { enum: readonly string[] }; response?: unknown };
+  properties: { action?: { enum: readonly string[] }; response?: unknown; requiresProcedure?: { const: boolean }; memoryCandidates?: unknown };
+  required?: readonly string[];
 };
 
 function decisionVariants(format: unknown): readonly DecisionVariant[] {
@@ -88,6 +95,6 @@ function decisionVariants(format: unknown): readonly DecisionVariant[] {
 }
 
 function isDirectResponse(variant: DecisionVariant): boolean {
-  return variant.properties.action.enum.includes("respond") &&
+  return variant.properties.action?.enum.includes("respond") === true &&
     variant.properties.response !== undefined;
 }

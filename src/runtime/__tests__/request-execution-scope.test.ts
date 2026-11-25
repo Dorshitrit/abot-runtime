@@ -179,6 +179,7 @@ describe("request execution scope", () => {
     expect(scope.requestSteering).toBe(scope.lifecycle.requestSteering);
     expect(scope.onAnswerToken).toBe(scope.presentation.onAnswerToken);
     expect(scope.modelInvocation.requestId).toBe(scope.identity.requestId);
+    expect(scope.modelInvocation.sessionId).toBe(scope.identity.sessionId);
     expect(scope.modelInvocation.runnerConfig).toBe(scope.model.runnerConfig);
     expect(scope.modelInvocation.abortSignal).toBe(scope.lifecycle.abortSignal);
     expect(scope.modelInvocation.onThinkingTrace).toBe(

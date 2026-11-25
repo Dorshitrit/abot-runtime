@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { createRequestLifecycleController } from "../../web-ui/app/controllers/request-lifecycle-controller.js";
 import { createToolApprovalController } from "../../web-ui/app/controllers/tool-approval-controller.js";
@@ -246,6 +249,7 @@ test("Web lists saved metadata and decides without attaching a live execution", 
       attach: vi.fn(),
     },
     services: {
+      config: { paths: { runtimeDir: join(tmpdir(), `web-empty-agents-${randomUUID()}`) } },
       sessions: {
         getRequestReplayById: vi.fn(async () => ({
           sessionId: "session",

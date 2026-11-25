@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
@@ -17,7 +20,7 @@ function fixture() {
   const replay = { requestId: "request", sessionId: "authoritative-session", events: [], finalState: null };
   const getRequestReplayById = vi.fn(async (_id: string, _after?: number, _session?: string) => replay);
   const list = vi.fn(async (_session?: string) => []);
-  const environments = { get: () => ({ services: { sessions: { getRequestReplayById } }, approvals: { list } }) } as unknown as RuntimeEnvironmentRegistry;
+  const environments = { get: () => ({ services: { config: { paths: { runtimeDir: join(tmpdir(), `web-empty-agents-${randomUUID()}`) } }, sessions: { getRequestReplayById } }, approvals: { list } }) } as unknown as RuntimeEnvironmentRegistry;
   const clients = new RealtimeClientHub();
   const requests = new LocalRequestExecution(clients);
   const options = { defaultEnvironmentId: "dev" } as ResolvedLocalRuntimeBackendOptions;

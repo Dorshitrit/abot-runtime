@@ -14,7 +14,6 @@ import {
   createProcedureOrchestrationFixture, procedureCapsules, procedureMessages,
   PROCEDURE_OLD_HISTORY,
 } from "./support/supervisor-procedure-orchestration-fixture.js";
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
@@ -25,7 +24,7 @@ const recommendation = "Answer only the current request using the supplied conte
 const finalAnswer = "Fixture response without external actions.";
 
 function expectConversation(messages: readonly ChatMessage[], prompt: string, answer = priorAnswer) {
-  expect(messages.slice(-3)).toEqual([
+  expect(messages.filter(message => message.role !== "system").slice(-3)).toEqual([
     { role: "user", content: priorRequest },
     { role: "assistant", content: answer },
     { role: "user", content: prompt },
@@ -64,28 +63,21 @@ test.each([
     if (!phase) throw new Error("fixture_model_phase_required");
     phases.push(phase);
     const result = (decision: unknown) => ({ text: JSON.stringify({ decision }), meta: {} });
-    if (phase === "supervisor_presentation") return result({ acknowledgement: "I will consider the current request." });
-    if (phase === "supervisor_procedure_gate") {
+    if (phase === "supervisor_fused_entry") {
       expectConversation(procedureMessages(input), scenario.prompt);
-      return result(scenario.requiresProcedure
+      return result({ ...(scenario.requiresProcedure
         ? { requiresProcedure: true }
-        : { requiresProcedure: false, responseRecommendation: recommendation });
+        : { requiresProcedure: false, responseRecommendation: recommendation }), acknowledgement: "I will consider the current request." });
     }
-    if (phase === "supervisor_delegation") {
+    if (phase === "supervisor_fused_routing") {
       expect(scenario.requiresProcedure).toBe(true);
       expectConversation(procedureMessages(input), scenario.prompt);
-      return result({ action: "invoke_role", roleId: "worker", objective: scenario.objective });
-    }
-    if (phase === "supervisor_working_directory") {
-      return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
-    }
-    if (phase === "worker.evidence") {
-      expect(procedureCapsules(input).find(({ kind }) => kind === "runtime_worker_assignment"))
-        .toMatchObject({ objective: scenario.objective });
-      return result(workerEvidenceDecision(input, true));
+      return result({ action: "invoke_role", roleId: "worker", objective: scenario.objective, workerCapabilityScope: { catalogGroupIds: ["read", "write"] }, workingDirectory: "." });
     }
     if (phase === "worker.decision") {
-      return result({ action: "return_failure", reason: "The fixture deliberately performs no external action." });
+      expect(procedureCapsules(input).find(({ kind }) => kind === "runtime_worker_assignment"))
+        .toMatchObject({ objective: scenario.objective, workingDirectory: "." });
+      return result({ assessment: { requiresExecution: true, established: "", remaining: "The assigned outcome still requires execution.", evidenceRefs: [] }, selection: { action: "return_failure", reason: "The fixture deliberately performs no external action." } });
     }
     if (phase === "supervisor_decision") return result({ action: "respond" });
     expect(input.modelStep).toBe("supervisor.response");
@@ -93,9 +85,9 @@ test.each([
   });
   const historyBefore = JSON.stringify(f.request.historyMessages);
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
-  expect(phases.filter(phase => phase === "supervisor_procedure_gate")).toHaveLength(1);
-  expect(phases.includes("supervisor_delegation")).toBe(scenario.requiresProcedure);
-  expect(phases.includes("worker.evidence")).toBe(scenario.requiresProcedure);
+  expect(phases.filter(phase => phase === "supervisor_fused_entry")).toHaveLength(1);
+  expect(phases.includes("supervisor_fused_routing")).toBe(scenario.requiresProcedure);
+  expect(phases.includes("worker.decision")).toBe(scenario.requiresProcedure);
   expect(f.getAdapters).toHaveBeenCalledTimes(Number(scenario.requiresProcedure));
   for (const adapter of f.getAdapters.mock.results.flatMap(result => result.value)) {
     expect(adapter.execute).not.toHaveBeenCalled();

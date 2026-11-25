@@ -137,6 +137,10 @@ export function createSessionLifecycleStore(
     deleteSession: async (sessionId) =>
       (await deletion.deleteSessionWithStats(sessionId)).deleted,
     deleteSessionWithStats: deletion.deleteSessionWithStats,
+    purgeDeletedSessionSidecars: (id) => enqueueSessionMutation(id, async () => {
+      if (!deletion.isDeleted(id)) throw new Error("session_deletion_required");
+      await base.purgeDeletedSessionSidecars?.(id);
+    }),
     ...(base.updateSessionRuntimeMode
       ? {
           updateSessionRuntimeMode: wrapSessionMutation(

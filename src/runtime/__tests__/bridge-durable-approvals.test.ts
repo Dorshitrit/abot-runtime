@@ -216,6 +216,43 @@ test("legacy approval recovery rebinds resumed events after only the remote WebS
   expect(f.frames.slice(after).filter((frame) => frame.type === "completed")).toHaveLength(1);
 }, 10_000);
 
+test("local pause, forget and replacement preserve a live remote approval and its usable connection", async () => {
+  const f = await fixture({ managedTransport: true });
+  f.send({
+    type: "run_request", ...scope, text: "Perform the exact fixture effect.",
+    toolPermissionMode: "ask", agentMode: "reasoning",
+    modelPreference: { profileId: "scheduled-model", scope: "all" },
+  });
+  const pending = await f.waitForFrame(frame => frame.name === "tool.approval.required");
+  const revision = { expectedRevision: 1 };
+  await expect(f.management.pause(revision)).rejects.toThrow("socket_connection_busy");
+  await expect(f.management.forget(revision)).rejects.toThrow("socket_connection_busy");
+  await expect(f.management.import({ bundle: { ...f.bundle, runtimeToken: "y".repeat(43) }, ...revision }))
+    .rejects.toThrow("socket_connection_busy");
+  expect(await f.management.status()).toMatchObject({ state: "connected", revision: 1 });
+  expect(f.execute).not.toHaveBeenCalled();
+  f.send({ type: "tool_approval_response", approvalId: pending.approvalId, approved: true });
+  await f.waitForFrame(frame => frame.type === "completed" && frame.requestId === scope.requestId);
+  await f.owner.whenIdle?.();
+  expect(f.execute).toHaveBeenCalledOnce();
+  expect(await f.management.pause(revision)).toMatchObject({ state: "paused", revision: 2 });
+}, 10_000);
+
+test("a parked approval survives an explicit local pause and resume, and remains decidable exactly once", async () => {
+  const f = await fixture({ managedTransport: true });
+  const [approval] = await parkApprovals(f);
+  const calls = f.model.invoke.mock.calls.length;
+  expect(await f.management.pause({ expectedRevision: 1 })).toMatchObject({ state: "paused", revision: 2 });
+  await f.management.resume({ expectedRevision: 2 });
+  await vi.waitFor(async () => expect((await f.management.status()).state).toBe("connected"));
+  expect(await listApprovals(f)).toMatchObject({ ok: true, approvals: [approval] });
+  expect(f.model.invoke).toHaveBeenCalledTimes(calls);
+  expect(f.execute).not.toHaveBeenCalled();
+  expect(await f.command(approvalDecision(approval!))).toMatchObject({ ok: true, result: { accepted: true } });
+  await f.waitForFrame(frame => frame.type === "completed" && frame.requestId === scope.requestId);
+  expect(f.execute).toHaveBeenCalledOnce();
+}, 10_000);
+
 test("a handler without approval controls refuses durable mode instead of silently using legacy approval", async () => {
   const f = await fixture({ legacyHandler: true });
   const registration = f.frames.find((frame) => frame.type === "register");

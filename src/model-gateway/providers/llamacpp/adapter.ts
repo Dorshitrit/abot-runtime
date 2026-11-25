@@ -1,4 +1,5 @@
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
+import { observeParameterOmissions } from "../parameter-issues.js";
 import { toolMediaSafeError, toolMediaSafeEvent, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 import type { ModelProviderAdapter } from "../contracts.js";
 import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
@@ -28,6 +29,7 @@ export function createLlamaCppProviderAdapter(renderFetch?: typeof fetch): Model
       const prepared = await prepareLlamaCppSystemMessages(params, settings, renderFetch ?? params.fetchImpl);
       if (prepared.kind === "error") return prepared;
       const { payload } = prepared;
+      observeParameterOmissions({ ...params, operation: params.endpoint });
       const { response, responseTrace } = await fetchProviderWithTrace({
         endpoint: params.endpoint, requestBody: params.requestBody, invocation: params.invocation,
         fetchImpl: async (input, init) => bindLlamaCppResponseLifetime(await params.fetchImpl(input, init)),

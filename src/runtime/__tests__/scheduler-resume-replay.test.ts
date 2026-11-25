@@ -62,7 +62,7 @@ async function fixture(status: "completed" | "failed", scheduled = true) {
       : { error: "Saved failure" }),
   });
   const persisted = createFileSessionStore({ sessionsDir });
-  const get = vi.fn(() => ({ services: { sessions: persisted } }));
+  const get = vi.fn(() => ({ services: { config: { paths: { runtimeDir: sessionsDir } }, sessions: persisted } }));
   const controller = new LocalRealtimeController(
     { defaultEnvironmentId: "dev" },
     { get } as unknown as RuntimeEnvironmentRegistry,

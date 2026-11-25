@@ -1,3 +1,10 @@
+import { SocketConnectionRoutes } from "./socket-connection-routes.js";
+import { ManagedLlamaHostService as ManagedLlamaService, ManagedLlamaHostRoutes as ManagedLlamaRoutes } from "../managed-llama/host-service.js";
+import { createManagedLlamaHandoff } from "../managed-llama/configuration-handoff.js";
+import { managedEmbeddingHandoff } from "../managed-llama/server/embedding-handoff.js";
+import type { AgentNotificationInbox } from "./agent-chat-notifications.js";
+import { WebAgentRoutes } from "./agents-routes.js";
+import { acceptOrdinaryChatSession } from "./agent-session-scope.js";
 import { InformationBasketRoutes } from "./information-basket-routes.js";
 import { handleModelParameterPreviewRoute } from "./model-parameter-routes.js";
 import { handleChatCommandCatalog } from "./chat-command-catalog.js";
@@ -66,7 +73,7 @@ import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
 import { ScheduleManagementRoutes } from "./schedule-management-routes.js";
 import { PassiveLearningRoutes } from "./learning-routes.js";
 import { RuntimeMaintenanceRoutes } from "./runtime-maintenance-routes.js";
-import { createRuntimeSessionResetClientState } from "../client-state/session-reset.js";
+import { createAgentDraftCleanup, createRuntimeSessionResetClientState } from "../client-state/session-reset.js";
 import { AutomationRoutes } from "./automation-routes.js";
 import { SparkChatRoutes } from "./spark-chat-routes.js";
 import { createSparkHomeApi } from "./spark-home-api.js";
@@ -84,6 +91,10 @@ function sendRuntimeSetupRequired(
 }
 
 export class LocalRuntimeApiRouter {
+  private readonly socketConnection: SocketConnectionRoutes;
+  private readonly managedLlamaService: ManagedLlamaService;
+  private readonly managedLlama: ManagedLlamaRoutes;
+  private readonly agents: WebAgentRoutes;
   private readonly stepTimeouts: StepTimeoutRoutes;
   private readonly conversationFiles: ConversationFileRoutes;
   private readonly projectChanges: ProjectChangesRoutes;
@@ -117,8 +128,14 @@ export class LocalRuntimeApiRouter {
     readStates?: WebSessionReadStates,
     onSessionRead?: (environmentId: string, sessionId: string) => void,
     onApprovalAccepted?: WebToolApprovalAcceptedObserver,
+    agentInbox?: AgentNotificationInbox,
   ) {
+    this.socketConnection = new SocketConnectionRoutes(id => this.environments.get(id).socketConnection,
+      () => this.options.defaultEnvironmentId, options.allowPublishedLoopback);
     this.chatGptAuth = options.chatGptAuthRoutes ?? new ChatGptAuthRoutes();
+    this.managedLlamaService = new ManagedLlamaService(options.rootDir ?? process.cwd());
+    this.managedLlama = new ManagedLlamaRoutes(this.managedLlamaService);
+    void this.managedLlamaService.server.initialize();
     this.stepTimeouts = new StepTimeoutRoutes(new StepTimeoutService({
       rootDir: options.rootDir ?? process.cwd(),
       getConfigPath: () => options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
@@ -148,6 +165,7 @@ export class LocalRuntimeApiRouter {
         getConfigPath: () =>
           options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
       }),
+      createManagedLlamaHandoff("models", model => this.managedLlamaService.readyConnectionForConfiguration(model)),
     );
     this.setup = new RuntimeSetupRoutes(
       new RuntimeSetupService({
@@ -165,6 +183,7 @@ export class LocalRuntimeApiRouter {
           return activation;
         },
       }),
+      createManagedLlamaHandoff("runtime", model => this.managedLlamaService.readyConnectionForConfiguration(model)),
     );
     this.setupEmbedding = new SetupEmbeddingRoutes(
       new SetupEmbeddingService({
@@ -173,6 +192,7 @@ export class LocalRuntimeApiRouter {
           options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
         providerAdapters: options.providerAdapters,
       }),
+      "runtime/setup/embedding", managedEmbeddingHandoff(this.managedLlamaService.server),
     );
     this.memoryConnection = new SetupEmbeddingRoutes(
       new MemoryEmbeddingConnectionService({
@@ -182,6 +202,7 @@ export class LocalRuntimeApiRouter {
         providerAdapters: options.providerAdapters,
       }),
       "runtime/memory/connection",
+      managedEmbeddingHandoff(this.managedLlamaService.server),
     );
     this.plugins = new PluginManagementRoutes({
       rootDir: options.rootDir ?? process.cwd(),
@@ -196,6 +217,9 @@ export class LocalRuntimeApiRouter {
     this.readStates = readStates ?? new WebSessionReadStates((id) =>
       this.environments.get(id),
     );
+    this.agents = new WebAgentRoutes((id) => environments.get(id), agentInbox,
+      (id, sessionId) => this.readStates.forgetForDeletion(id, sessionId),
+      createAgentDraftCleanup(options.rootDir ?? process.cwd()));
     this.maintenance = new RuntimeMaintenanceRoutes(
       (id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged,
       createRuntimeSessionResetClientState(options.rootDir ?? process.cwd()),
@@ -230,16 +254,24 @@ export class LocalRuntimeApiRouter {
     );
   }
 
+  async startAgents(environmentIds: readonly string[]): Promise<void> {
+    for (const id of environmentIds) {
+      if (this.environments.setupRequirement(id)) continue;
+      await this.agents.registry.get(id).catch(() => console.error(`Agent workspace unavailable for ${id}.`));
+    }
+  }
+  async stopAgents(): Promise<void> { await this.agents.registry.stop(); }
+
   private async applyWhenRequestsIdle(expectedRevision?: string) {
     const hasAcknowledgedRequests = this.requests.healthDetails().length > 0;
-    if (hasAcknowledgedRequests) {
+    if (hasAcknowledgedRequests || await this.agents.registry.isBusy()) {
       return {
         status: "restart_required" as const,
         message:
           "Your agent is working. Wait for active conversations and Jobs to finish, then apply again.",
       };
     }
-    return this.environments.applyConfiguration(expectedRevision);
+    return this.agents.registry.reconfigure(() => this.environments.applyConfiguration(expectedRevision));
   }
 
   async initializeSessionReadState(
@@ -258,12 +290,18 @@ export class LocalRuntimeApiRouter {
     }
   }
 
+  closeManagedLlama(): Promise<void> {
+    return this.managedLlamaService.close();
+  }
+
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url || "/", "http://localhost");
     const pathname = url.pathname.slice("/web-api".length) || "/";
     const method = req.method || "GET";
     const segments = pathSegments(pathname);
     const route = segments.join("/");
+    if (await this.managedLlama.handle({ method, route, request: req, response: res })) return;
+    if (await this.socketConnection.handle(route, req, res)) return;
     if (await this.chatGptAuth.handle(route, req, res)) return;
     if (await this.stepTimeouts.handle({ method, route, request: req, response: res, url })) return;
     if (await this.conversationFiles.handle(route, req, res)) return;
@@ -350,11 +388,19 @@ export class LocalRuntimeApiRouter {
       this.options.defaultEnvironmentId,
     );
 
+    if (segments[0] === "agents") {
+      const requirement = this.environments.setupRequirement(environmentId);
+      if (requirement) { sendRuntimeSetupRequired(res, requirement); return; }
+      await this.agents.handle({ method, segments, body, environmentId, request: req, response: res });
+      return;
+    }
+
     if (await this.maintenance.handle({
       method, route, body, environmentId, request: req, response: res,
     })) return;
 
     if (method === "POST" && route === "chat/stop") {
+      if (!await acceptOrdinaryChatSession(this.environments.get(environmentId).services.config.paths.runtimeDir, body?.sessionId, res)) return;
       await cancelWebRequest({ request: req, response: res, body, environment: this.environments.get(environmentId) });
       return;
     }
@@ -565,6 +611,7 @@ export class LocalRuntimeApiRouter {
 
     if (handleChatCommandCatalog(method, route, res)) return;
     if (method === "POST" && route === "chat/messages") {
+      if (!await acceptOrdinaryChatSession(environment.services.config.paths.runtimeDir, body?.sessionId, res)) return;
       await this.requests.start(
         res,
         body ?? {},
@@ -604,6 +651,7 @@ export class LocalRuntimeApiRouter {
         });
         return;
       }
+      if (!await acceptOrdinaryChatSession(environment.services.config.paths.runtimeDir, replay.sessionId, res)) return;
       sendJson(res, 200, {
         ok: true,
         requestId: replay.requestId,

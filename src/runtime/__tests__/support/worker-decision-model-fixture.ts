@@ -32,26 +32,45 @@ export function createWorkerDecisionModelPolicy(contextWindowTokens: number, con
   };
 }
 
-/** Evidence is an explicit model call; legacy scenario callbacks still own selection and controls. */
+/** Scenarios own selection/controls; canonical SUPER wraps selection with its fused assessment. */
 export function createWorkerEvidenceModel(invoke: ModelGatewayClient["invoke"]) {
   let decisions: readonly boolean[] | undefined;
   let assessmentIndex = 0;
   const model = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (input.modelStep !== MODEL_STEPS.WORKER_EVIDENCE) return invoke(input);
-    const requiresExecution = nextEvidenceDecision();
+    const fused = input.modelStep === MODEL_STEPS.WORKER_DECISION &&
+      typeof input.format === "object" && input.format.name === "worker_evidence_and_selection";
+    if (!fused && input.modelStep !== MODEL_STEPS.WORKER_EVIDENCE) return invoke(input);
+    const plannedExecution = nextEvidenceDecision();
     const assignment = readEvidenceAssignment(input.messages as readonly ChatMessage[]);
+    const result = fused && plannedExecution !== false ? await invoke(input) : undefined;
+    let envelope: Record<string, unknown> = {};
+    let selection: unknown = { action: "return_result" };
+    if (result) {
+      try {
+        const parsed: unknown = JSON.parse(result.text);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return result;
+        envelope = parsed as Record<string, unknown>;
+        selection = envelope.decision;
+      }
+      catch { return result; }
+      if (selection === undefined) return result;
+    }
+    const requiresExecution = plannedExecution ??
+      (fused ? (selection as { action?: unknown } | null)?.action !== "return_result" : true);
+    const assessment = {
+      requiresExecution,
+      established: assignment.evidenceRefs.length ? "The supplied execution evidence establishes the fixture's observed state." : "No external execution is established yet.",
+      remaining: requiresExecution ? "The fixture's assigned operation remains to be executed." : "",
+      evidenceRefs: assignment.evidenceRefs,
+    };
     return {
-      text: JSON.stringify({ decision: {
-        requiresExecution,
-        established: assignment.evidenceRefs.length ? "The supplied execution evidence establishes the fixture's observed state." : "No external execution is established yet.",
-        remaining: requiresExecution ? "The fixture's assigned operation remains to be executed." : "",
-        evidenceRefs: assignment.evidenceRefs,
-      } }),
-      meta: {},
+      ...result,
+      text: JSON.stringify({ ...envelope, decision: fused ? { assessment, selection } : assessment }),
+      meta: result?.meta ?? {},
     };
   });
-  function nextEvidenceDecision(): boolean {
-    if (!decisions) return true;
+  function nextEvidenceDecision(): boolean | undefined {
+    if (!decisions) return undefined;
     const decision = decisions[assessmentIndex++];
     if (decision === undefined) throw new Error("unexpected_fixture_evidence_assessment");
     return decision;

@@ -1,3 +1,4 @@
+import { verifyPackedSocketBridge } from "./packed-socket-bridge-probe.js";
 import { verifyPackedLlamaCppSetup } from "./packed-llamacpp-setup-probe.js";
 import { verifyPackedCliModelSetup } from "./packed-cli-model-setup-probe.js";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -362,6 +363,9 @@ try {
     cwd: emptyConsumerDir,
     env: {
       ...process.env,
+      AGENT_BRIDGE_URL: "", AGENT_BRIDGE_TOKEN: "", AGENT_BRIDGE_CONNECTION_FILE: "",
+      LLM_RUNTIME_CONFIG_FILE: join(emptyConsumerDir, "runtime.config.json"),
+      LLM_RUNTIME_WEB_BACKEND: "local",
       LLM_RUNTIME_WEB_HOST: "127.0.0.1",
       LLM_RUNTIME_WEB_PORT: String(webPort),
       PORT: String(gatewayPort),
@@ -535,6 +539,7 @@ if (!duplicateRejected) {
     stdio: "pipe",
   });
 
+  await verifyPackedSocketBridge({ consumerDir: join(tempDir, "socket-consumer"), packageDir, tarballPath, prepareConsumerConfig, reserveLoopbackPort });
   await runPackedLocalRuntimeProbe({
     consumerDir,
     cliPath,

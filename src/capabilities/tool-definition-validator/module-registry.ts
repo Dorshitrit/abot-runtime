@@ -105,6 +105,7 @@ function parseToolAdapter(
   const validateCall = raw.validateCall;
   const executionBinding = raw.executionBinding;
   const preparePayload = raw.preparePayload;
+  const payloadContent = raw.payloadContent;
   if (normalizeCall !== undefined && typeof normalizeCall !== "function") {
     throw new Error(
       `Invalid tool module for ${toolName} (adapter.normalizeCall)`,
@@ -116,6 +117,12 @@ function parseToolAdapter(
     );
   }
   const adapter: ToolCallAdapter = {};
+  if (payloadContent !== undefined && typeof payloadContent !== "function") {
+    throw new Error(`Invalid tool module for ${toolName} (adapter.payloadContent)`);
+  }
+  if (typeof payloadContent === "function") {
+    adapter.payloadContent = payloadContent as ToolCallAdapter["payloadContent"];
+  }
   if (preparePayload !== undefined && typeof preparePayload !== "function") {
     throw new Error(`Invalid tool module for ${toolName} (adapter.preparePayload)`);
   }

@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -33,7 +33,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+  if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
   expect(input.modelStep).toBe("worker.result");
   return "The initial check is complete.";
 }
@@ -50,7 +50,7 @@ test.each([false, true])("the returned-entry selection stays closed through reca
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Check the current request." }),
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       for (const { content } of selected) {
         if (read) expect(JSON.stringify(input.messages)).toContain(content);
         else expect(JSON.stringify(input.messages)).not.toContain(content);
@@ -62,11 +62,11 @@ test.each([false, true])("the returned-entry selection stays closed through reca
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(routes).toBe(2);
-  expect(selectSkills).toHaveBeenCalledTimes(2);
+  expect(selectSkills, JSON.stringify(f.gatewayInvoke.mock.calls.map(([i]) => supervisorFormatName(i) ?? i.modelStep))).toHaveBeenCalledTimes(2);
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.store.read.mock.calls).toEqual(read ? selected.map(({ skillId }) => [skillId]) : []);
   expect(f.memory.retrieve.mock.calls.filter(([input]) => input.query === RECALL_QUERY)).toHaveLength(1);
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
 });
 
 test("each direct Worker, Planner and Reviewer return opens one selection, while a nested Worker return does not", async () => {
@@ -118,7 +118,7 @@ test("each direct Worker, Planner and Reviewer return opens one selection, while
         expect(selections).toBe(2);
         return { action: "return_result", result: "The requested verification was explained." };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") {
         workerReturns++;
         return "The requested verification is complete.";
@@ -149,8 +149,8 @@ test("each direct Worker, Planner and Reviewer return opens one selection, while
   // Each read re-enters SUPER with the same returned result; it must route without opening another selection.
   const phases = f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep);
   const selectionIndexes = phases.flatMap((phase, index) => phase === "supervisor_skill_selection" ? [index] : []);
-  for (const [entry, index] of selectionIndexes.entries())
-    expect(phases[index + 1]).toBe(entry === 0 ? "supervisor_procedure_gate" : "supervisor_decision");
+  expect(phases.slice(0, 2)).toEqual(["supervisor_fused_entry", "supervisor_fused_routing"]);
+  for (const index of selectionIndexes) expect(phases[index + 1]).toBe("supervisor_decision");
 });
 
 test("repairing a rejected delegation cannot reopen selection before the child returns", async () => {
@@ -160,42 +160,39 @@ test("repairing a rejected delegation cannot reopen selection before the child r
     policy: "supervisor-worker-v1", enabled: false, selectSkills,
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
-      expect(supervisorFormatName(input)).toBe("supervisor_delegation");
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_routing");
       expect(selectSkills).toHaveBeenCalledOnce();
       return { action: "invoke_role", roleId: ++delegations === 1 ? "unknown-role" : "worker", objective: "Check the request." };
     },
     decide(input) {
-      if (supervisorFormatName(input) === "supervisor_decision") return { action: "respond" };
+      if (["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return { action: "respond" };
       return finishWorker(input);
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(delegations).toBe(2);
-  expect(selectSkills).toHaveBeenCalledTimes(2);
+  expect(selectSkills, JSON.stringify(f.gatewayInvoke.mock.calls.map(([i]) => supervisorFormatName(i) ?? i.modelStep))).toHaveBeenCalledTimes(2);
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.store.read).not.toHaveBeenCalled();
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
 });
 
-test("steering during working-directory selection reroutes without opening another Skill selection", async () => {
+test("steering during combined directory and route selection keeps accepted Skill selection closed", async () => {
   let routes = 0;
-  let directories = 0;
   const update = "Answer the updated question without delegating.";
   const selectSkills = vi.fn(() => ({ action: "continue" }));
   const f = fixture({
     policy: "supervisor-worker-v1", enabled: false, selectSkills,
-    classifyProcedure(input) {
-      if (++routes === 1) return { requiresProcedure: true };
-      expect(JSON.stringify(input.messages)).toContain(update);
-      return { requiresProcedure: false, responseRecommendation: "Answer the updated question." };
-    },
-    delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "The obsolete delegated request." }),
-    decide(input) {
-      if (supervisorFormatName(input) === "supervisor_working_directory") {
-        expect(++directories).toBe(1);
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate(input) {
+      if (++routes === 1) {
         expect(f.requestSteering.append({ steerId: "directory-update", text: update }).ok).toBe(true);
-        return JSON.stringify({ workingDirectory: "." });
+        return { action: "invoke_role", roleId: "worker", objective: "The obsolete delegated request.", workingDirectory: "." };
       }
+      expect(JSON.stringify(input.messages)).toContain(update);
+      return { action: "respond", responseRecommendation: "Answer the updated question." };
+    },
+    decide(input) {
       throw new Error(`unexpected model phase: ${input.modelStep}`);
     },
   });
@@ -204,7 +201,7 @@ test("steering during working-directory selection reroutes without opening anoth
   expect(selectSkills).toHaveBeenCalledOnce();
   expect(f.store.list).toHaveBeenCalledOnce();
   expect(f.store.read).not.toHaveBeenCalled();
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
 });
 
 test("an empty returned-entry catalog stays closed even when metadata becomes available during recall", async () => {
@@ -215,7 +212,7 @@ test("an empty returned-entry catalog stays closed even when metadata becomes av
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Check the current request." }),
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       if (++routes === 1) {
         f.store.list.mockReturnValue(documents);
         return { action: "recall_memory", query: RECALL_QUERY };
@@ -228,6 +225,8 @@ test("an empty returned-entry catalog stays closed even when metadata becomes av
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(routes).toBe(2);
   expect(selectSkills).not.toHaveBeenCalled();
-  expect(f.store.list).toHaveBeenCalledTimes(2);
+  expect(f.store.list).toHaveBeenCalledTimes(3);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "supervisor.decision")
+    .every(([input]) => !JSON.stringify(input.format).includes('"read_skills"'))).toBe(true);
   expect(f.store.read).not.toHaveBeenCalled();
 });

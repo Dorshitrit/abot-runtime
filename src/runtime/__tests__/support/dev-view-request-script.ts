@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { isRecord } from "../../validation/strict-record.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type DevViewRequestPolicy =
@@ -53,8 +53,7 @@ function supervisorDecision(turn: number) {
         acknowledgement: "I will read the requested section.",
       },
     };
-  if (turn === 2) return { workingDirectory: "." };
-  expect(turn).toBe(3);
+  expect(turn).toBe(2);
   return { decision: { action: "respond" } };
 }
 
@@ -66,10 +65,6 @@ export function createDevViewRequestScript(
   let workerTurns = 0;
   let controlsTurns = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, workerTurns < 2);
-    if (input.modelStep === "worker.result")
-      return { text: DEV_VIEW_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "execution.response")
       return { text: DEV_VIEW_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "supervisor.response")
@@ -102,8 +97,10 @@ export function createDevViewRequestScript(
       };
     if (input.modelStep === "worker.decision") {
       workerTurns += 1;
-      expect(workerTurns).toBeLessThanOrEqual(2);
-      return { text: JSON.stringify({ decision: { ...invocation, intent: "Read the requested section." } }), meta: {} };
+      expect(workerTurns).toBeLessThanOrEqual(3);
+      return workerFusedReply(input, workerTurns === 3
+        ? { action: "return_result" }
+        : { ...invocation, intent: "Read the requested section." });
     }
     rootTurns += 1;
     if (rootTurns >= 2) {

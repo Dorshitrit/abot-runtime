@@ -83,9 +83,9 @@ function readRecommendation(input: ModelInput): string {
   return capsules[0].responseRecommendation;
 }
 
-function directResponseGate(recommendation: string): string {
+function directResponseGate(recommendation: string, routing = false): string {
   return JSON.stringify({
-    decision: { requiresProcedure: false, responseRecommendation: recommendation },
+    decision: { ...(routing ? { action: "respond" } : { requiresProcedure: false }), responseRecommendation: recommendation },
   });
 }
 
@@ -99,7 +99,7 @@ test("hands the accepted recommendation to one raw response without publishing i
   const recommendation =
     "INTERNAL_RECOMMENDATION: explain that deciding chooses an action and presenting communicates its result.";
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (supervisorFormatName(input) === "supervisor_procedure_gate")
+    if (supervisorFormatName(input) === "supervisor_fused_entry")
       return { text: directResponseGate(recommendation), meta: {} };
     expect(input.modelStep).toBe("supervisor.response");
     expect(readRecommendation(input)).toBe(recommendation);
@@ -113,7 +113,7 @@ test("hands the accepted recommendation to one raw response without publishing i
     output: "The distinction is between deciding and presenting.",
   });
   expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_procedure_gate",
+    "supervisor_fused_entry",
     "supervisor.response",
   ]);
   expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
@@ -131,7 +131,7 @@ test("hands the accepted recommendation to one raw response without publishing i
 test("does not hand off a recommendation from a decision superseded by user steering", async () => {
   let decisionCount = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+    if (supervisorFormatName(input) === "supervisor_fused_entry") {
       decisionCount += 1;
       if (decisionCount === 1) {
         request.requestSteering!.append({
@@ -160,8 +160,8 @@ test("does not hand off a recommendation from a decision superseded by user stee
     output: "Only the first point.",
   });
   expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_procedure_gate",
-    "supervisor_procedure_gate",
+    "supervisor_fused_entry",
+    "supervisor_fused_entry",
     "supervisor.response",
   ]);
 });
@@ -172,13 +172,14 @@ test.each(["Old response.", ""])(
     const recommendations: string[] = [];
     let decisionCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+      if (input.modelStep === "supervisor.decision") {
         decisionCount += 1;
         return {
           text: directResponseGate(
             decisionCount === 1
               ? "Describe coordinates as locations and directions as orientations."
               : "In one sentence, contrast location coordinates with directional orientation.",
+            supervisorFormatName(input) === "supervisor_fused_routing",
           ),
           meta: {},
         };
@@ -203,9 +204,9 @@ test.each(["Old response.", ""])(
       "In one sentence, contrast location coordinates with directional orientation.",
     ]);
     expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-      "supervisor_procedure_gate",
+      "supervisor_fused_entry",
       "supervisor.response",
-      "supervisor_procedure_gate",
+      "supervisor_fused_routing",
       "supervisor.response",
     ]);
     expect(decisionCount).toBe(2);
@@ -223,7 +224,7 @@ test.each([
   "keeps accepted respond when its recommendation is $label",
   async ({ recommendation }) => {
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+      if (supervisorFormatName(input) === "supervisor_fused_entry") {
         expect(invoke).toHaveBeenCalledTimes(1);
         return {
           text: JSON.stringify({
@@ -247,7 +248,7 @@ test.each([
       output: "The established distinction.",
     });
     expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-      "supervisor_procedure_gate",
+      "supervisor_fused_entry",
       "supervisor.response",
     ]);
     expect(

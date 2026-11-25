@@ -11,16 +11,18 @@ export function createModelContextAssessment(input: {
   request: RequestModelInvocationView;
   params: Pick<ModelStepInvocationInput<unknown>, "modelStep" | "format" | "promptCacheBoundaryBeforeMessage">;
   admission: ResolvedModelContextAdmission;
+  invocationTailMessages?: readonly ChatMessage[];
   assertCurrent(): void;
   abortSignal?: AbortSignal;
+  onEvent?: (name: string, extra?: Record<string, unknown>) => void;
 }) {
   const { request, params, admission, assertCurrent } = input;
   const calibrationInstructions = (admission.invocation.instructions ?? [])
     .map((instruction) => instruction.trim())
     .filter((instruction) => instruction.length > 0);
   const effectiveFormat = admission.effectiveFormat;
-  const projectMedia = (candidate: readonly ChatMessage[]) =>
-    projectToolMediaMessages({
+  const projectEnvelope = (candidate: readonly ChatMessage[]) => [
+    ...projectToolMediaMessages({
       messages: candidate,
       store: request.toolResources?.media,
       modelStep: params.modelStep,
@@ -28,11 +30,14 @@ export function createModelContextAssessment(input: {
         admission.invocation.profile.capabilities.inputModalities.includes(
           "image",
         ),
-    });
+    }),
+    ...(input.invocationTailMessages ?? []),
+  ];
   const assess = async (candidateMessages: readonly ChatMessage[]) => {
     assertCurrent();
-    const projected = projectMedia(candidateMessages);
+    const projected = projectEnvelope(candidateMessages);
     const measuredInputTokens = await countModelInputTokens({
+      onEvent: input.onEvent,
       request,
       invocation: admission.invocation,
       modelStep: params.modelStep,
@@ -61,7 +66,7 @@ export function createModelContextAssessment(input: {
       ...(measuredInputTokens !== undefined ? { measuredInputTokens } : {}),
     });
   };
-  return { assess, projectMedia };
+  return { assess, projectEnvelope };
 }
 
 function isSchemaFormat(

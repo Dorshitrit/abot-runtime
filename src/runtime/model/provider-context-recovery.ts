@@ -52,6 +52,7 @@ export function createProviderContextRecoveryPreparation(input: Readonly<{
   admission: ResolvedModelContextAdmission;
   messages: readonly ChatMessage[];
   assessment: RequestMessagesBudgetAssessment;
+  invocationTailMessages?: readonly ChatMessage[];
   controller: ModelStepContextCompactionController;
   assertCurrent(): void;
   identity: ContextCompactionIdentity;
@@ -72,7 +73,9 @@ export function createProviderContextRecoveryPreparation(input: Readonly<{
     const originalMessages = JSON.stringify(input.messages);
     const originalMeasured = input.assessment.budget.measuredInputTokens !== undefined;
     const measurement = createModelContextAssessment({
+      onEvent: input.onEvent,
       request: input.request, params: input.params, admission: input.admission,
+      invocationTailMessages: input.invocationTailMessages,
       assertCurrent, abortSignal: signal,
     });
     const admitted = await admitCompactedContext({
@@ -93,6 +96,6 @@ export function createProviderContextRecoveryPreparation(input: Readonly<{
       },
     });
     assertCurrent();
-    return measurement.projectMedia(admitted.messages);
+    return measurement.projectEnvelope(admitted.messages);
   };
 }

@@ -1,5 +1,7 @@
 import { buildCompactedRequestToolResultsMessage } from "../../context/request-tool-results.js";
-import { workerCapabilityContextCompactionScopeId } from "../../orchestration/worker-capabilities/index.js";
+import { workerCapabilityContextCompactionScopeId, WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS } from "../../orchestration/worker-capabilities/index.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
+import { readSuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import {
   assertWorkerCheckpointApplicable,
@@ -18,7 +20,7 @@ export async function completeWorkerHandoffEvidence(
   input: ReturnType<typeof buildWorkerDecisionInput>,
 ): Promise<WorkerResultAuthorSource> {
   const store = request.contextCompactionStore;
-  if (!store) return input.resultAuthorSource;
+  if (!store) return bindWorkerHandoffProjection(input);
   const scopeId = workerCapabilityContextCompactionScopeId(options.call.callId);
   const checkpoint = readWorkerCompactionCheckpoint(
     store,
@@ -26,19 +28,42 @@ export async function completeWorkerHandoffEvidence(
     scopeId,
     WORKER_DECISION_MODEL_STEP,
   );
-  if (!checkpoint) return input.resultAuthorSource;
+  if (!checkpoint) return bindWorkerHandoffProjection(input);
   assertWorkerCheckpointApplicable(request, options.call, checkpoint);
 
   // The evidence step may have committed a newer checkpoint. Reuse that
-  // checkpoint with uncovered receipts; result admission owns any further
-  // compaction after measuring the complete next-model input.
+  // checkpoint with uncovered receipts. The factual report must use this
+  // current projection, not the assessment's pre-compaction context.
   request.abortSignal.throwIfAborted();
-  return buildWorkerDecisionInput(request, {
+  const rebuilt = buildWorkerDecisionInput(request, {
     ...options,
     requestToolResultsContextMessage: buildCompactedRequestToolResultsMessage(
       options.requestToolResults,
       checkpoint,
       workerCompactionIntegrityInput(request, options.capabilitySource),
     ),
-  }).resultAuthorSource;
+  });
+  const projection = createPolicyModelStepCompactionController(request, {
+    consumer: WORKER_DECISION_MODEL_STEP,
+    call: options.call,
+    sourceRevision: options.requestToolResults.sourceRevision,
+    superWorkerCompaction: readSuperWorkerCompactionSidecar(options.requestToolResults),
+    requireSuperWorkerSources: workerCompactionIntegrityInput(request, options.capabilitySource) !== undefined,
+    allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
+    scopeId,
+  }, request.executionPolicy.authority);
+  // project() reuses committed checkpoint state; it never generates a summary.
+  return Object.freeze({
+    ...rebuilt.resultAuthorSource,
+    handoffContextMessages: Object.freeze(projection.project(rebuilt.sharedContextMessages)),
+  });
+}
+
+function bindWorkerHandoffProjection(
+  input: ReturnType<typeof buildWorkerDecisionInput>,
+): WorkerResultAuthorSource {
+  return Object.freeze({
+    ...input.resultAuthorSource,
+    handoffContextMessages: input.sharedContextMessages,
+  });
 }

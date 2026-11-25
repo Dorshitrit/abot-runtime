@@ -42,24 +42,28 @@ export async function readMetadataJson(path: string): Promise<unknown> {
 }
 
 /** Serialize index publication/deletion by session, never across unrelated sessions. */
-export async function publishSessionMetadata(path: string, operation: () => Promise<void>): Promise<void> {
+export async function publishSessionMetadata(path: string, operation: () => Promise<void>, required = false): Promise<void> {
   const key = resolve(path);
   const previous = pendingPublications.get(key) ?? Promise.resolve();
-  const pending = previous.then(operation).catch((error: unknown) => reportMetadataFailure(path, error));
-  pendingPublications.set(key, pending);
+  const pending = previous.then(operation);
+  const settled = pending.catch(() => undefined);
+  pendingPublications.set(key, settled);
   try {
     await pending;
+  } catch (error) {
+    if (required) throw error;
+    reportMetadataFailure(path, error);
   } finally {
-    if (pendingPublications.get(key) === pending) pendingPublications.delete(key);
+    if (pendingPublications.get(key) === settled) pendingPublications.delete(key);
   }
 }
 
 /** List backfills and the Runtime owner may run in different processes. */
-export async function publishSessionProjection(path: string, operation: () => Promise<void>): Promise<void> {
+export async function publishSessionProjection(path: string, operation: () => Promise<void>, required = false): Promise<void> {
   return publishSessionMetadata(path, async () => {
     await mkdir(dirname(path), { recursive: true });
     await withFileLock(`${path}.lock`, operation);
-  });
+  }, required);
 }
 
 export async function writeMetadataJson(

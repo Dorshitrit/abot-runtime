@@ -19,7 +19,7 @@ import { runExecutionAgentResponse } from "../../steps/execution-agent/response-
 import { runWorkerDecision } from "../../steps/worker-decision/run.js";
 import { createTestRequestExecutionScope } from "./request-execution-scope.js";
 import { compactContinuation, readCompactionEnvelope } from "./semantic-compaction-contract-fixture.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
 
 export const SKILL_COMPACTION_FACT = "Read the exact current state before choosing an input action.";
@@ -79,8 +79,8 @@ export async function createKnowledgeSkillsCompactionFixture(policy: RequestExec
     }
     if (input.modelStep === "execution.decision")
       return { text: JSON.stringify({ decision: { action: "respond" } }), meta: {} };
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, false, SKILL_COMPACTION_FACT);
+    if (input.modelStep === "worker.decision")
+      return workerFusedReply(input, { action: "return_result" }, SKILL_COMPACTION_FACT);
     if (input.modelStep === "execution.response" || input.modelStep === "worker.result")
       return { text: SKILL_COMPACTION_ANSWER, meta: {} };
     throw new Error(`unexpected_skill_compaction_step:${input.modelStep}`);

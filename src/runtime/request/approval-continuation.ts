@@ -11,6 +11,7 @@ import type { WorkerCapabilityDescriptor } from "../orchestration/worker-capabil
 import { projectWorkerCapabilityScope } from "../orchestration/worker-capabilities/scope.js";
 import type { RootContinuationPresentation } from "./root-execution-contracts.js";
 import type { RequestRunnerResult } from "./result.js";
+import { assertFilePayloadApprovalCompatible } from "./execution-file-payload/approval-compatibility.js";
 
 /** Logical continuation only, captured at an admitted, undispatched approval boundary. */
 export type RequestApprovalContinuation = Readonly<{
@@ -64,6 +65,9 @@ export function validateRequestApprovalContinuation(
   // effect can run. Unrelated, already settled calls are not resumed.
   const hasCurrentCapabilityCatalog = capabilities !== undefined;
   if (!hasCurrentCapabilityCatalog) return;
+  assertFilePayloadApprovalCompatible({
+    head: ledger.current(), call, group: continuation.preparedGroup, capabilities,
+  });
   const resumedCalls = [
     ...continuation.callers.map((cursor) => cursor.callerCall),
     call,

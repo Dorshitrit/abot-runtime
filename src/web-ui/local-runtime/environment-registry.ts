@@ -51,7 +51,7 @@ export class RuntimeEnvironmentRegistry {
     private readonly schedulerBindings: {
       requestOptions?: LocalRuntimeApplicationOptions["scheduledRequestOptions"];
       homeAppearance?: LocalRuntimeApplicationOptions["sparkHomeAppearance"];
-      publish?: (event: Record<string, unknown>) => void;
+      publish?: (event: Record<string, unknown>, environmentId: string) => void;
       publishInformationBasket?: (environmentId: string) => void;
       publishSparkHome?: (environmentId: string, change: SparkHomeChanged) => void;
       publishLearning?: (
@@ -143,12 +143,11 @@ export class RuntimeEnvironmentRegistry {
   ): Promise<RuntimeSetupActivation> {
     const nextEnvironments =
       this.options.resolveEnvironmentConfig?.(configPath);
+    const nextDefault = nextEnvironments?.defaultEnvironmentId ?? this.options.defaultEnvironmentId;
     let appliedGatewayConfigurations: AppliedGatewayConfigurations | undefined;
     return applyRuntimeConfiguration({
       environments: this.environments,
-      defaultEnvironmentId:
-        nextEnvironments?.defaultEnvironmentId ??
-        this.options.defaultEnvironmentId,
+      defaultEnvironmentId: nextDefault,
       environmentIds: nextEnvironments?.environments.map(({ id }) => id) ?? [
         ...this.desiredEnvironmentIds,
       ],
@@ -157,6 +156,7 @@ export class RuntimeEnvironmentRegistry {
           id,
           this.loadConfig(id, configPath),
           this.captureGatewayConfiguration(configPath),
+          nextDefault,
         ),
       recreateEnvironment: (id, previous) =>
         this.createEnvironment(
@@ -304,15 +304,23 @@ export class RuntimeEnvironmentRegistry {
     gatewayConfiguration = this.captureGatewayConfiguration(
       this.options.configPath,
     ),
+    targetRuntimeId = this.options.defaultEnvironmentId,
   ): RuntimeEnvironment {
+    let bridge: LocalRuntimeApplicationOptions["bridge"];
+    try {
+      bridge = this.options.runtimeBridge?.(config, targetRuntimeId);
+    } catch {
+      console.warn("Socket connection configuration needs attention.");
+    }
     const environment = createLocalRuntimeApplication(config, {
+      ...(bridge && { bridge }),
       scheduledRequestOptions: this.schedulerBindings.requestOptions,
       sparkHomeAppearance: this.schedulerBindings.homeAppearance,
     });
     // Capture before startup; restored owners keep their prior immutable snapshot.
     this.gatewayConfigurations.set(environment, gatewayConfiguration);
     if (this.schedulerBindings.publish) {
-      environment.subscribeScheduledEvents(this.schedulerBindings.publish);
+      environment.subscribeScheduledEvents((event) => this.schedulerBindings.publish?.(event, environmentId));
     }
     environment.subscribeInformationBasketEvents?.(() =>
       this.schedulerBindings.publishInformationBasket?.(environmentId),

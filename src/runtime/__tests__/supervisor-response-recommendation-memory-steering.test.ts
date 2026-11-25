@@ -42,6 +42,7 @@ function createHarness(
     available: true,
     records: [],
   }),
+  separateMemory = false,
 ) {
   const abortController = new AbortController();
   const memory = {
@@ -75,7 +76,7 @@ function createHarness(
       },
       steps: {
         "supervisor.decision": { timeoutMs: 20_000 },
-        "supervisor.response": { timeoutMs: 20_000 },
+        "supervisor.response": { timeoutMs: separateMemory ? 20_001 : 20_000 },
       },
     },
     agentMode: "reasoning",
@@ -105,7 +106,8 @@ function createHarness(
 }
 
 function invocationPhase(input: ModelInput): string {
-  if (supervisorFormatName(input) === "supervisor_procedure_gate") return "gate";
+  if (["supervisor_fused_entry", "supervisor_fused_entry_with_memory_candidates"].includes(supervisorFormatName(input) ?? "")) return "gate";
+  if (supervisorFormatName(input) === "supervisor_fused_routing") return "routing";
   if (input.format === undefined) return "response";
   return "memory";
 }
@@ -120,9 +122,9 @@ function assertMemoryInput(input: ModelInput): void {
   expect(JSON.stringify(input.messages)).not.toContain(FRESH_RECOMMENDATION);
 }
 
-function directResponseGate(recommendation: string): string {
+function directResponseGate(recommendation: string, routing = false): string {
   return JSON.stringify({
-    decision: { requiresProcedure: false, responseRecommendation: recommendation },
+    decision: { ...(routing ? { action: "respond" } : { requiresProcedure: false }), responseRecommendation: recommendation },
   });
 }
 
@@ -146,16 +148,16 @@ test("stale entry prevents memory retrieval and every provider invocation", asyn
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("startup steering and readable passive memory reach the gate while response keeps the original capsule", async () => {
+test("startup steering and full passive memory reach fused authoring while RAW keeps the original capsule", async () => {
   let decisionCount = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (invocationPhase(input) === "gate") {
       decisionCount += 1;
       expect(JSON.stringify(input.messages)).toContain(STEERING);
       expect(JSON.stringify(input.messages)).toContain(PASSIVE_MEMORY_TEXT);
-      expect(JSON.stringify(input.messages)).not.toContain("runtime_long_term_memory_reference_v1");
+      expect(JSON.stringify(input.messages)).toContain("runtime_long_term_memory_reference_v1");
       return {
-        text: directResponseGate(FRESH_RECOMMENDATION),
+        text: JSON.stringify({ decision: { requiresProcedure: false, responseRecommendation: FRESH_RECOMMENDATION, memoryCandidates: [FRESH_CANDIDATE] } }),
         meta: {},
       };
     }
@@ -193,7 +195,6 @@ test("startup steering and readable passive memory reach the gate while response
   });
   expect(invoke.mock.calls.map(([input]) => invocationPhase(input))).toEqual([
     "gate",
-    "memory",
     "response",
   ]);
   expect(memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([
@@ -215,11 +216,12 @@ test.each([
   async ({ output }) => {
     let decisionCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (invocationPhase(input) === "gate") {
+      if (["gate", "routing"].includes(invocationPhase(input))) {
         decisionCount += 1;
         return {
           text: directResponseGate(
             decisionCount === 1 ? OLD_RECOMMENDATION : FRESH_RECOMMENDATION,
+            invocationPhase(input) === "routing",
           ),
           meta: {},
         };
@@ -244,7 +246,8 @@ test.each([
       expect(JSON.stringify(input.messages)).not.toContain(OLD_RECOMMENDATION);
       return { text: "Fresh answer.", meta: {} };
     });
-    const { request } = createHarness(invoke);
+    // Different configured timeouts deliberately exercise the supported separate-memory path.
+    const { request } = createHarness(invoke, undefined, true);
     await expect(runRequestRunner(request)).resolves.toEqual({
       output: "Fresh answer.",
       memoryCandidates: [FRESH_CANDIDATE],
@@ -252,7 +255,7 @@ test.each([
     expect(invoke.mock.calls.map(([input]) => invocationPhase(input))).toEqual([
       "gate",
       "memory",
-      "gate",
+      "routing",
       "memory",
       "response",
     ]);

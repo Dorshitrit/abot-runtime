@@ -1,3 +1,4 @@
+import { dependencyResultSourceRef } from "../context/semantic-compaction/super-dependency-result-source.js";
 import { expect, test } from "vitest";
 import {
   stagedSuperFixture,
@@ -72,9 +73,15 @@ test.each([false, true])(
     expect(checkpoints[0]!.sourceDigests).toHaveLength(2);
     for (const { digest } of checkpoints[0]!.sourceDigests)
       expect(digest).toContain(STAGED_FACT);
-    const result = fixture.calls.find(({ step }) => step === "worker.result")!;
-    expect(JSON.stringify(result.messages)).toContain(STAGED_FACT);
-    expect(JSON.stringify(result.messages)).not.toContain(STAGED_RAW_MARKER);
+    const result = fixture.calls.find(({ messages }) => messages.some(({ content }) =>
+      content.includes("runtime_worker_execution_report_v1")))!;
+    const child = result.messages.map(({ content }) => {
+      try { return JSON.parse(content); } catch { return {}; }
+    }).find(({ kind, roleId }) => kind === "runtime_child_result" && roleId === "worker");
+    const report = JSON.parse(child.summary);
+    expect(report.kind).toBe("runtime_worker_execution_report_v1");
+    expect(JSON.stringify(report)).toContain(STAGED_FACT);
+    expect(JSON.stringify(report)).not.toContain(STAGED_RAW_MARKER);
     const reviewerIndex = fixture.calls.findIndex(
       ({ step }) => step === "reviewer.decision",
     );
@@ -146,14 +153,26 @@ test("S8: multiple Workers preserve separate evidence through independent SUPER 
     ref.startsWith("operation-supervision-evidence:"),
   );
   expect(supervisionRefs).toHaveLength(0);
-  expect(
-    JSON.stringify(
-      fixture.calls.filter(({ step }) => step === "worker.result"),
-    ),
-  ).toContain("embedded_exact_result");
-  expect(new Set(sourceRefs).size).toBe(4);
+  const visibleReports = fixture.calls.filter(({ step }) => step === "planner.decision").flatMap(({ messages }) =>
+    messages.flatMap(({ content }) => {
+      try { const child = JSON.parse(content); return child.kind === "runtime_child_result" && child.roleId === "worker"
+        ? [JSON.parse(child.summary)] : []; } catch { return []; }
+    }));
+  const reports = [...new Map(visibleReports.map((report) => [report.callId, report])).values()];
+  expect(reports).toHaveLength(2);
+  for (const report of visibleReports) expect(report).toEqual(reports.find((entry) => entry.callId === report.callId));
+  expect(reports.flatMap((report) => report.executionOutcomes.map(({ executionId }: { executionId: string }) => executionId)))
+    .toEqual(["capability-execution-1", "capability-execution-2", "capability-execution-3", "capability-execution-4"]);
+  for (const report of reports) {
+    expect(report.evidence.requestToolResults.semanticCheckpoint.coveredSources)
+      .toEqual(expect.arrayContaining([...checkpoints.find(({ callId }) => callId === report.callId)!.sourceDigests]));
+    expect(JSON.stringify(report)).toContain(STAGED_FACT);
+    expect(JSON.stringify(report)).not.toContain(STAGED_RAW_MARKER);
+  }
+  expect(sourceRefs.filter((ref) => ref.startsWith("dependency-result:"))).toEqual([dependencyResultSourceRef("result-1")]);
+  expect(new Set(sourceRefs).size).toBe(5);
   expect(checkpoints.map(({ sourceDigests }) => sourceDigests.length)).toEqual([
-    2, 2,
+    2, 3,
   ]);
   for (const checkpoint of checkpoints) {
     expect(checkpoint.continuation.currentState).toBe(STAGED_FACT);
@@ -166,7 +185,7 @@ test("S8: multiple Workers preserve separate evidence through independent SUPER 
   const compactCalls = fixture.calls.filter(
     ({ step }) => step === "super.compact.continuation",
   );
-  expect(compactCalls).toHaveLength(4);
+  expect(compactCalls).toHaveLength(5);
   expect(
     fixture.events.filter(
       ({ name }) => name === "context.compaction.completed",

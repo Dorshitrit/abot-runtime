@@ -474,9 +474,10 @@ the loader reads:
 plugins/example-lookup/skills/example_lookup_skill/SKILL.md
 ```
 
-No skill is globally or always included. Guidance is projected only for the
-selected capability from its capability binding, whether the authorized
-principal is Worker or the direct root.
+No skill is globally or always included. Ordinarily, guidance is projected only
+for the selected capability from its capability binding, whether the authorized
+principal is Worker or the direct root. The explicit fused-selection mode below
+can disclose one eligible opted-in capability's guidance before Worker selection.
 
 `controlsRefinement: "mechanical_when_complete"` is an explicit
 capability-level optimization for a single invocation whose selection-owned
@@ -486,6 +487,21 @@ is bypassed. The runtime still uses the ordinary controls decision whenever an
 optional or required control remains, and batching retains its ordinary
 refinement step. Adapter, payload, approval, execution, and result lifecycles
 are unchanged.
+
+`controlsRefinement: "fused_with_selection"` opts a capability into selecting its
+complete controls together with its identity in an eligible SUPER Worker
+decision. Eligibility requires exactly one eligible opted-in capability within
+that Worker's complete canonical catalog: an observation with no payload, runtime
+path controls or selection-owned controls, and matching effective Worker/controls
+model configuration and guidance. Every other catalog choice remains available.
+The complete operation schema and scoped execution guidance are then available
+before the decision, including the ability to decline an invalid invocation.
+Optional controls retain their original omission semantics; the runtime validates
+the full accepted controls before ordinary approval and execution. This does not
+change operation inputs, permissions, payload handling or approval restoration.
+Selecting another capability, batching, EA and ineligible configurations retain
+separate controls refinement. The private technology-news RSS capability is the only
+packaged opt-in; its query and result limit remain optional.
 
 Payload `contextScope` is enforced at the shared model-projection boundary.
 The same `tool_payload.raw` author validates either the delegated Worker or the

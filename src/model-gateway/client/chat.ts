@@ -1,3 +1,5 @@
+import { withModelIssues } from "./model-issues.js";
+import { PROVIDER_STREAM_DISCONNECTION_HEADER, providerStreamDisconnectionCause } from "../protocol/provider-stream-disconnection.js";
 import { PROVIDER_CONTEXT_OVERFLOW_HEADER, providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
 import { attachModelGatewayHttpUserMessage } from "./user-message.js";
 import { PROVIDER_USER_ERROR_HEADER } from "../protocol/provider-user-error.js";
@@ -28,6 +30,15 @@ import {
 export async function invokeModelGatewayWithOptions(
   params: InvokeModelGatewayParams,
   options: ModelGatewayClientOptions = {},
+): Promise<{ text: string; meta: StreamMeta }> {
+  return withModelIssues(params.onIssue, params.abortSignal,
+    (issues) => invokeWithIssues(params, options, issues));
+}
+
+async function invokeWithIssues(
+  params: InvokeModelGatewayParams,
+  options: ModelGatewayClientOptions,
+  issues: import("./model-issues.js").ClientModelIssues,
 ): Promise<{ text: string; meta: StreamMeta }> {
   const clientOptions = resolveClientOptions(options);
   const url = clientOptions.baseUrl;
@@ -68,6 +79,7 @@ export async function invokeModelGatewayWithOptions(
     },
     params.abortSignal,
   );
+  issues.readHeader(response);
   params.abortSignal.throwIfAborted();
 
   traceDebug("model-gateway.client", "chat.response.received", {
@@ -90,7 +102,8 @@ export async function invokeModelGatewayWithOptions(
     throw attachModelGatewayHttpUserMessage(new ModelGatewayInvocationError(
       "http",
       `bridge_request_failed:${response.status}:${permitsModelContentTrace(params.modelStep, params.messages) ? errorText || "empty error body" : "content omitted"}`,
-      providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
+      providerStreamDisconnectionCause(response.headers.get(PROVIDER_STREAM_DISCONNECTION_HEADER)) ??
+        providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
     ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(params.modelStep, params.messages));
   }
 
@@ -106,7 +119,7 @@ export async function invokeModelGatewayWithOptions(
     params.abortSignal,
     clientOptions.getStreamInactivityTimeoutMs,
   );
-  const stream = new ChatStreamAccumulator(params);
+  const stream = new ChatStreamAccumulator({ ...params, onDiagnostic: issues.observe });
 
   while (true) {
     const { done, value } = await streamReader.read();

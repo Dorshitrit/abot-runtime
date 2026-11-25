@@ -33,12 +33,16 @@ export function createSupervisorSkillSelectionFormat(eligibleIds: readonly strin
   };
 }
 
-export const SUPERVISOR_SKILL_SELECTION_INSTRUCTIONS = [
-  "Select Skills for the current request under these mandatory rules. Return only the supplied JSON shape.",
+export const SUPERVISOR_SKILL_APPLICABILITY_INSTRUCTIONS = [
   "1. Identify the requested task. Select a Skill only when its description clearly matches a concrete requirement of that task or an explicitly required workflow. Each selected Skill must independently satisfy this rule.",
   "2. Reject Skills with only superficial topic overlap, a merely possible tool or method, or unclear applicability. Do not invent extra work to justify a match or read a Skill just in case.",
   "3. Select only the Skills needed for the matching requirements. The catalog is a set of options, not a checklist. You MUST NOT read all Skills merely because they are available.",
   "An irrelevant Skill introduces unrelated instructions that can distract execution, interfere with the task, and degrade the result. Unnecessary Skill reads are selection errors.",
+];
+
+export const SUPERVISOR_SKILL_SELECTION_INSTRUCTIONS = [
+  "Select Skills for the current request under these mandatory rules. Return only the supplied JSON shape.",
+  ...SUPERVISOR_SKILL_APPLICABILITY_INSTRUCTIONS,
   "4. If no additional unread Skill is needed, you MUST choose continue. This ends Skill selection for this step and advances to routing with any guidance already read. Unread catalog entries do not block continuation; zero reads is valid.",
   "5. Otherwise choose read_skills with one to eight distinct exact eligible IDs in skillIds. Copy IDs exactly as supplied, without decoding or substituting Skill names.",
   "You may select multiple Skills in one decision (1–8 IDs). If several Skills are needed for this request, include them together in skillIds. Do not stop at the first match. Selection reopens only after another role returns to Supervisor.",

@@ -1,4 +1,5 @@
 import { isOpenAIPromptCacheEnabled } from "../../model-gateway/providers/openai/prompt-cache.js";
+import { readSetupReasoningSummary } from "../../model-gateway/providers/openai/setup-reasoning-summary.js";
 import { chatGptSetupMetadata } from "./chatgpt-setup-binding.js";
 import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { readFileSync } from "node:fs";
@@ -45,12 +46,14 @@ export function configuredSetupModel(source: InspectedRuntimeConfigFile) {
   const provider = policy?.providers?.[profile.provider];
   if (!provider) return undefined;
   const apiKeyEnv = provider.apiKeyEnv?.trim() || (provider.type === "openai" ? "OPENAI_API_KEY" : undefined);
+  const reasoningSummary = readSetupReasoningSummary(provider.type, profile.options);
   return {
     provider: provider.type,
     model: profile.model,
     contextWindowTokens: profile.contextWindowTokens,
     supportsThinking: profile.supportsThinking,
     ...(provider.type === "openai" && isOpenAIPromptCacheEnabled(profile.options ?? {}) ? { promptCache: true } : {}),
+    ...(reasoningSummary !== undefined ? { reasoningSummary } : {}),
     reasoningBudget: profile.generation?.reasoningBudget,
     requiresApiKey: requiresProviderCredential(provider),
     ...chatGptSetupMetadata(provider),

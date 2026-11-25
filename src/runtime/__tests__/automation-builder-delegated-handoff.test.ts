@@ -6,7 +6,7 @@ import { compileAutomationGraph } from "../automations/graph-validation.js";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
 import { createAutomationBuilderToolModule } from "../capabilities/automation-builder/tool-module.js";
 import { AUTOMATION_BUILDER_PAYLOAD_FORMAT } from "../capabilities/automation-builder/payload-schema.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { readInvalidOutputCapsules } from "./support/invalid-output-request.js";
 import { createSchedulerRuntimeFixture, type ScheduledModelInput } from "./support/scheduler-runtime-fixture.js";
 import { supervisorFormatName, withSupervisorPreparation } from "./support/supervisor-model-phases.js";
@@ -65,18 +65,16 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
       objective: "Coordinate creation and review of the requested inactive draft.",
       acknowledgement: "I will build and review the connected draft.",
     }) },
-    { step: "supervisor.decision", output: JSON.stringify({ workingDirectory: "." }) },
     { step: "planner.decision", output: decision({ action: "invoke_role", roleId: "worker",
       plan: { summary: "Create the complete draft in one transaction.", items: [
         { title: "Save connected draft", objective: workerObjective },
       ] }, selectedItemIndexes: [0], workerCapabilityScope: { catalogGroupIds: ["automations"] },
     }) },
-    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     { step: "worker.decision", output: (input) => {
       expect(capsule(input, "runtime_worker_assignment")).toMatchObject({ objective: workerObjective });
-      return decision({ action: "invoke_capability", capabilityId: "create_automation_draft",
+      return workerFusedReply(input, { action: "invoke_capability", capabilityId: "create_automation_draft",
         intent: "Save the connected draft.", authoringObjective, selectionControls: { title: "Delegated draft" },
-      });
+      }).text;
     } },
     { step: "tool_payload.raw", output: async (input) => {
       expect(input.format).toEqual(AUTOMATION_BUILDER_PAYLOAD_FORMAT);
@@ -97,7 +95,7 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
       expect(await service!.list()).toEqual([]);
       return JSON.stringify(recipe);
     } },
-    { step: "worker.evidence", output: async (input) => {
+    { step: "worker.decision", output: async (input) => {
       const results = capsule(input, "runtime_request_tool_results_v1").results;
       expect(results).toHaveLength(1);
       expect(results[0], JSON.stringify(results[0])).toMatchObject({ executionId: "capability-execution-1", callId: "call-3",
@@ -108,14 +106,18 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
       expect(created.revision).toBe(1);
       expect(created.aliases).toEqual(expect.objectContaining({ observe: expect.any(String), summarize: expect.any(String) }));
       expect((await service!.getDraft(created.automationId))?.revision).toBe(created.revision);
-      return workerEvidenceReply(input, false).text;
+      return workerFusedReply(input, { action: "return_result" }, workReport()).text;
     } },
-    { step: "worker.result", output: () => workReport() },
     { step: "planner.decision", output: (input) => {
-      expect(capsule(input, "runtime_child_result")).toMatchObject({ callerCallId: "call-2", childCallId: "call-3",
-        roleId: "worker", outcome: "completed", summary: workReport(),
+      const child = capsule(input, "runtime_child_result");
+      expect(child).toMatchObject({ callerCallId: "call-2", childCallId: "call-3",
+        roleId: "worker", outcome: "completed",
         workReceipt: { kind: "work_result_v1", producerCallId: "call-3" },
       });
+      const report = JSON.parse(child.summary);
+      expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+        assessment: { established: workReport(), requiresExecution: false } });
+      expect(JSON.parse(report.evidence.requestToolResults.results[0].adapterResult.result.output)).toEqual(created);
       return decision({ action: "return_result", result: workReport() });
     } },
     { step: "supervisor.decision", output: (input) => {
@@ -169,8 +171,8 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
   expect(events).toContainEqual(expect.objectContaining({ type: "completed", output: finalAnswer }));
   expect(next).toBe(script.length);
   expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
-    "planner.decision", "worker.evidence", "worker.decision", "tool_payload.raw", "worker.evidence", "worker.result",
+    "supervisor_fused_entry", "supervisor_fused_routing",
+    "planner.decision", "worker.decision", "tool_payload.raw", "worker.decision",
     "planner.decision", "supervisor_decision", "reviewer.decision", "supervisor_decision", "supervisor.response",
   ]);
   expect(execute).toHaveBeenCalledOnce();

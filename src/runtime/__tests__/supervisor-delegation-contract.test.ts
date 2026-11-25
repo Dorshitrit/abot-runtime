@@ -16,6 +16,10 @@ afterEach(() => { vi.restoreAllMocks(); resetDebugLoggerConfig(); });
 
 const parse = (decision: unknown, options: Parameters<typeof parseSupervisorDelegationOutput>[1] = {}) =>
   parseSupervisorDelegationOutput(JSON.stringify({ decision }), options);
+const scopedCatalog: NonNullable<SupervisorDelegationOptions["availableWorkerCapabilityCatalog"]> = [
+  { groupId: "read", memberCount: 1, effects: ["observation"] },
+  { groupId: "write", memberCount: 1, effects: ["mutation"] },
+];
 const invocation = (roleId: string) => ({ action: "invoke_role", roleId, objective: "Perform the requested procedure." });
 
 test("delegation has one exact Worker/Planner branch without tool or presentation choices", () => {
@@ -110,6 +114,10 @@ test.each([
 
 test.each([
   {},
+  { availableWorkerCapabilityCatalog: scopedCatalog },
+  { allowedRoleIds: ["worker"], availableWorkerCapabilityCatalog: scopedCatalog },
+  { allowedRoleIds: ["planner"], availableWorkerCapabilityCatalog: scopedCatalog },
+  { allowMemoryRecall: true, availableWorkerCapabilityCatalog: scopedCatalog },
   { allowedRoleIds: ["worker"] },
   { allowedRoleIds: ["planner"] },
   { allowedRoleIds: ["worker", "planner"] },
@@ -200,3 +208,24 @@ function readSchemaPointer(schema: Record<string, unknown>, pointer: string): un
     return (value as Record<string, unknown>)[key];
   }, schema);
 }
+
+
+test("offered groups require valid initial Worker scope and preserve canonical selection", () => {
+  const options = { availableWorkerCapabilityCatalog: scopedCatalog };
+  for (const scope of [undefined, null, {}, { catalogGroupIds: [] }, { catalogGroupIds: ["unknown"] }, { catalogGroupIds: [7] }]) {
+    const decision = { ...invocation("worker"), ...(scope === undefined ? {} : { workerCapabilityScope: scope }) };
+    expect(parse(decision, options).ok).toBe(false);
+    expect(parse(decision, options)).toEqual(parseSupervisorDecisionOutput(JSON.stringify({ decision }), options));
+  }
+  const decision = { ...invocation("worker"), workerCapabilityScope: { catalogGroupIds: ["write", "read"] } };
+  expect(parse(decision, options)).toEqual({ ok: true, decision });
+  const variants = decisionVariants(createSupervisorDelegationFormat(options).schema);
+  expect(variants).toEqual(decisionVariants(createSupervisorDecisionFormat({ ...options, allowedRoleIds: ["worker", "planner"] }).schema).slice(1));
+  expect(variants.find(v => JSON.stringify(v).includes('"workerCapabilityScope"'))).toMatchObject({
+    required: expect.arrayContaining(["workerCapabilityScope"]),
+  });
+  expect(parse(invocation("planner"), options)).toEqual({ ok: true, decision: invocation("planner") });
+  expect(parse({ ...invocation("planner"), workerCapabilityScope: decision.workerCapabilityScope }, options).ok).toBe(false);
+  const recall = { action: "recall_memory", query: "Prior facts." };
+  expect(parse(recall, { ...options, allowMemoryRecall: true })).toEqual({ ok: true, decision: recall });
+});

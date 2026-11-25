@@ -1,3 +1,4 @@
+import { createAgentRequests } from "./runtime-web-client/agents.js";
 import { createRuntimeMaintenanceRequests } from "./runtime-web-client/runtime-maintenance.js";
 import { createChatgptAccountRequests } from "./runtime-web-client/chatgpt-accounts.js";
 import { createInformationBasketRequests } from "./runtime-web-client/information-basket.js";
@@ -395,6 +396,7 @@ export function createRuntimeWebClient({
       environmentQuery,
     }),
     ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createAgentRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createAutomationRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createProjectChangesRequests({ requestApi, getConfig }),
     ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),

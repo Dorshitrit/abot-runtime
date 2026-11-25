@@ -103,7 +103,7 @@ async function establishRuntimeOwner(
   }
 }
 
-async function tryAcquireRuntimeOwner(
+export async function tryAcquireRuntimeOwner(
   directory: string,
   ownerIdentity: string,
 ): Promise<(() => Promise<void>) | undefined> {

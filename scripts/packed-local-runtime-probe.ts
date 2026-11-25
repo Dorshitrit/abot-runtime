@@ -79,6 +79,7 @@ try {
 function consumerEnvironment(consumerDir: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    AGENT_BRIDGE_URL: "", AGENT_BRIDGE_TOKEN: "", AGENT_BRIDGE_CONNECTION_FILE: "",
     LLM_RUNTIME_CONFIG_FILE: join(consumerDir, "local/runtime.config.json"),
     LLM_RUNTIME_PROFILE: "prod",
     LLM_RUNTIME_WEB_ENVIRONMENT: "prod",

@@ -6,6 +6,7 @@ import {
 } from "../../../scripts/runtime-setup-files.js";
 
 import { requireSetupPromptCacheProvider } from "../../../scripts/runtime-setup-prompt-cache.js";
+import { requireSetupReasoningSummaryProvider } from "../../model-gateway/providers/openai/setup-reasoning-summary.js";
 import { parseSetupModelOptions, type SetupModelOptions } from "../../../scripts/runtime-setup-model-options.js";
 import { defaultProviderAddress, supportsProviderAddress } from "../../../scripts/runtime-setup-provider-options.js";
 
@@ -99,6 +100,9 @@ export function parseRuntimeSetupInput(
   }
   try { requireSetupPromptCacheProvider(provider, modelOptions.promptCache); } catch (error) {
     throw new RuntimeSetupError("invalid_setup_prompt_cache", (error as Error).message);
+  }
+  try { requireSetupReasoningSummaryProvider(provider, modelOptions.reasoningSummary); } catch (error) {
+    throw new RuntimeSetupError("invalid_setup_reasoning_summary", (error as Error).message);
   }
   let accountRef: string | undefined;
   try {

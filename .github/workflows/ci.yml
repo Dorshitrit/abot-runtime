@@ -443,6 +443,14 @@ jobs:
           src/runtime/__tests__/web-saved-approval-steering.test.ts
           --maxWorkers=4 --reporter=default --reporter=json
           --outputFile.json=.codex/artifacts/ci-windows-compatibility/session-steering-results.json
+      - name: Validate managed llama.cpp native storage
+        run: >-
+          npx vitest run
+          src/web-ui/managed-llama/platform-policy.test.ts
+          src/web-ui/managed-llama/platform-archive.test.ts
+          src/web-ui/managed-llama/platform-storage-native.test.ts
+          --maxWorkers=1 --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/managed-llama-results.json
       - name: Upload Windows test evidence
         if: always()
         uses: actions/upload-artifact@v7

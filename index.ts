@@ -2,28 +2,19 @@ import {
   createLocalRuntimeApplication,
   loadRuntimeConfig,
 } from "./src/runtime/index.js";
-import { startAgentBridge } from "./src/bridge/start-agent-bridge.js";
+import { resolveConfiguredRuntimeConnection } from "./src/bridge/configured-runtime-connection.js";
 import { recoverRuntimeSetupEdit } from "./src/web-ui/local-runtime/runtime-setup-edit-recovery.js";
 
 async function main() {
   await recoverRuntimeSetupEdit(process.cwd());
   const config = loadRuntimeConfig();
-  const runtime = createLocalRuntimeApplication(config);
+  const bridge = resolveConfiguredRuntimeConnection(config, config.runtimeId, process.cwd());
+  const runtime = createLocalRuntimeApplication(config, { bridge });
   await runtime.start();
-  const handle = startAgentBridge({
-    runtimeConfig: config,
-    runtimeId: config.runtimeId,
-    url: config.agentBridgeUrl,
-    token: config.agentBridgeToken,
-    requestHandler: runtime.requests,
-    sessionStore: runtime.services.sessions,
-    attachmentStore: runtime.services.attachments,
-  });
-
-  console.log(`runtime bridge client started: ${config.runtimeId}`);
+  console.log(`runtime started: ${config.runtimeId}`);
 
   const stopRuntime = async () => {
-    await Promise.all([handle.stop(), runtime.stop()]);
+    await runtime.stop();
     process.exit(0);
   };
   process.on("SIGINT", stopRuntime);

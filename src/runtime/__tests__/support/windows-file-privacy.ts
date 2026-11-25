@@ -29,7 +29,7 @@ export async function assertWindowsPrivateFile(path: string): Promise<void> {
     ({ stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand",
       Buffer.from(inspectFileAcl, "utf16le").toString("base64")], {
       env: { ...process.env, ABOT_TEST_PRIVATE_FILE: path },
-      windowsHide: true, timeout: 10_000, maxBuffer: 16_384,
+      windowsHide: true, timeout: 20_000, maxBuffer: 16_384,
     }));
   } catch (error) {
     const failure = error as Error & { code?: unknown; killed?: boolean; signal?: string; stderr?: string };

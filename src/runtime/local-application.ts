@@ -1,4 +1,7 @@
+import { socketConnectionClient } from "./socket-connection/contracts.js";
+import type { RuntimeBridgeConnection } from "../bridge/runtime-connection.js";
 import { createLocalMaintenanceClient } from "./local-host/client-maintenance.js";
+import { createLocalAgentEvents, createLocalAgentsClient } from "./local-host/client-agents.js";
 import { join } from "node:path";
 import { loadRuntimeConfig } from "./config.js";
 import type { RuntimeConfig } from "./ports.js";
@@ -23,6 +26,7 @@ import { createSparkChatAccess } from "./spark-chat/service.js";
 
 export type LocalRuntimeApplicationOptions = SparkHomeAppearanceOptions & Readonly<{
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
+  bridge?: RuntimeBridgeConnection;
 }>;
 
 /** Managed library entry: attach to the environment owner or create it once. */
@@ -56,6 +60,8 @@ export function createLocalRuntimeApplication(
   );
   const learning = createLocalLearningClient(call);
   const basket = createLocalInformationBasketClient(call);
+  const agentEvents = createLocalAgentEvents();
+  const agents = createLocalAgentsClient(call);
   const homeEvents = createLocalSparkHomeEvents();
   const nativePermissions = createLocalNativePermissionClient((method, args) => {
     if (stopped || !connection) return Promise.reject(new Error("local_runtime_not_started"));
@@ -105,11 +111,17 @@ export function createLocalRuntimeApplication(
         learning.receive(event);
         basket.receive(event);
         homeEvents.receive(event);
+        agentEvents.receive(event);
       });
       if (options.scheduledRequestOptions) {
         await current.call("controls.register", []);
       }
       if (options.sparkHomeAppearance) await current.call("sparkHomeHost.register", []);
+      if (options.bridge && !stopped) {
+        await current.call("bridge.start", [options.bridge]).catch(() => {
+          console.error("The outbound Socket connection could not be started. Local runtime is available.");
+        });
+      }
     } catch (error) {
       await current.close();
       throw error;
@@ -131,6 +143,8 @@ export function createLocalRuntimeApplication(
 
   return Object.freeze({
     services,
+    agents,
+    socketConnection: socketConnectionClient(call),
     requests: Object.freeze({
       ...client.requests,
       sparkChat: createSparkChatAccess(services),
@@ -142,6 +156,11 @@ export function createLocalRuntimeApplication(
     approvals: client.approvals,
     nativePermissions,
     start,
+    async connectBridge(bridge: RuntimeBridgeConnection): Promise<void> {
+      await start();
+      if (stopped) throw new Error("local_runtime_stopped");
+      await connection!.call("bridge.start", [bridge]);
+    },
     async stop(): Promise<void> {
       stopped = true;
       try {
@@ -151,6 +170,7 @@ export function createLocalRuntimeApplication(
         learning.close();
         basket.close();
         homeEvents.close();
+        agentEvents.close();
         await connection?.close();
       }
     },
@@ -166,11 +186,13 @@ export function createLocalRuntimeApplication(
       learning.close();
       basket.close();
       homeEvents.close();
+      agentEvents.close();
       return closing;
     },
     subscribeScheduledEvents: client.subscribe.bind(client),
     subscribeLearningEvents: learning.subscribe,
     subscribeInformationBasketEvents: basket.subscribe,
+    subscribeAgentEvents: agentEvents.subscribe,
     subscribeSparkHomeEvents: homeEvents.subscribe,
   });
 }

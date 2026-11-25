@@ -20,7 +20,12 @@ test.each(["EXACT_TARGET\r\n", ""])("range evidence keeps selected source %j exa
   const projection = buildFilePayloadInput(f.request, input);
   expect(JSON.stringify(projection.messages)).not.toContain("UNREAD_FILE_CONTENT");
   const originalSourceMessage = filePayloadSource(projection.messages);
-  expect(JSON.parse(originalSourceMessage!.content)).toMatchObject({ mode: "range", sourceText });
+  expect(JSON.parse(originalSourceMessage!.content)).toMatchObject({
+    mode: "range", sourceState: "current_at_payload_preparation",
+    coverage: "complete_selected_range", sourceText,
+    selectedRangeContentVersion: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+  });
+  expect(projection.messages.at(-1)).toEqual(originalSourceMessage);
   const assignment = projection.messages.find(({ content }) => content.includes('"kind":"execution_file_assignment_v1"'));
   f.invoke.mockImplementation(async (request) => {
     expect(request.modelStep).toBe("context.compact");
@@ -40,6 +45,7 @@ test.each(["EXACT_TARGET\r\n", ""])("range evidence keeps selected source %j exa
   expect(prepared.kind).toBe("prepared");
   if (prepared.kind !== "prepared") throw new Error("compaction_not_prepared");
   expect(filePayloadSource(prepared.preparation.messages)).toEqual(originalSourceMessage);
+  expect(prepared.preparation.messages.at(-1)).toEqual(originalSourceMessage);
   expect(prepared.preparation.messages).toContainEqual(assignment);
   expect(filePayloadEvidence(prepared.preparation.messages).settledCapabilityResults).toEqual([]);
   expect(JSON.stringify(prepared.preparation.messages)).toContain("PRESERVED_TOOL_FACT");
@@ -56,6 +62,7 @@ test.each(["EXACT_TARGET\r\n", ""])("range evidence keeps selected source %j exa
   const nextController = createFilePayloadCompactionController(request, input, nextProjection);
   const projected = nextController.project(nextProjection.messages);
   expect(filePayloadSource(projected)).toEqual(originalSourceMessage);
+  expect(projected.at(-1)).toEqual(originalSourceMessage);
   expect(JSON.stringify(projected)).not.toContain("UNREAD_FILE_CONTENT");
   expect(filePayloadEvidence(projected).semanticCheckpoint.coveredSources)
     .toEqual(filePayloadEvidence(prepared.preparation.messages).semanticCheckpoint.coveredSources);

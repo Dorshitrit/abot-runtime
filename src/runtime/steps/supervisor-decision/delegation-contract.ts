@@ -14,7 +14,7 @@ import { createSupervisorDecisionFormat } from "./format.js";
 import { parseSupervisorDecisionOutput } from "./parser.js";
 
 type CanonicalParserOptions = NonNullable<Parameters<typeof parseSupervisorDecisionOutput>[1]>;
-export type SupervisorDelegationOptions = Pick<CanonicalParserOptions, "allowedRoleIds" | "allowMemoryRecall">;
+export type SupervisorDelegationOptions = Pick<CanonicalParserOptions, "allowedRoleIds" | "allowMemoryRecall" | "availableWorkerCapabilityCatalog">;
 
 /** Initial delegation offers Worker/Planner and eligible root recall, never tools or response. */
 export function createSupervisorDelegationFormat(
@@ -64,7 +64,8 @@ function canonicalDelegationOptions(options: SupervisorDelegationOptions) {
     allowMemoryRecall: canRecallBeforeDelegation,
     allowSkillAuthoring: false,
     allowedRoleIds,
-    availableWorkerCapabilityCatalog: [],
+    availableWorkerCapabilityCatalog: allowedRoleIds.includes("worker")
+      ? (options.availableWorkerCapabilityCatalog ?? []) : [],
     includeAcknowledgement: false,
     includeTitle: false,
     includeResponseRecommendation: false,

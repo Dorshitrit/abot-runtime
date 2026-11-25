@@ -1,15 +1,16 @@
 /** The original live panel is borrowed temporarily, never rendered a second time. */
-export function createHomeWidgetDialog({ root, onClosed }) {
+export function createHomeWidgetDialog({ root, onClosed, titleId = "home-widget-detail-title" }) {
   const documentRoot = root.ownerDocument;
   const dialog = documentRoot.createElement("dialog");
   dialog.className = "home-widget-dialog";
-  dialog.setAttribute("aria-labelledby", "home-widget-detail-title");
+  dialog.setAttribute("aria-labelledby", titleId);
   dialog.innerHTML = `<header class="home-widget-dialog-header">
-    <h2 id="home-widget-detail-title"></h2>
+    <h2></h2>
     <button type="button" class="home-text-button" data-home-widget-close aria-label="Close details">Close</button>
   </header><div class="home-widget-dialog-body"></div>`;
   root.appendChild(dialog);
   const title = dialog.querySelector("h2");
+  title.setAttribute("id", titleId);
   const body = dialog.querySelector(".home-widget-dialog-body");
   const closeButton = dialog.querySelector("[data-home-widget-close]");
   const empty = documentRoot.createElement("p");

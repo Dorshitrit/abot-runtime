@@ -55,21 +55,10 @@ export function createArtifactReadmissionFixture(
   });
   const events: { name: string; extra?: Record<string, unknown> }[] = [];
   let routingCalls = 0;
-  let directoryCalls = 0;
   const objective = options.objective ?? "Update the saved news summary.";
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (modelFormatName(input) === "supervisor_procedure_gate")
+    if (modelFormatName(input) === "supervisor_fused_entry")
       return { text: JSON.stringify({ decision: { requiresProcedure: true } }), meta: {} };
-    if (modelFormatName(input) === "supervisor_working_directory") {
-      directoryCalls += 1;
-      return {
-        text:
-          options.repairPhase === "directory" && directoryCalls === 1
-            ? "{"
-            : JSON.stringify({ workingDirectory: ".exact-artifacts" }),
-        meta: {},
-      };
-    }
     routingCalls += 1;
     if (routingCalls === 1 && options.steeringText) {
       fixture.steering.append({
@@ -86,6 +75,9 @@ export function createArtifactReadmissionFixture(
                 action: "invoke_role",
                 roleId: "worker",
                 objective,
+                workingDirectory: options.repairPhase === "directory" && routingCalls === 1
+                  ? 17 : ".exact-artifacts",
+                workerCapabilityScope: { catalogGroupIds: ["read"] },
               },
             }),
       meta: {},
@@ -120,6 +112,7 @@ export function createArtifactReadmissionFixture(
   };
   const input = buildSupervisorDelegationInput(request, {
     ...runOptions,
+    fusedRouting: true,
     ...buildSupervisorCapabilityBriefOptions(request, runOptions),
   });
   const assess = (messages: readonly ChatMessage[], format = input.format) => {
@@ -153,8 +146,8 @@ export function createArtifactReadmissionFixture(
     assess,
     run: () => runSupervisorDecision(request, runOptions),
     inputs: () => invoke.mock.calls.map(([input]) => input),
-    // Existing artifact oracles target the two work phases; the gate has no references.
+    // The fused routing decision owns both objective and directory; entry has no references.
     workInputs: () => invoke.mock.calls.map(([input]) => input)
-      .filter((input) => modelFormatName(input) !== "supervisor_procedure_gate"),
+      .filter((input) => modelFormatName(input) !== "supervisor_fused_entry"),
   };
 }

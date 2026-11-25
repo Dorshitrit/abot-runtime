@@ -6,6 +6,7 @@ const WORKSPACE_PATHS = Object.freeze({
   chat: "/chat",
   schedules: "/schedules",
   automations: "/automations",
+  agents: "/agents",
   learning: "/learning",
   memory: "/memory",
   skills: "/skills",
@@ -36,6 +37,7 @@ export function readWorkspaceRoute(location) {
     environment: routeParameter(parameters, "environment"),
     session: automationRun ? "" : routeParameter(parameters, "session"),
     automationRun,
+    ...(workspace === "agents" ? { agent: routeParameter(parameters, "agent") } : {}),
     category: configurationCategoryForWorkspace(workspace) || "",
     tab: routeParameter(parameters, "tab"),
     job: routeParameter(parameters, "job"),
@@ -56,6 +58,7 @@ export function workspaceRouteUrl(route) {
     parameters.set("automationRun", route.automationRun);
   else if (workspace === "chat" && route.session)
     parameters.set("session", route.session);
+  if (workspace === "agents" && route.agent) parameters.set("agent", route.agent);
   if (workspace === "plugins") {
     if (route.tab === "discover") parameters.set("tab", "discover");
   }

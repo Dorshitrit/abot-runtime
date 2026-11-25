@@ -66,6 +66,7 @@ export async function invokeStructuredModelStep<T>(params: {
   format: ModelGatewayJsonSchemaFormat;
   messages: ChatMessage[];
   promptCacheBoundaryBeforeMessage?: ChatMessage;
+  createInvocationTailMessages?: () => readonly ChatMessage[];
   timeoutReason: string;
   boundSteeringVersion?: number;
   callerSteering?: RequestSteeringSnapshot;
@@ -93,6 +94,8 @@ export async function invokeStructuredModelStep<T>(params: {
     const attempt = await modelStepInvoker.invoke<StructuredModelAttempt<T>>({
       modelStep: params.modelStep,
       messages,
+      ...(params.createInvocationTailMessages
+        ? { createInvocationTailMessages: params.createInvocationTailMessages } : {}),
       ...(params.promptCacheBoundaryBeforeMessage
         ? { promptCacheBoundaryBeforeMessage: params.promptCacheBoundaryBeforeMessage } : {}),
       timeoutReason: params.timeoutReason,
@@ -203,7 +206,9 @@ export async function invokeStructuredModelStep<T>(params: {
       sameRoleCall: true,
     });
     previousRejectedOutput = attempt.rejectedOutput;
-    messages = buildModelRepairAttemptMessages(params.messages, repairHint);
+    messages = buildModelRepairAttemptMessages(
+      params.messages, repairHint, params.promptCacheBoundaryBeforeMessage,
+    );
   }
 
   throw new Error("structured_model_repair_state_invalid");

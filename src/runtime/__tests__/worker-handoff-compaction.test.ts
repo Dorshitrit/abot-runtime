@@ -35,10 +35,10 @@ test("hands off late canonical evidence below the model threshold without forcin
   const checkpoint = fixture.store.get(fixture.checkpoint.scopeId)!;
   const lateExecutionId = fixture.view.results.at(-1)!.executionId;
 
-  expect(result).toEqual({
-    action: "return_result",
-    result: LATE_HANDOFF_MARKER,
-  });
+  expect(result.action).toBe("return_result");
+  if (result.action !== "return_result") throw new Error("expected Worker report");
+  const report = JSON.parse(result.result);
+  expect(report.assessment.requiresExecution).toBe(false);
   expect(JSON.stringify(checkpoint)).toBe(before);
   expect(fixture.request.onEvent).not.toHaveBeenCalledWith(
     "context.compaction.started",
@@ -49,32 +49,32 @@ test("hands off late canonical evidence below the model threshold without forcin
   ).toEqual(fixture.checkpoint.sourceDigests);
   expect(checkpoint.sourceDigests.some(({ sourceRef }) => sourceRef === lateExecutionId)).toBe(false);
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.evidence",
-    "worker.result",
+    "worker.decision",
   ]);
-  const resultInput = fixture.invoke.mock.calls.find(
-    ([input]) => input.modelStep === "worker.result",
+  const decisionInput = fixture.invoke.mock.calls.find(
+    ([input]) => input.modelStep === "worker.decision",
   )![0];
-  expect(JSON.stringify(resultInput.messages)).toContain(LATE_HANDOFF_MARKER);
-  expect(JSON.stringify(resultInput.messages)).toContain(lateExecutionId);
-  const resultEvidence = (resultInput.messages as readonly ChatMessage[]).map(({ content }) => {
+  const decisionEvidence = (decisionInput.messages as readonly ChatMessage[]).map(({ content }) => {
     if (!content.startsWith("{")) return undefined;
     return JSON.parse(content);
   }).find((message) => message?.kind === "runtime_request_tool_results_v1");
+  const resultEvidence = report.evidence.requestToolResults;
+  expect(resultEvidence).toEqual(decisionEvidence);
   expect(resultEvidence.semanticCheckpoint.coveredSources).toEqual(fixture.checkpoint.sourceDigests);
   expect(resultEvidence.results.find((result: { executionId: string }) => result.executionId === lateExecutionId))
     .toMatchObject({ referenceData: LATE_HANDOFF_MARKER });
-  expectFinalMeasuredEnvelope(fixture, "worker.result");
+  expectFinalMeasuredEnvelope(fixture);
 });
 
-test("the result model boundary compacts late evidence above its measured threshold with one lifecycle", async () => {
-  const fixture = await createWorkerHandoffFixture({ lateEvidence: true, pressureStep: "worker.result" });
-  await expect(runWorkerDecision(fixture.request, fixture.decisionOptions)).resolves.toMatchObject({
-    action: "return_result", result: LATE_HANDOFF_MARKER,
-  });
+test("decision admission compacts late evidence once and the report preserves that checkpoint", async () => {
+  const fixture = await createWorkerHandoffFixture({ lateEvidence: true, pressureStep: "worker.decision" });
+  const result = await runWorkerDecision(fixture.request, fixture.decisionOptions);
+  expect(result.action).toBe("return_result");
+  if (result.action !== "return_result") throw new Error("expected Worker report");
+  expect(result.result).toContain(LATE_HANDOFF_MARKER);
 
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.evidence", "super.compact.continuation", "worker.result",
+    "super.compact.continuation", "worker.decision",
   ]);
   const checkpoint = fixture.store.get(fixture.checkpoint.scopeId)!;
   expect(checkpoint.sourceRevision).toBe(fixture.head.revision);
@@ -88,20 +88,22 @@ test("the result model boundary compacts late evidence above its measured thresh
   expect(lifecycle.map(([name]) => name)).toEqual([
     "context.compaction.started", "context.compaction.completed",
   ]);
-  expect(lifecycle[0]![1]).toMatchObject({ modelStep: "worker.result", beforeInputTokens: 95000 });
+  expect(lifecycle[0]![1]).toMatchObject({ modelStep: "worker.decision", beforeInputTokens: 95000 });
   expect(lifecycle[1]![1]).toMatchObject({
-    modelStep: "worker.result", invocationId: lifecycle[0]![1]!.invocationId,
+    modelStep: "worker.decision", invocationId: lifecycle[0]![1]!.invocationId,
   });
   expect(fixture.request.onEvent).toHaveBeenCalledWith("context.compaction.progress", expect.objectContaining({
-    modelStep: "worker.result", invocationId: lifecycle[0]![1]!.invocationId,
+    modelStep: "worker.decision", invocationId: lifecycle[0]![1]!.invocationId,
   }));
-  expectFinalMeasuredEnvelope(fixture, "worker.result");
+  expect(JSON.parse(result.result).evidence.requestToolResults.semanticCheckpoint.coveredSources)
+    .toEqual(checkpoint.sourceDigests);
+  expectFinalMeasuredEnvelope(fixture);
 });
 
 test("refreshes stale pre-evidence input from the checkpoint committed by evidence admission without another cycle", async () => {
-  const fixture = await createWorkerHandoffFixture({ lateEvidence: true, pressureStep: "worker.evidence" });
+  const fixture = await createWorkerHandoffFixture({ lateEvidence: true, pressureStep: "worker.decision" });
   const staleInput = fixture.buildInput();
-  await runWorkerDecision(fixture.request, fixture.decisionOptions);
+  const result = await runWorkerDecision(fixture.request, fixture.decisionOptions);
   const latest = fixture.store.get(fixture.checkpoint.scopeId)!;
   const callsBeforeRefresh = fixture.invoke.mock.calls.length;
   const source = await fixture.refresh(staleInput);
@@ -110,19 +112,21 @@ test("refreshes stale pre-evidence input from the checkpoint committed by eviden
   expect(fixture.store.get(fixture.checkpoint.scopeId)).toBe(latest);
   expect(fixture.invoke).toHaveBeenCalledTimes(callsBeforeRefresh);
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "super.compact.continuation", "worker.evidence", "worker.result",
+    "super.compact.continuation", "worker.decision",
   ]);
   const projected = JSON.parse(source.requestToolResultsContextMessage!.content);
   expect(projected.semanticCheckpoint.checkpointSourceRevision).toBe(latest.sourceRevision);
   expect(projected.semanticCheckpoint.coveredSources).toEqual(latest.sourceDigests);
   expect(projected.results).toEqual([]);
-  const resultInput = fixture.invoke.mock.calls.find(([input]) => input.modelStep === "worker.result")![0];
-  expect(JSON.stringify(resultInput.messages)).toContain(LATE_HANDOFF_MARKER);
+  expect(result.action).toBe("return_result");
+  if (result.action !== "return_result") throw new Error("expected Worker report");
+  expect(JSON.parse(result.result).evidence.requestToolResults).toEqual(projected);
+  expect(result.result).toContain(LATE_HANDOFF_MARKER);
   expect(compactionLifecycle(fixture).map(([name, data]) => [name, data!.modelStep])).toEqual([
-    ["context.compaction.started", "worker.evidence"],
-    ["context.compaction.completed", "worker.evidence"],
+    ["context.compaction.started", "worker.decision"],
+    ["context.compaction.completed", "worker.decision"],
   ]);
-  expectFinalMeasuredEnvelope(fixture, "worker.result");
+  expectFinalMeasuredEnvelope(fixture);
 });
 
 test("does not change a checkpoint when the handoff is already cancelled", async () => {
@@ -169,14 +173,14 @@ test("normal admission cancellation preserves the checkpoint and does not send a
   const stopped = new Error("handoff_request_stopped");
   const fixture = await createWorkerHandoffFixture({
     lateEvidence: true,
-    pressureStep: "worker.result",
+    pressureStep: "worker.decision",
     duringCompaction: ({ abort }) => abort.abort(stopped),
   });
   const before = JSON.stringify(fixture.store.get(fixture.checkpoint.scopeId));
   await expect(runWorkerDecision(fixture.request, fixture.decisionOptions)).rejects.toBe(stopped);
   expect(JSON.stringify(fixture.store.get(fixture.checkpoint.scopeId))).toBe(before);
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.evidence", "super.compact.continuation",
+    "super.compact.continuation",
   ]);
   expect(compactionLifecycle(fixture).map(([name]) => name)).toEqual([
     "context.compaction.started", "context.compaction.failed",
@@ -190,8 +194,8 @@ function compactionLifecycle(fixture: Awaited<ReturnType<typeof createWorkerHand
 
 function expectFinalMeasuredEnvelope(
   fixture: Awaited<ReturnType<typeof createWorkerHandoffFixture>>,
-  modelStep: "worker.result",
 ) {
+  const modelStep = "worker.decision";
   const sent = fixture.invoke.mock.calls.find(([input]) => input.modelStep === modelStep)![0];
   const measured = fixture.measurements.filter((input) => input.modelStep === modelStep).at(-1)!;
   expect(measured.messages).toEqual(sent.messages);

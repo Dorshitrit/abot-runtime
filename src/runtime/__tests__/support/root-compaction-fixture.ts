@@ -168,7 +168,7 @@ export async function createRootCompactionFixture(
       rootInputs.push([...messages]);
       const text = options.response
         ? "The source observation is available."
-        : JSON.stringify({ decision: typeof input.format === "object" && input.format?.name === "supervisor_procedure_gate"
+        : JSON.stringify({ decision: typeof input.format === "object" && ["supervisor_procedure_gate", "supervisor_fused_entry", "supervisor_fused_entry_with_memory_candidates"].includes(String(input.format?.name))
           ? { requiresProcedure: false } : { action: "respond" } });
       return { text, meta: {} };
     }

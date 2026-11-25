@@ -1,4 +1,5 @@
 import type { ChatgptAccountRequests } from "../services/runtime-web-client/chatgpt-accounts.js";
+import type { ManagedLlamaClient, ManagedLlamaServerClient } from "../services/runtime-web-client/managed-llama.js";
 import type { ModelReasoningBudget } from "../../../shared/model-reasoning.js";
 import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
 
@@ -34,16 +35,20 @@ export type RuntimeSetupSnapshot = Readonly<{
     contextWindowTokens?: number;
     supportsThinking?: boolean;
     promptCache?: boolean;
+    reasoningSummary?: "auto" | "concise" | "detailed" | null;
     reasoningBudget?: ModelReasoningBudget;
     baseUrl?: string;
   };
 }>;
 export type RuntimeSetupInput = {
+  managedLlama?: true;
+  managedLlamaRevision?: string;
   provider: "openai" | "openai-chatgpt" | "ollama" | "llamacpp";
   model: string;
   contextWindowTokens?: number;
   supportsThinking?: boolean;
   promptCache?: boolean;
+  reasoningSummary?: "auto" | "concise" | "detailed" | null;
   reasoningBudget?: ModelReasoningBudget;
   baseUrl?: string;
   apiKey?: string;
@@ -59,8 +64,10 @@ export type RuntimeSetupResponse = {
 export interface RuntimeSetupGuideDependencies {
   readonly container: HTMLElement;
   readonly chatgptClient?: ChatgptAccountRequests;
+  readonly managedLlamaClient?: ManagedLlamaClient & Partial<ManagedLlamaServerClient>;
   readonly conversationRegion: HTMLElement;
   readonly inspectConnection?: (input: Record<string, unknown>) => Promise<{ connection: { models: readonly string[] } }>;
+  onFirstModelReady?(environmentId: string): Promise<boolean> | undefined;
   readonly loadSetup: () => Promise<{ setup: RuntimeSetupSnapshot }>;
   readonly applySetup: () => Promise<{
     activation: RuntimeSetupResponse["activation"];

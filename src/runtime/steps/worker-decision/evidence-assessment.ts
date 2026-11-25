@@ -61,6 +61,19 @@ type AssessmentContext = Readonly<{
   capabilitySource?: WorkerDecisionCapabilitySource;
 }>;
 
+type WorkerEvidenceAssessmentInput = Readonly<{
+  call: RoleCallFrame;
+  source: WorkerResultAuthorSource;
+  contextMessages: readonly ChatMessage[];
+  capabilitySource?: WorkerDecisionCapabilitySource;
+}>;
+
+export type PreparedWorkerEvidenceAssessment = Readonly<{
+  state: AssessmentContext;
+  binding: WorkerEvidenceAssessmentReceipt["binding"];
+  contextMessages: readonly ChatMessage[];
+}>;
+
 const INSTRUCTIONS = [
   "Assess the evidence for exactly this Worker's immutable objective. Return only the supplied JSON decision. The shared context includes capability and control information for later phases; do not choose a capability, controls, another role, or a final user response.",
   "Decide whether further execution is required to establish the objective. Separate what the supplied evidence establishes from what remains. requiresExecution=true means an assigned outcome still needs execution; describe that remaining outcome without choosing its implementation. requiresExecution=false means the objective is established and ready for a result handoff; remaining must be empty.",
@@ -74,26 +87,10 @@ const INSTRUCTIONS = [
 
 export async function runWorkerEvidenceAssessment(
   request: RequestExecutionScope,
-  options: Readonly<{
-    call: RoleCallFrame;
-    source: WorkerResultAuthorSource;
-    contextMessages: readonly ChatMessage[];
-    capabilitySource?: WorkerDecisionCapabilitySource;
-  }>,
+  options: WorkerEvidenceAssessmentInput,
 ): Promise<WorkerEvidenceAssessmentReceipt> {
-  const state = { ...options, requestToolResults: options.source.requestToolResults };
-  const binding = projectAssessmentBinding(request, state, options.contextMessages);
-  assertAssessmentSource(options.source, request.requestId, options.call);
-  if (options.contextMessages.some((message) => !Object.isFrozen(message)))
-    throw new Error("worker_evidence_shared_context_mutable");
-  const evidenceMessages = [
-    ...(options.source.coreSkillReadMessages ?? []),
-    ...(options.source.requestToolResultsContextMessage ? [options.source.requestToolResultsContextMessage] : []),
-    ...(options.source.operationSupervisionEvidenceContextMessage ? [options.source.operationSupervisionEvidenceContextMessage] : []),
-  ];
-  if (evidenceMessages.some((message) => !options.contextMessages.includes(message)))
-    throw new Error("worker_evidence_shared_context_incomplete");
-  const contextMessages = Object.freeze([...options.contextMessages]);
+  const prepared = prepareWorkerEvidenceAssessment(request, options);
+  const { binding, contextMessages } = prepared;
   const diagnostic = {
     requestId: request.requestId,
     modelStep: MODEL_STEPS.WORKER_EVIDENCE,
@@ -147,10 +144,7 @@ export async function runWorkerEvidenceAssessment(
       parse: (text) => parseWorkerEvidenceAssessmentOutput(text, binding.evidenceRefs),
     });
     request.abortSignal.throwIfAborted();
-    const receipt = { binding, decision, contextMessages };
-    Object.defineProperty(receipt, ACCEPTED_ASSESSMENT, { value: receipt });
-    Object.freeze(receipt);
-    assertWorkerEvidenceAssessmentApplicable(receipt, request, state);
+    const receipt = acceptWorkerEvidenceAssessment(request, prepared, decision);
     traceDebug("runtime.worker", "evidence.model.completed", {
       ...diagnostic,
       durationMs: Date.now() - startedAt,
@@ -166,6 +160,38 @@ export async function runWorkerEvidenceAssessment(
     });
     throw error;
   }
+}
+
+/** Share the exact source validation and binding across separate and fused decisions. */
+export function prepareWorkerEvidenceAssessment(
+  request: Pick<RequestExecutionScope, "requestId">,
+  options: WorkerEvidenceAssessmentInput,
+): PreparedWorkerEvidenceAssessment {
+  const state = { ...options, requestToolResults: options.source.requestToolResults };
+  const binding = projectAssessmentBinding(request, state, options.contextMessages);
+  assertAssessmentSource(options.source, request.requestId, options.call);
+  if (options.contextMessages.some((message) => !Object.isFrozen(message)))
+    throw new Error("worker_evidence_shared_context_mutable");
+  const evidenceMessages = [
+    ...(options.source.coreSkillReadMessages ?? []),
+    ...(options.source.requestToolResultsContextMessage ? [options.source.requestToolResultsContextMessage] : []),
+    ...(options.source.operationSupervisionEvidenceContextMessage ? [options.source.operationSupervisionEvidenceContextMessage] : []),
+  ];
+  if (evidenceMessages.some((message) => !options.contextMessages.includes(message)))
+    throw new Error("worker_evidence_shared_context_incomplete");
+  return Object.freeze({ state, binding, contextMessages: Object.freeze([...options.contextMessages]) });
+}
+
+export function acceptWorkerEvidenceAssessment(
+  request: Pick<RequestExecutionScope, "requestId">,
+  prepared: PreparedWorkerEvidenceAssessment,
+  decision: WorkerEvidenceAssessmentDecision,
+): WorkerEvidenceAssessmentReceipt {
+  const receipt = { binding: prepared.binding, decision, contextMessages: prepared.contextMessages };
+  Object.defineProperty(receipt, ACCEPTED_ASSESSMENT, { value: receipt });
+  Object.freeze(receipt);
+  assertWorkerEvidenceAssessmentApplicable(receipt, request, prepared.state);
+  return receipt;
 }
 
 export function assertWorkerEvidenceAssessmentApplicable(
@@ -268,12 +294,12 @@ function assertAssessmentSource(source: WorkerResultAuthorSource, requestId: str
     !isWorkerCapabilityAssignmentProvenanceValid(source.assignmentProvenance, source, requestId) ||
     !isRequestToolResultsViewValidForCallScope(source.requestToolResults, source.callId, source.assignmentProvenance !== undefined) ||
     JSON.stringify(source.dependencyResults.map(({ resultRef }) => resultRef)) !== JSON.stringify(call.dependencyResultRefs) ||
-    (source.requestToolResults.results.length > 0) !== Boolean(source.requestToolResultsContextMessage) ||
+    (source.requestToolResults.results.length > 0 && !source.requestToolResultsContextMessage) ||
     (source.requestToolResultsContextMessage !== undefined && !isRequestToolResultsMessageBoundToView(source.requestToolResultsContextMessage, source.requestToolResults))
   ) throw new Error("worker_evidence_source_context_invalid");
 }
 
-function createAssessmentFormat(evidenceRefs: readonly string[]): ModelGatewayJsonSchemaFormat {
+export function createAssessmentFormat(evidenceRefs: readonly string[]): ModelGatewayJsonSchemaFormat {
   return {
     type: "json_schema", name: "worker_evidence_assessment", strict: true,
     postValidatedSchemaConstraints: [

@@ -1,4 +1,5 @@
 import { toolMediaSafeError, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
+import { observeParameterOmissions } from "../parameter-issues.js";
 import type {
   ModelProviderInputTokenCountParams,
   ModelProviderInputTokenCountResult,
@@ -37,6 +38,7 @@ export async function countLlamaCppInputTokens(
   const prepared = await prepareLlamaCppSystemMessages(params, settings, params.fetchImpl, "count");
   if (prepared.kind === "error") return prepared;
   const { payload } = prepared;
+  observeParameterOmissions({ ...params, operation: "input_tokens" });
   const response = await params.fetchImpl(`${settings.apiUrl}/chat/completions/input_tokens`, {
     method: "POST",
     headers: settings.headers,

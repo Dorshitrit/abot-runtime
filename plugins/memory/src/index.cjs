@@ -381,7 +381,9 @@ async function openObservedLockOwner(path, flags, before) {
   }
 }
 async function openLockOwnerFile(path) {
-  const before = await (0, import_promises2.lstat)(path, { bigint: true });
+  const before = await (0, import_promises2.lstat)(path, { bigint: true }).catch(
+    (error) => rethrowLockObservationError(path, error)
+  );
   if (!before.isFile()) throw lockOwnerOpenError("ELOOP");
   const noFollow = import_node_fs.constants.O_NOFOLLOW;
   const flags = typeof noFollow === "number" ? import_node_fs.constants.O_RDONLY | noFollow : import_node_fs.constants.O_RDONLY;
@@ -442,6 +444,74 @@ async function claimStoreLockDirectory(path) {
       cause: error
     });
   }
+}
+
+// plugins/memory/source/storage-diagnostics.ts
+var import_node_diagnostics_channel = require("node:diagnostics_channel");
+var MEMORY_STORAGE_FAILURE_CHANNEL = "abot.memory.storage-failure";
+var failures = (0, import_node_diagnostics_channel.channel)(MEMORY_STORAGE_FAILURE_CHANNEL);
+var filesystemCodes = /* @__PURE__ */ new Set([
+  "EACCES",
+  "EBADF",
+  "EBUSY",
+  "EDQUOT",
+  "EEXIST",
+  "EFAULT",
+  "EFBIG",
+  "EINTR",
+  "EINVAL",
+  "EIO",
+  "EISDIR",
+  "ELOOP",
+  "EMFILE",
+  "ENAMETOOLONG",
+  "ENFILE",
+  "ENOENT",
+  "ENOMEM",
+  "ENOSPC",
+  "ENOTDIR",
+  "ENOTEMPTY",
+  "ENOTSUP",
+  "EPERM",
+  "EROFS",
+  "ETXTBSY",
+  "EXDEV"
+]);
+var filesystemCalls = /* @__PURE__ */ new Set([
+  "access",
+  "close",
+  "fstat",
+  "fsync",
+  "ftruncate",
+  "lstat",
+  "mkdir",
+  "open",
+  "opendir",
+  "read",
+  "readdir",
+  "rename",
+  "rmdir",
+  "scandir",
+  "stat",
+  "unlink",
+  "write"
+]);
+function memoryFilesystemFailureFields(error) {
+  const unknown = { code: "unknown", syscall: "unknown" };
+  if (!error || typeof error !== "object") return unknown;
+  try {
+    const { code, syscall } = error;
+    return {
+      code: filesystemCodes.has(code) ? code : "unknown",
+      syscall: filesystemCalls.has(syscall) ? syscall : "unknown"
+    };
+  } catch {
+    return unknown;
+  }
+}
+function reportMemoryStorageFailure(stage, error) {
+  if (!failures.hasSubscribers) return;
+  failures.publish(Object.freeze({ stage, ...memoryFilesystemFailureFields(error) }));
 }
 
 // plugins/memory/source/store-lock.ts
@@ -572,7 +642,9 @@ async function readOwnerRecord(lockPath, entryName, expectedToken, directoryModi
 async function readLockSnapshot(lockPath) {
   let lockInfo;
   try {
-    lockInfo = await (0, import_promises4.lstat)(lockPath);
+    lockInfo = await (0, import_promises4.lstat)(lockPath).catch(
+      (error) => rethrowLockObservationError(lockPath, error)
+    );
   } catch (error) {
     if (fileSystemErrorCode(error) === "ENOENT") return void 0;
     throw error;
@@ -611,7 +683,9 @@ async function readLockSnapshot(lockPath) {
   let leaseInfo;
   let leaseEntries;
   try {
-    leaseInfo = await (0, import_promises4.lstat)(leasePath);
+    leaseInfo = await (0, import_promises4.lstat)(leasePath).catch(
+      (error) => rethrowLockObservationError(leasePath, error)
+    );
     if (!leaseInfo.isDirectory()) {
       return Object.freeze({
         kind: "directory",
@@ -782,6 +856,7 @@ async function acquireStoreLock(filePath, options = {}) {
       };
     } catch (error) {
       if (!isLockConflict(error)) {
+        reportMemoryStorageFailure("lock-install", error);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable."
@@ -790,7 +865,8 @@ async function acquireStoreLock(filePath, options = {}) {
       let removed = false;
       try {
         removed = await removeAbandonedLock(lockPath, processIsAlive);
-      } catch {
+      } catch (error2) {
+        reportMemoryStorageFailure("lock-observe", error2);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable."
@@ -1024,6 +1100,7 @@ var MemoryStore = class {
       return;
     } catch (error) {
       if (fileSystemErrorCode2(error) !== "ENOENT") {
+        reportMemoryStorageFailure("initialize-access", error);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable."
@@ -1038,6 +1115,7 @@ var MemoryStore = class {
       } catch (error) {
         if (error instanceof MemoryStoreError) throw error;
         if (fileSystemErrorCode2(error) !== "ENOENT") {
+          reportMemoryStorageFailure("legacy-read", error);
           throw new MemoryStoreError(
             "memory_store_unavailable",
             "Memory store is unavailable."
@@ -1056,6 +1134,7 @@ var MemoryStore = class {
       return await readStoreFile(this.#filePath);
     } catch (error) {
       if (error instanceof MemoryStoreError) throw error;
+      reportMemoryStorageFailure("read", error);
       throw new MemoryStoreError(
         "memory_store_unavailable",
         "Memory store is unavailable."

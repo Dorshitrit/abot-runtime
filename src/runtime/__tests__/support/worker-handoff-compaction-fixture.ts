@@ -25,7 +25,7 @@ export const LATE_HANDOFF_MARKER = "LATE_CANONICAL_HANDOFF_MARKER";
 export async function createWorkerHandoffFixture(
   options: {
     lateEvidence?: boolean;
-    pressureStep?: "worker.evidence" | "worker.result";
+    pressureStep?: "worker.decision";
     duringCompaction?: (state: {
       ledger: RoleCallLedger;
       call: RoleCallFrame;
@@ -68,21 +68,22 @@ export async function createWorkerHandoffFixture(
     },
   );
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (input.modelStep === "worker.evidence")
+    if (input.modelStep === "worker.decision")
       return {
         text: JSON.stringify({
           decision: {
-            requiresExecution: false,
-            established:
-              "The supplied observations establish the bounded inspection.",
-            remaining: "",
-            evidenceRefs: view.results.map(({ executionId }) => executionId),
+            assessment: {
+              requiresExecution: false,
+              established:
+                "The supplied observations establish the bounded inspection.",
+              remaining: "",
+              evidenceRefs: view.results.map(({ executionId }) => executionId),
+            },
+            selection: { action: "return_result" },
           },
         }),
         meta: {},
       };
-    if (input.modelStep === "worker.result")
-      return { text: LATE_HANDOFF_MARKER, meta: {} };
     if (!input.modelStep?.startsWith("super.compact."))
       throw new Error("unexpected_handoff_model_step");
     await options.duringCompaction?.({ ledger: base.ledger, call, abort });
@@ -103,7 +104,6 @@ export async function createWorkerHandoffFixture(
         attachmentReserveTokens: 0,
       },
       steps: {
-        "worker.evidence": { timeoutMs: 20000 },
         "worker.decision": { timeoutMs: 20000 },
         "worker.result": { timeoutMs: 20000 },
         "context.compact": { timeoutMs: 20000 },
@@ -117,7 +117,6 @@ export async function createWorkerHandoffFixture(
       defaults: {
         profileId: "test",
         steps: {
-          "worker.evidence": "test",
           "worker.decision": "test",
           "worker.result": "test",
           "context.compact": "test",

@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { supervisorFormatName, withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type SnapshotPolicy = "supervisor-worker-v1" | "execution-agent-v1";
@@ -17,6 +17,7 @@ export function createSnapshotModelScript(input: {
   ) => Promise<void> | void;
 }) {
   let decisions = 0;
+  let workerDecisions = 0;
   let calls = 0;
   const respond = withSupervisorPreparation(async (modelInput) => {
     if (supervisorFormatName(modelInput) === "supervisor_basket_selection")
@@ -25,10 +26,12 @@ export function createSnapshotModelScript(input: {
       messages: modelInput.messages,
       format: modelInput.format,
     });
-    if (modelInput.modelStep === "worker.evidence")
-      return workerEvidenceReply(modelInput, decisions < 3);
-    if (modelInput.modelStep === "worker.result")
-      return { text: SNAPSHOT_FINAL, meta: {} };
+    if (modelInput.modelStep === "worker.decision") {
+      expect(++workerDecisions).toBeLessThanOrEqual(2);
+      return workerFusedReply(modelInput, workerDecisions === 1
+        ? { action: "invoke_capability", capabilityId: input.capabilityId, intent: "Observe the requested fixture." }
+        : { action: "return_result" });
+    }
     if (modelInput.modelStep === "supervisor.response")
       return {
         text: modelInput.format
@@ -55,14 +58,7 @@ export function createSnapshotModelScript(input: {
     const decision =
       input.policy === "execution-agent-v1"
         ? directDecision(decisions, input.capabilityId, input.channel)
-        : delegatedDecision(decisions, input.capabilityId);
-    if (
-      modelInput.modelStep === "supervisor.decision" &&
-      decisions === 2 &&
-      input.policy === "supervisor-worker-v1"
-    ) {
-      return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
-    }
+        : delegatedDecision(decisions);
     return { text: JSON.stringify({ decision }), meta: {} };
   });
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (modelInput) => {
@@ -96,7 +92,7 @@ function directDecision(index: number, capabilityId: string, channel: string) {
   return { action: "respond" };
 }
 
-function delegatedDecision(index: number, capabilityId: string) {
+function delegatedDecision(index: number) {
   if (index === 1)
     return {
       action: "invoke_role",
@@ -105,13 +101,6 @@ function delegatedDecision(index: number, capabilityId: string) {
       workerCapabilityScope: { catalogGroupIds: ["fixture"] },
       acknowledgement: "I will inspect the fixture.",
     };
-  if (index === 2) return undefined;
-  if (index === 3)
-    return {
-      action: "invoke_capability",
-      capabilityId,
-      intent: "Observe the requested fixture.",
-    };
-  expect(index).toBe(4);
+  expect(index).toBe(2);
   return { action: "respond" };
 }

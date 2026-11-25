@@ -117,7 +117,7 @@ test("only sidebar requests fetch the canonical project catalog before listing",
 
 test("the read-state service rejects sidebar requests without a canonical catalog", async () => {
   const metadata = vi.spyOn(sessionMetadataStore, "listSessionMetadata").mockResolvedValueOnce([]);
-  const environment = { services: { config: { paths: { sessionsDir: "/unused/sessions" } }, sessions: {} } } as RuntimeEnvironment;
+  const environment = { services: { config: { paths: { sessionsDir: "/unused/sessions", runtimeDir: "/unused/runtime" } }, sessions: {} } } as RuntimeEnvironment;
   try {
     const reads = new WebSessionReadStates(() => environment);
     await expect(reads.list("dev", { sidebar: true })).rejects.toThrow("projects_unavailable");

@@ -1,4 +1,6 @@
+import type { ModelIssueObserver } from "./protocol/model-issue.js";
 import type { ProviderContextOverflow } from "./protocol/provider-context-overflow.js";
+import type { ProviderStreamDisconnection } from "./protocol/provider-stream-disconnection.js";
 import type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
 export type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
 import type { ModelReasoningBudget, ModelReasoningPreference } from "../shared/model-reasoning.js";
@@ -183,6 +185,8 @@ export type ModelStepCalibrationConfig = {
 };
 
 export type ModelGatewayPolicyConfig = {
+  /** Internal output headroom derived from the request runner; not a model setting. */
+  outputSafetyReserveTokens?: number;
   parameterProfiles?: ModelParameterProfileCatalog;
   providers?: Record<string, ModelGatewayProviderConfig>;
   profiles?: Record<string, ModelGatewayProfileConfig>;
@@ -236,6 +240,8 @@ export type ModelGatewayRequest = {
   invocationContextMessageIndices?: readonly number[];
   /** Request-local exclusive prefix boundary in messages; never persisted in history. */
   promptCacheBoundaryBeforeMessageIndex?: number;
+  /** Stable conversation identity for provider cache partitioning; never prompt content. */
+  promptCacheScope?: string;
   debugRequestId?: string;
   agentMode?: AgentMode | string;
   taskType?: string;
@@ -250,11 +256,13 @@ export type ModelGatewayRequest = {
 };
 
 export type ModelGatewayInputTokenCountParams = {
+  onIssue?: ModelIssueObserver;
   /** Local capability hint only; the gateway still resolves and verifies the provider. */
   provider: ModelProvider;
   text?: string;
   messages?: unknown;
   promptCacheBoundaryBeforeMessageIndex?: number;
+  promptCacheScope?: string;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;
@@ -309,7 +317,7 @@ export type ResolvedModelInvocation = {
 export type ModelGatewayEvent =
   | { type: "thinking"; text: string }
   | { type: "content"; text: string }
-  | { type: "error"; error: string; contextOverflow?: ProviderContextOverflow }
+  | { type: "error"; error: string; contextOverflow?: ProviderContextOverflow; providerDisconnection?: ProviderStreamDisconnection }
   | {
       type: "done";
       done: true;

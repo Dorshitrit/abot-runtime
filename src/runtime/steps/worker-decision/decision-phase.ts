@@ -14,7 +14,8 @@ import { buildWorkerDecisionInput } from "./input.js";
 import type { WorkerDecisionInputOptions } from "./input/types.js";
 import { parseWorkerDecisionOutput } from "./parser.js";
 import { runWorkerResultAuthor } from "./result-author.js";
-import { assertWorkerEvidenceAssessmentApplicable, runWorkerEvidenceAssessment, type WorkerEvidenceAssessmentReceipt } from "./evidence-assessment.js";
+import { assertWorkerEvidenceAssessmentApplicable, type WorkerEvidenceAssessmentReceipt } from "./evidence-assessment.js";
+import { canFuseWorkerEvidenceAndSelection, runWorkerFusedDecision } from "./fused-decision.js";
 
 type WorkerDecisionPhaseResult = Readonly<{
   decision: WorkerDecisionStepResult;
@@ -30,13 +31,15 @@ export async function runWorkerDecisionPhase(
   const usesEvidenceStep = authority !== undefined &&
     hasSuperContextContract(authority, "delegated.worker");
   let evidenceAssessment = options.evidenceAssessment;
+  if (canFuseWorkerEvidenceAndSelection(options, usesEvidenceStep)) {
+    const fused = await runWorkerFusedDecision(request, options, input);
+    evidenceAssessment = fused.evidenceAssessment;
+    if (fused.decision.action !== "return_result") {
+      return { decision: fused.decision, evidenceAssessment };
+    }
+  }
   if (usesEvidenceStep && !evidenceAssessment) {
-    evidenceAssessment = await runWorkerEvidenceAssessment(request, {
-      call: options.call,
-      source: input.resultAuthorSource,
-      contextMessages: input.sharedContextMessages,
-      capabilitySource: options.capabilitySource,
-    });
+    throw new Error("worker_evidence_assessment_required");
   }
   if (evidenceAssessment) {
     assertWorkerEvidenceAssessmentApplicable(evidenceAssessment, request, options);

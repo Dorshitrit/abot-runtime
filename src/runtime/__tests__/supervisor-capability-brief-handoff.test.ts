@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -114,18 +114,13 @@ function createScript(
   return [
     {
       step: "supervisor.decision",
-      format: "supervisor_delegation",
+      format: "supervisor_fused_routing",
       output: encodeDecision({
         action: "invoke_role",
         roleId: "planner",
         objective: plannerObjective,
         acknowledgement: "I will create the requested file.",
       }),
-    },
-    {
-      step: "supervisor.decision",
-      format: "supervisor_working_directory",
-      output: JSON.stringify({ workingDirectory: "." }),
     },
     {
       step: "planner.decision",
@@ -140,23 +135,21 @@ function createScript(
         workerCapabilityScope: { catalogGroupIds: ["write"] },
       }),
     },
-    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     {
       step: "worker.decision",
-      output: encodeDecision({
+      output: (input) => workerFusedReply(input, {
         action: "invoke_capability",
         capabilityId: "write_complete_file",
         intent,
         authoringObjective: `Write exactly ${JSON.stringify(artifactBody)}.`,
         selectionControls: { path: artifactPath },
-      }),
+      }).text,
     },
     { step: "tool_payload.raw", output: artifactBody },
     {
-      step: "worker.evidence",
-      output: (input) => workerEvidenceReply(input, false).text,
+      step: "worker.decision",
+      output: (input) => workerFusedReply(input, { action: "return_result" }, workerResult).text,
     },
-    { step: "worker.result", output: workerResult },
     {
       step: "planner.decision",
       output: (input) => {
@@ -165,8 +158,12 @@ function createScript(
           childCallId: "call-3",
           roleId: "worker",
           delegatedObjective: workerObjective,
-          summary: workerResult,
           outcome: "completed",
+        });
+        const report = JSON.parse(readCapsule(input, "runtime_child_result").summary as string);
+        expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+          assessment: { established: workerResult },
+          executionOutcomes: [{ outcome: "succeeded", observedEffect: "mutation" }],
         });
         return encodeDecision({
           action: "return_result",
@@ -311,7 +308,7 @@ describe("Supervisor and Planner capability brief handoff", () => {
             content.includes(SUPERVISOR_RESPONSE_RECOMMENDATION_KIND),
           ),
         ).toBe(false);
-        const isSupervisorRouting = current!.format === "supervisor_decision";
+        const isSupervisorRouting = ["supervisor_fused_routing", "supervisor_decision"].includes(current!.format ?? "");
         const isDelegationRouting =
           isSupervisorRouting || current!.step === "planner.decision";
         if (isDelegationRouting) {

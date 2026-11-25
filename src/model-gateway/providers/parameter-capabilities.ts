@@ -14,6 +14,8 @@ export type ProviderParameterCapability = ModelParameterConstraint & Readonly<{
 export type ProviderParameterCapabilities = Readonly<{
   provider: string;
   nativeOptions?: boolean;
+  /** Verified provider model output ceilings, independent of a caller's selected cap. */
+  modelOutputTokenLimits?: Readonly<Record<string, number>>;
   parameters: Partial<Record<ModelParameterKey, ProviderParameterCapability>>;
 }>;
 

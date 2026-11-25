@@ -159,6 +159,7 @@ export class FakeElement {
     );
   }
   matches(selector: string): boolean {
+    if (selector.includes(",")) return selector.split(",").some(part => this.matches(part.trim()));
     const tag = selector.match(/^[A-Za-z][\w-]*/)?.[0];
     if (tag && tag.toUpperCase() !== this.tagName) return false;
     const className = selector.match(/\.([\w-]+)/)?.[1];

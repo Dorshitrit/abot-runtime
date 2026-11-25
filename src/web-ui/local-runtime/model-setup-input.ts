@@ -180,6 +180,7 @@ export function parseModelSetupInput(
     "supportsThinking",
     "reasoningBudget",
     "promptCache",
+    "reasoningSummary",
     "providerId",
     "newProvider",
     "apiKey",

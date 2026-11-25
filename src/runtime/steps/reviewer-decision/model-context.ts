@@ -1,3 +1,4 @@
+import { buildReviewerRoleResultContinuationMessages } from "./role-result-continuation.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/step-instructions.js";
 import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
@@ -153,7 +154,7 @@ export function projectReviewerModelContext(
         ]
       : [],
   );
-  const referenceMessages = snapshot.evidence.flatMap((item) =>
+  const referenceMessages = [...buildReviewerRoleResultContinuationMessages(snapshot.facts), ...snapshot.evidence.flatMap((item) =>
     item.referenceData
       ? [
           Object.freeze({
@@ -175,7 +176,7 @@ export function projectReviewerModelContext(
           }),
         ]
       : [],
-  );
+  )];
   const claims = snapshot.facts.flatMap((item) =>
     item.kind === "role_result"
       ? []

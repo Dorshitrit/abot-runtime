@@ -215,7 +215,10 @@ export type RequestModelInvocationView = Readonly<
     | "abortSignal"
     | "onThinkingDelta"
     | "onThinkingTrace"
-  >
+  > & {
+    /** Utility invocations without a conversation leave cache partitioning unspecified. */
+    sessionId?: RequestExecutionSeed["sessionId"];
+  }
 >;
 
 /**

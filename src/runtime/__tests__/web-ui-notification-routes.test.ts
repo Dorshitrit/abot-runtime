@@ -26,6 +26,9 @@ async function fixture() {
     list: vi.fn(async () => ({
       items: [],
       unreadCount: 0,
+      unreadErrorCount: 0,
+      readBoundary: 0,
+      issueCoverage: { receiptLimit: 10_000, retentionMs: 90 * 24 * 60 * 60 * 1000, rejectedCount: 0, collectionRejectedCount: 0, admissionFloor: null },
       nextCursor: null,
       preferences: defaultNotificationPreferences(),
     })),
@@ -33,8 +36,8 @@ async function fixture() {
       available: false,
       message: "Connect Computer access",
     })),
-    markRead: vi.fn(async () => ({ updated: 1, unreadCount: 0 })),
-    markAutomationReportRead: vi.fn(async () => ({ updated: 2, unreadCount: 0 })),
+    markRead: vi.fn(async () => ({ updated: 1, unreadCount: 0, unreadErrorCount: 0, readBoundary: 0, issueStates: [] })),
+    markAutomationReportRead: vi.fn(async () => ({ updated: 2, unreadCount: 0, unreadErrorCount: 0, readBoundary: 0, issueStates: [] })),
     setPreferences: vi.fn(async (_id, preferences) => preferences),
   };
   const routes = new WebNotificationRoutes(access);

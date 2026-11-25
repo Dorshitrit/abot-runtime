@@ -180,10 +180,11 @@ describe("persistent Web UI notification history", () => {
     await store.upsert(notification("b"));
     expect(
       await store.markRead({ ids: ["a", "unknown"], read: true }, 2000),
-    ).toEqual({ updated: 1, unreadCount: 1 });
+    ).toEqual({ updated: 1, unreadCount: 1, unreadErrorCount: 0, readBoundary: 0, issueStates: [] });
     expect(await store.markRead({ ids: ["a"], read: true }, 3000)).toEqual({
       updated: 0,
       unreadCount: 1,
+      unreadErrorCount: 0, readBoundary: 0, issueStates: [],
     });
     expect(
       (await store.list()).items.find((item) => item.id === "a")?.readAt,
@@ -191,10 +192,12 @@ describe("persistent Web UI notification history", () => {
     expect(await store.markRead({ ids: ["a"], read: false })).toEqual({
       updated: 1,
       unreadCount: 2,
+      unreadErrorCount: 0, readBoundary: 0, issueStates: [],
     });
     expect(await store.markRead({ all: true, read: true }, 4000)).toEqual({
       updated: 2,
       unreadCount: 0,
+      unreadErrorCount: 0, readBoundary: 0, issueStates: [],
     });
     expect((await store.list()).items).toHaveLength(2);
   });

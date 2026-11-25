@@ -112,9 +112,9 @@ test("insufficient budget and empty source batches do not alter mandatory contex
 test("SUPER ignores candidate providers and keeps ordinary procedure routing", async () => {
   const f = createProcedureOrchestrationFixture((input) => {
     const name = typeof input.format === "object" ? input.format?.name : undefined;
-    if (name === "supervisor_procedure_gate") return { requiresProcedure: true };
-    if (name === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-    return { action: "invoke_role", roleId: "worker", objective: "Perform the explicit task." };
+    if (name === "supervisor_fused_entry") return { requiresProcedure: true };
+    expect(name).toBe("supervisor_fused_routing");
+    return { action: "invoke_role", roleId: "worker", objective: "Perform the explicit task.", workingDirectory: "." };
   });
   const request = createRequestExecutionScope({
     seed: f.request, executionPolicy: f.request.executionPolicy,

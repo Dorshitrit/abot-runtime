@@ -52,7 +52,7 @@ test("routing adds only the gated author_skill action and keeps memory schema co
   expect(() => toOpenAIResponsesTextFormat(format)).not.toThrow();
 });
 
-test.each([false, true])("separate selection runs only after author_skill (selected=%s)", async (author) => {
+test.each([false, true])("authoring metadata selection runs only after fused resume chooses author_skill (selected=%s)", async (author) => {
   const fixture = await createCoreSkillContextFixture();
   await fixture.open("worker");
   const resume = await fixture.finish();
@@ -76,7 +76,7 @@ test.each([false, true])("separate selection runs only after author_skill (selec
     toolResults: fixture.toolResults(), availableSkillWriteOperationIds, resume,
   });
   expect(result.decision.action).toBe(author ? "create_skill" : "respond");
-  expect(formats).toEqual(["supervisor_skill_selection", "supervisor_decision", ...(author ? ["supervisor_skill_authoring"] : [])]);
+  expect(formats).toEqual(["supervisor_resume_skill_routing", ...(author ? ["supervisor_skill_authoring"] : [])]);
   const selectionInput = fixture.invoke.mock.calls[0]![0];
   expect(JSON.stringify(selectionInput.format)).not.toContain("create_skill");
   expect(JSON.stringify(selectionInput.messages)).not.toContain("runtime_personal_skill_metadata_v1");

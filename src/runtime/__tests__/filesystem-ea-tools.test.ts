@@ -161,16 +161,24 @@ test.each([undefined, null, "", "range:missing"])("missing or unknown selected r
   expect(await readFile(file, "utf8")).toBe("abc a");
 });
 
-test("range and prepared source cannot be reused across requests or silently refreshed", async () => {
+test("range references reject other paths, requests and changed sources without unsafe writes", async () => {
   const fixture = await setup(); const request = await fixture.request();
   const file = join(fixture.paths.agentWorkDir, "text.txt"); await writeFile(file, "old\n");
   const read = await request.port.execute({ tool: "read_text", params: { path: "text.txt" } });
   const controls = { path: "text.txt", range_ref: read.data?.range_ref };
-  await writeFile(join(fixture.paths.agentWorkDir, "other.txt"), "other");
+  const otherFile = join(fixture.paths.agentWorkDir, "other.txt");
+  await writeFile(otherFile, "other");
   await expect(request.prepareBody("edit_text", { path: "other.txt", range_ref: controls.range_ref }, "new\n"))
-    .rejects.toMatchObject({ code: "ea_range_invalid" });
+    .rejects.toMatchObject({ code: "ea_range_invalid", message: expect.stringMatching(/different path/i) });
+  expect(await Promise.all([readFile(file, "utf8"), readFile(otherFile, "utf8")])).toEqual(["old\n", "other"]);
   const fresh = await fixture.request();
-  await expect(fresh.prepareBody("edit_text", controls, "new\n")).rejects.toMatchObject({ code: "ea_range_invalid" });
+  await expect(fresh.prepareBody("edit_text", controls, "new\n"))
+    .rejects.toMatchObject({ code: "ea_range_invalid", message: expect.stringMatching(/not available.*request/i) });
+  expect(await Promise.all([readFile(file, "utf8"), readFile(otherFile, "utf8")])).toEqual(["old\n", "other"]);
+  const otherRead = await request.port.execute({ tool: "read_text", params: { path: "other.txt" } });
+  const otherEdit = await request.prepareBody("edit_text", { path: "other.txt", range_ref: otherRead.data?.range_ref }, "new\n");
+  expect(await otherEdit.prepared.execute()).toMatchObject({ result: { ok: true } });
+  expect(await Promise.all([readFile(file, "utf8"), readFile(otherFile, "utf8")])).toEqual(["old\n", "new\n"]);
   const { prepared } = await request.prepareBody("edit_text", controls, "new\n");
   await writeFile(file, "external change\n");
   expect(await prepared.execute()).toMatchObject({ result: { ok: false, errorCode: "filesystem_target_changed" } });

@@ -1,8 +1,64 @@
 # llama.cpp model connection
 
-ABot includes a **llamacpp** provider alongside Ollama and OpenAI. It connects to
-an independently installed and running llama-server; it does not install,
-start, stop, update or download that server, its models or GPU drivers.
+ABot includes a **llamacpp** provider alongside Ollama and OpenAI. Connect to an
+existing llama-server, or choose **ABot-managed server** in onboarding or Models.
+The manual connection never installs or controls an external server.
+
+## Managed engine
+
+The managed installer pins llama.cpp **b12608**, verifies the download's size and
+SHA256, and extracts it into private `.abot-managed-llama` storage. Supported
+targets are macOS arm64/x64 and CPU-only x64 on Ubuntu 22.04+ and Windows 10/11.
+Other Linux distributions must provide compatible glibc/system libraries; musl
+distributions and Linux/Windows arm64 are not covered by these binaries.
+Windows requires local NTFS managed storage and Windows PowerShell 5.1 for ACL
+validation. The helper does not change execution policy or request elevation;
+blocked helpers or unsafe existing permissions fail explicitly.
+
+Use the **Local llama.cpp server** card on Home, or **Set up / manage local
+server** when adding a llama.cpp provider. Install the engine, add local models,
+save settings, and explicitly start the server. Then choose a chat model and
+**Use selected model** before saving its normal provider connection.
+
+Choose **Start manually** (the default) or **Start with ABot**. The latter starts
+the saved server once when ABot starts; reopening setup or polling status never
+starts it. **Stop server** stops the owned router and its model workers. It stays
+off until an explicit Start or the next ABot launch when Start with ABot is saved.
+Stop before editing startup, ports, models or idle settings.
+
+**Sleep after idle** releases model memory after the configured seconds (60 by
+default); the next model request wakes it. Use `-1` to disable idle sleep. The
+router remains available while models sleep. Status polling does not wake models.
+**Maximum loaded chat models** limits simultaneous resident chat models; each
+has its own context setting and one inference slot.
+
+Add an existing single-file GGUF, or select compatible models found in the
+default local Ollama model store. Discovery reads local metadata and downloads
+nothing. Models need a usable embedded chat template or an explicitly selected
+Jinja file; custom templates are pinned by digest and must be reselected if
+changed. An optional local vision projector can be supplied. Keep GPU layers at
+zero on Linux/Windows; macOS supports automatic GPU placement.
+Windows paths may include a drive letter, spaces and Unicode; UNC paths, device
+paths and alternate data streams are not accepted. Model downloads, driver
+installation and GPU backends on Linux/Windows are outside this installer.
+
+An optional embedding model runs on a separate loopback port with the same idle
+policy. In memory setup, refresh managed-server status and explicitly select
+**Use managed embeddings**, then **Test and save** to enable memory. Adding an
+embedding model to the server alone does not enable memory or change providers.
+
+Closing the wizard does not stop the server; closing ABot stops its owned process
+tree. A busy port causes an error; ABot never adopts or stops an external server.
+The earlier single-model engine can be stopped explicitly in the new dialog.
+Its launch preferences are not migrated into server autostart settings.
+The private credential is reused across starts and service restarts, passed in
+the child environment and omitted from process arguments and browser responses.
+Saved preferences use atomic replacement after syncing file data. POSIX also
+syncs the directory; Windows power-loss durability remains filesystem-specific.
+
+Archive checks and fixture tests do not establish actual engine/model execution
+on each OS. Native Windows ACL and lifecycle fixtures are included in the
+Windows CI gate; a real model smoke requires separate validation.
 
 The implementation targets the server protocol in
 [llama.cpp v0.7.0, revision 620d2225](https://github.com/ggml-org/llama.cpp/tree/620d2225cc436ab0b001e3200e590e3b286ef9ab).

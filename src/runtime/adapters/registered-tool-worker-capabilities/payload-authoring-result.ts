@@ -1,6 +1,7 @@
 import type { WorkerCapabilityPayloadAuthoringResult } from "../../orchestration/worker-capabilities/index.js";
 import { normalizePayloadBody } from "../../orchestration/worker-capabilities/payload-body-normalization.js";
 import { isPlainRecord } from "./values.js";
+import { normalizePayloadTimeoutFailure } from "./payload-authoring-failure.js";
 
 export function normalizePayloadAuthoringResult(
   input: unknown,
@@ -10,6 +11,9 @@ export function normalizePayloadAuthoringResult(
 ):
   | WorkerCapabilityPayloadAuthoringResult
   | Readonly<{ status: "failed"; code: "payload_author_result_invalid" }> {
+  if (isPlainRecord(input) && input.status === "failed" && input.code === "payload_model_timed_out") {
+    return normalizePayloadTimeoutFailure(input) ?? Object.freeze({ status: "failed", code: "payload_author_result_invalid" });
+  }
   if (!isPlainRecord(input) || Object.keys(input).length !== 2) {
     return Object.freeze({
       status: "failed" as const,

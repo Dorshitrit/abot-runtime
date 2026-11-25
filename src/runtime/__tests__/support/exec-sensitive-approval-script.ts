@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { ExecRequestPolicy } from "./exec-command-request-script.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export const EXEC_APPROVAL_FINAL = "The requested fixture actions settled.";
@@ -19,8 +19,6 @@ export function createExecApprovalScript(
   let supervisorTurns = 0;
   let executionTurns = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, selectedActions < actions.length);
     if (input.modelStep === "worker.result")
       return { text: EXEC_APPROVAL_FINAL, meta: {} };
     if (input.modelStep === "execution.response")
@@ -48,8 +46,6 @@ export function createExecApprovalScript(
     }
     if (input.modelStep === "supervisor.decision") {
       supervisorTurns += 1;
-      if (supervisorTurns === 2)
-        return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
       const decision =
         supervisorTurns === 1
           ? {
@@ -93,7 +89,8 @@ export function createExecApprovalScript(
           action: policy === "execution-agent-v1" ? "respond" : "return_result",
         };
     if (action) selectedActions += 1;
-    return { text: JSON.stringify({ decision }), meta: {} };
+    return policy === "supervisor-worker-v1" ? workerFusedReply(input, decision)
+      : { text: JSON.stringify({ decision }), meta: {} };
   }));
   return {
     invoke,

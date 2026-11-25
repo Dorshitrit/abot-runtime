@@ -18,6 +18,7 @@ export interface ConversationToolAction {
     | "preparing"
     | "running"
     | "awaiting_approval"
+    | "tool_requested"
     | "completed"
     | "failed"
     | "empty"

@@ -1,5 +1,6 @@
 import { invokeStructuredModelStep, StructuredModelInvalidOutputError, type StructuredModelParseResult } from "../../model/invoke-structured-step.js";
-import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
+import { isCapabilityBriefMessage } from "../../context/capability-brief.js";
+import type { ModelStepContextCompactionController, ModelStepOptionalContextProjection } from "../../model/model-step-port.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import type { RequestSteeringInbox } from "../../request/request-steering.js";
 import type { SupervisorDecision, SupervisorDecisionOutcome, SupervisorDecisionDiagnosticContext, SupervisorRoutingDecision, SupervisorWorkingDirectoryDecision, SupervisorWorkingDirectoryRoutingDecision } from "./contracts.js";
@@ -9,14 +10,23 @@ import { parseSupervisorDecisionOutput } from "./parser.js";
 import { parseSupervisorDelegationOutput } from "./delegation-contract.js";
 import { createSupervisorArtifactPathsOptionalProjection, type SupervisorArtifactPathsProjection } from "./artifact-paths.js";
 import { buildSupervisorWorkingDirectoryInput, mergeSupervisorWorkingDirectory, parseSupervisorWorkingDirectoryOutput } from "./working-directory.js";
+import type { MemoryCandidate } from "../../long-term-memory/contracts.js";
+import { parseSupervisorMemoryRoutingOutput } from "./memory-fusion.js";
+import { deferSupervisorMemoryRouting, SupervisorMemoryRoutingBudgetFallback, type SupervisorMemoryRouting } from "./memory-routing.js";
+import { parseSupervisorResumeSkillRead, SupervisorResumeSkillRoutingBudgetFallback, type SupervisorResumeSkillRead, type SupervisorResumeSkillRouting } from "./resume-skill-routing.js";
 
-type AcceptedSupervisorPhase<T> = Readonly<{ decision: T; steeringVersion: number }>;
+type AcceptedSupervisorPhase<T> = Readonly<{
+  decision: T; steeringVersion: number; memoryCandidates?: readonly MemoryCandidate[];
+}>;
 
 export function createDecisionOutcome(
   decision: SupervisorDecision,
   steeringVersion: number,
+  memoryCandidates?: readonly MemoryCandidate[],
 ): SupervisorDecisionOutcome {
-  return Object.freeze({ decision: Object.freeze(decision), steeringVersion });
+  return Object.freeze({ decision: Object.freeze(decision), steeringVersion,
+    ...(decision.action === "respond" && memoryCandidates !== undefined ? { memoryCandidates } : {}),
+  });
 }
 
 export async function runRoutingPhase(params: {
@@ -26,8 +36,13 @@ export async function runRoutingPhase(params: {
   input: ReturnType<typeof buildSupervisorDecisionInput>;
   diagnostic: SupervisorDecisionDiagnosticContext;
   contextCompaction: ModelStepContextCompactionController;
-}): Promise<AcceptedSupervisorPhase<SupervisorRoutingDecision>> {
+  resumeSkillRouting?: SupervisorResumeSkillRouting;
+  memoryRouting?: SupervisorMemoryRouting & Readonly<{
+    contextCompaction: ModelStepContextCompactionController;
+  }>;
+}): Promise<AcceptedSupervisorPhase<SupervisorRoutingDecision | SupervisorResumeSkillRead>> {
   const startedAt = Date.now();
+  let hasParsedFusedOutput = false;
   traceSupervisorModelStarted({
     diagnostic: params.diagnostic,
     allowMemoryRecall: params.input.allowMemoryRecall,
@@ -48,25 +63,22 @@ export async function runRoutingPhase(params: {
     const parseRoutingOutput = params.input.delegationOnly
       ? parseSupervisorDelegationOutput
       : parseSupervisorDecisionOutput;
-    const accepted = await invokeStructuredModelStep({
+    const accepted = await invokeStructuredModelStep<AcceptedSupervisorPhase<SupervisorRoutingDecision | SupervisorResumeSkillRead>>({
       request: params.request,
       boundSteeringVersion: params.boundSteeringVersion,
       modelStep: params.input.modelStep,
-      format: params.input.format,
-      messages: params.input.context.messages,
-      ...(params.input.delegationOnly
-        ? {
-            contextRetention: "exact" as const,
-            optionalContextProjection: createSupervisorArtifactPathsOptionalProjection({
-              projection: params.input.artifactPathsProjection, includeInstructions: true,
-            }),
-          }
-        : { contextCompaction: params.contextCompaction }),
+      format: params.memoryRouting?.format ?? params.input.format,
+      messages: params.memoryRouting?.messages ?? params.input.context.messages,
+      ...resolveSupervisorRoutingContextPolicy(params, () => hasParsedFusedOutput),
       timeoutReason: "supervisor_decision_timeout",
       invalidOutputReason: "invalid_supervisor_decision",
-      parse: (text) =>
-        captureAcceptedPhase(
-          parseRoutingOutput(text, {
+      parse: (text) => {
+        if (params.memoryRouting || params.resumeSkillRouting) hasParsedFusedOutput = true;
+        if (params.resumeSkillRouting) {
+          const read = parseSupervisorResumeSkillRead(text, params.resumeSkillRouting.eligibleSkillIds);
+          if (read) return captureAcceptedPhase(read, params.requestSteering);
+        }
+        const parseRouting = (routingText: string) => parseRoutingOutput(routingText, {
             includeAcknowledgement: params.input.includeAcknowledgement,
             includeTitle: params.input.includeTitle,
             includeResponseRecommendation:
@@ -77,9 +89,14 @@ export async function runRoutingPhase(params: {
             availableWorkerCapabilityCatalog:
               params.input.availableWorkerCapabilityCatalog,
             diagnostic: params.diagnostic,
-          }),
-          params.requestSteering,
-        ),
+          });
+        if (!params.memoryRouting) return captureAcceptedPhase(parseRouting(text), params.requestSteering);
+        const parsed = parseSupervisorMemoryRoutingOutput(text, parseRouting, params.memoryRouting.context);
+        if (!parsed.ok) return parsed;
+        return { ok: true, decision: Object.freeze({
+          ...parsed.decision, steeringVersion: params.requestSteering.snapshot().version,
+        }) };
+      },
     });
     traceSupervisorModelCompleted({
       diagnostic: params.diagnostic,
@@ -88,9 +105,49 @@ export async function runRoutingPhase(params: {
     });
     return accepted;
   } catch (error: unknown) {
+    if (params.memoryRouting && error instanceof SupervisorMemoryRoutingBudgetFallback) {
+      return runRoutingPhase({ ...params, memoryRouting: undefined });
+    }
     tracePhaseFailure(params.diagnostic, startedAt, error);
     throw error;
   }
+}
+
+function resolveSupervisorRoutingContextPolicy(
+  params: Pick<Parameters<typeof runRoutingPhase>[0], "request" | "input" | "memoryRouting" | "contextCompaction" | "resumeSkillRouting">,
+  hasParsedFusedOutput: () => boolean,
+): Readonly<{
+  contextRetention?: "exact";
+  optionalContextProjection?: ModelStepOptionalContextProjection;
+  contextCompaction?: ModelStepContextCompactionController;
+}> {
+  // Defer memory first so a fitting Skill/routing decision stays combined.
+  if (params.memoryRouting) return {
+    contextCompaction: params.memoryRouting.contextCompaction,
+    optionalContextProjection: (messages) => {
+      // Preserve the repair loop; subsequent pressure uses canonical compaction.
+      if (hasParsedFusedOutput()) return messages;
+      return deferSupervisorMemoryRouting(params.request);
+    },
+  };
+  if (params.resumeSkillRouting) return {
+    contextCompaction: params.contextCompaction,
+    optionalContextProjection: (messages) => {
+      if (hasParsedFusedOutput()) return messages;
+      throw new SupervisorResumeSkillRoutingBudgetFallback();
+    },
+  };
+  if (!params.input.delegationOnly) return { contextCompaction: params.contextCompaction };
+  return {
+    contextRetention: "exact",
+    optionalContextProjection: (messages) => {
+      const projected = createSupervisorArtifactPathsOptionalProjection({
+        projection: params.input.artifactPathsProjection, includeInstructions: true,
+      })?.(messages) ?? messages;
+      const brief = params.input.context.messages.find(isCapabilityBriefMessage);
+      return brief ? projected.filter((message) => message !== brief) : projected;
+    },
+  };
 }
 
 export async function runWorkingDirectoryPhase(params: {

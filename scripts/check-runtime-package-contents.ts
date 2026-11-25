@@ -739,7 +739,7 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Keep this as a tight publication guardrail, not an exact architecture
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
-// These ceilings bound the approved public package inventory and unpacked size.
+// These ceilings include the six Home connection-card assets in the verified package inventory.
 // Includes Information Basket modules/declarations and Web assets.
 // Also includes EA compaction policy and project-orientation paging sources/bundles.
 // Chat-upload registration adds three production modules with declarations.
@@ -781,9 +781,11 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // QA fixes add the Supervisor path resolver pair and shared embedding feedback.
 // Plugin input references and schema validation owners add seven module/declaration pairs.
 // Session model selection adds five module/declaration pairs and five browser assets.
-// SYSTEM executable evidence and scoped guidance add 23 packaged files.
-const maxFileCount = 5_233;
-const maxUnpackedSizeBytes = 15_740_000;
+// SYSTEM evidence/scoped guidance and grouped error notifications add 50 packaged files.
+// Private Socket access to the shared Agents workspace adds 15 module/declaration pairs.
+// Agent notifications add four module/declaration pairs; provider-stream retry adds three.
+const maxFileCount = 5_731;
+const maxUnpackedSizeBytes = 17_280_878;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

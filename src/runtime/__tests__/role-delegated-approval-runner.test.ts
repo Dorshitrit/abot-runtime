@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { createRequestSteeringInbox } from "../request/request-steering.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -77,17 +77,10 @@ function createDelegatedApprovalFixture(options: { settledArtifact?: boolean } =
           meta: {},
         };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount < (options.settledArtifact ? 2 : 1));
       if (input.modelStep === "worker.decision") {
         workerCount += 1;
-        return {
-          text: decision(
-            workerCount <= (options.settledArtifact ? 2 : 1)
-              ? capabilityDecision
-              : { action: "return_result" },
-          ),
-          meta: {},
-        };
+        return workerFusedReply(input, workerCount <= (options.settledArtifact ? 2 : 1)
+          ? capabilityDecision : { action: "return_result" });
       }
       if (input.modelStep === "capability.controls")
         return {
@@ -202,12 +195,8 @@ describe("SUPER delegation events across saved approval continuation", () => {
         ([input]) => supervisorFormatName(input) ?? input.modelStep,
       );
       expect(beforeResume).toEqual([
-        "supervisor_presentation",
-        "supervisor_skill_selection",
-        "supervisor_procedure_gate",
-        "supervisor_delegation",
-        "supervisor_working_directory",
-        "worker.evidence",
+        "supervisor_fused_entry",
+        "supervisor_fused_routing",
         "worker.decision",
         "capability.controls",
       ]);
@@ -246,10 +235,8 @@ describe("SUPER delegation events across saved approval continuation", () => {
           .slice(beforeResume.length)
           .map(([input]) => supervisorFormatName(input) ?? input.modelStep),
       ).toEqual([
-        "worker.evidence",
-        "worker.result",
-        "supervisor_skill_selection",
-        "supervisor_decision",
+        "worker.decision",
+        "supervisor_resume_skill_routing",
         "supervisor.response",
       ]);
       expect(fixture.invokeRaw).not.toHaveBeenCalled();

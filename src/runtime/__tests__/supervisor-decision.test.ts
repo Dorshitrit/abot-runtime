@@ -2163,7 +2163,7 @@ describe("Supervisor decision feasibility contract", () => {
         modelStep: SUPERVISOR_DECISION_MODEL_STEP,
         debugRequestId: request.requestId,
         format: expect.objectContaining({
-          name: "supervisor_procedure_gate",
+          name: "supervisor_fused_entry",
           schema: expect.objectContaining({
             type: "object",
             required: ["decision"],
@@ -2186,14 +2186,15 @@ describe("Supervisor decision feasibility contract", () => {
       expect.arrayContaining([
         expect.objectContaining({
           scope: "runtime.supervisor",
-          event: "model.started",
+          event: "procedure.entry.projected",
           callId: "call-1",
+          classifyProcedure: true,
         }),
         expect.objectContaining({
-          scope: "runtime.supervisor",
-          event: "model.completed",
+          scope: "runtime.context",
+          event: "budget.assessed",
           callId: "call-1",
-          requiresProcedure: false,
+          decisionPhase: "procedure_gate",
         }),
       ]),
     );
@@ -2256,21 +2257,20 @@ describe("Supervisor decision feasibility contract", () => {
     }
   });
 
-  test("repairs only workingDirectory and preserves the frozen routing decision", async () => {
+  test("after existing evidence repairs only workingDirectory and preserves the frozen routing decision", async () => {
     configureDebugLogger({ enabled: true });
     const objective =
       "Update the existing project projects/supervisor-owned completely.";
     const routing = {
       action: "invoke_role" as const,
       roleId: "worker" as const,
-      objective,
+      objective, workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
       acknowledgement: "I will update the existing project.",
       title: "Existing project update",
     };
     const invoke = vi
       .fn()
-      .mockResolvedValueOnce({ text: decisionText({ requiresProcedure: true }), meta: {} })
-      .mockResolvedValueOnce({ text: decisionText({ action: routing.action, roleId: routing.roleId, objective }), meta: {} })
+      .mockResolvedValueOnce({ text: decisionText({ action: routing.action, roleId: routing.roleId, objective, workerCapabilityScope: routing.workerCapabilityScope }), meta: {} })
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workingDirectory: WORKING_DIRECTORY,
@@ -2297,7 +2297,7 @@ describe("Supervisor decision feasibility contract", () => {
           depth: 0,
           invocationAttempt: 1,
         },
-        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        toolResults: REQUEST_TOOL_RESULTS,
         includeAcknowledgement: true,
         includeTitle: true,
         allowedRoleIds: ["worker", "planner"],
@@ -2337,7 +2337,7 @@ describe("Supervisor decision feasibility contract", () => {
     });
     expect(Object.isFrozen(decision)).toBe(true);
     expect(Object.isFrozen(decision!.decision)).toBe(true);
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(
       invoke.mock.calls.map(([input]) =>
         typeof input.format === "object" && input.format !== null
@@ -2345,22 +2345,21 @@ describe("Supervisor decision feasibility contract", () => {
           : undefined,
       ),
     ).toEqual([
-      "supervisor_procedure_gate",
-      "supervisor_delegation",
+      "supervisor_decision",
       "supervisor_working_directory",
       "supervisor_working_directory",
     ]);
-    const repairMessages = invoke.mock.calls[3]?.[0].messages as readonly { role: string; content: string }[];
+    const repairMessages = invoke.mock.calls[2]?.[0].messages as readonly { role: string; content: string }[];
     expect(readOpeningRepairInstruction(repairMessages)).toMatchObject({
       role: "system",
       content: expect.stringContaining(
         "supervisor_working_directory_shape_invalid",
       ),
     });
-    expect(JSON.stringify(invoke.mock.calls[2]?.[0].format)).not.toContain(
+    expect(JSON.stringify(invoke.mock.calls[1]?.[0].format)).not.toContain(
       "roleId",
     );
-    expect(JSON.stringify(invoke.mock.calls[2]?.[0].format)).not.toContain(
+    expect(JSON.stringify(invoke.mock.calls[1]?.[0].format)).not.toContain(
       "catalogGroupIds",
     );
   });

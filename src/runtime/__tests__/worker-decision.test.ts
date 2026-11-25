@@ -1085,7 +1085,7 @@ describe("generic Worker no-tool decision contract", () => {
       outcome: "failed",
       summary: "A current external observation is required.",
     });
-    expect(failedInvoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
+    expect(failedInvoke.mock.calls.map(([input]) => input.modelStep)).toEqual([WORKER_DECISION_MODEL_STEP]);
   });
 
   test("merges controls with the frozen single-capability selection and does not carry guidance into re-entry", async () => {
@@ -1189,11 +1189,7 @@ describe("generic Worker no-tool decision contract", () => {
           meta: {},
         };
       }
-      timeline.push("model.result");
-      expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
-      expect(input).not.toHaveProperty("format");
-      expect(serializedMessages).not.toContain(skillSecret);
-      return { text: "The exact observed value is cobalt.", meta: {} };
+      throw new Error(`unexpected Worker model step: ${input.modelStep}`);
     }).withEvidenceDecisions(true, false);
     const getExecutionGuidance = vi.fn(async (capabilityId: string) => {
       timeline.push(`skill.load:${capabilityId}`);
@@ -1231,7 +1227,6 @@ describe("generic Worker no-tool decision contract", () => {
       .current()
       .state.calls.find((candidate) => candidate.callId === firstCall.callId);
     if (!resumedCall) throw new Error("resumed Worker call missing");
-
     await expect(
       GENERIC_WORKER_EXECUTOR.execute({
         context: request,
@@ -1239,11 +1234,17 @@ describe("generic Worker no-tool decision contract", () => {
         ledger,
         availableChildRoleIds: [],
         continuation: firstResult.continuation,
+      }).then((result) => {
+        expect(result).toMatchObject({ kind: "terminal", outcome: "completed" });
+        expect(JSON.stringify(result)).not.toContain(skillSecret);
+        return JSON.parse((result as { summary: string }).summary);
       }),
-    ).resolves.toEqual({
-      kind: "terminal",
-      outcome: "completed",
-      summary: "The exact observed value is cobalt.",
+    ).resolves.toMatchObject({
+      kind: "runtime_worker_execution_report_v1",
+      evidence: { requestToolResults: { results: [expect.objectContaining({
+        executionId: "capability-execution-1", capabilityId: "example.observe",
+        outcome: "succeeded", summary: "Observed value: cobalt.",
+      })] } },
     });
 
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
@@ -1254,13 +1255,12 @@ describe("generic Worker no-tool decision contract", () => {
       "skill.load:example.observe",
       "model.execution",
       "tool.execute",
-      "model.result",
     ]);
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, "worker.evidence", WORKER_RESULT_MODEL_STEP,
+      WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, WORKER_DECISION_MODEL_STEP,
     ]);
-    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).not.toContain(skillSecret);
-    expect(hasRuntimeMessageKind(invoke.mock.calls[3]![0].messages, "runtime_worker_capability_execution_assignment")).toBe(false);
+    expect(JSON.stringify(invoke.mock.calls[2]![0].messages)).not.toContain(skillSecret);
+    expect(hasRuntimeMessageKind(invoke.mock.calls[2]![0].messages, "runtime_worker_capability_execution_assignment")).toBe(false);
     expect(request.onThinkingDelta).toHaveBeenCalledExactlyOnceWith(
       `${canonicalIntent}\n\n`,
     );
@@ -1376,7 +1376,7 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([WORKER_DECISION_MODEL_STEP]);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       "write_complete_file",
     );
@@ -1535,7 +1535,7 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([WORKER_DECISION_MODEL_STEP]);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       queryAdapter.descriptor.capabilityId,
     );
@@ -1664,7 +1664,7 @@ describe("generic Worker no-tool decision contract", () => {
       },
     });
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP,
+      WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP,
     ]);
     expect(new Set(invoke.mock.calls.map(([input]) => JSON.stringify(
       runtimeMessageByKind(input.messages, "runtime_session_artifact_paths_v1"),
@@ -1794,7 +1794,7 @@ describe("generic Worker no-tool decision contract", () => {
       intent: canonicalIntent,
       controls: { path: "artifact-current.txt" },
     });
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([WORKER_DECISION_MODEL_STEP]);
 
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
@@ -2026,11 +2026,7 @@ describe("generic Worker no-tool decision contract", () => {
           meta: {},
         };
       }
-      expect(JSON.stringify(messages)).toContain("capability-execution-1");
-      expect(JSON.stringify(messages)).toContain("capability-execution-2");
-      expect(hasRuntimeMessageKind(messages, "runtime_worker_capability_execution_assignment")).toBe(false);
-      expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
-      return { text: "Both independent sources were observed.", meta: {} };
+      throw new Error(`unexpected Worker model step: ${input.modelStep}`);
     }).withEvidenceDecisions(true, false);
     const getExecutionGuidance = vi.fn(async (capabilityId: string) =>
       capabilityId === "inspect_project" ? "PROJECT_GUIDANCE" : "JSON_GUIDANCE",
@@ -2085,7 +2081,6 @@ describe("generic Worker no-tool decision contract", () => {
       .current()
       .state.calls.find((candidate) => candidate.callId === firstCall.callId);
     if (!resumedCall) throw new Error("resumed Worker call missing");
-
     await expect(
       GENERIC_WORKER_EXECUTOR.execute({
         context: request,
@@ -2093,11 +2088,15 @@ describe("generic Worker no-tool decision contract", () => {
         ledger,
         availableChildRoleIds: [],
         continuation: firstResult.continuation,
+      }).then((result) => {
+        expect(result).toMatchObject({ kind: "terminal", outcome: "completed" });
+        return JSON.parse((result as { summary: string }).summary);
       }),
-    ).resolves.toEqual({
-      kind: "terminal",
-      outcome: "completed",
-      summary: "Both independent sources were observed.",
+    ).resolves.toMatchObject({
+      kind: "runtime_worker_execution_report_v1",
+      evidence: { requestToolResults: { results: ledger.current().state.capabilityExecutions.map(
+        ({ executionId, capabilityId, summary }) => expect.objectContaining({ executionId, capabilityId, summary }),
+      ) } },
     });
     expect(getExecutionGuidance).toHaveBeenCalledTimes(2);
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(1, "inspect_project");
@@ -2125,10 +2124,11 @@ describe("generic Worker no-tool decision contract", () => {
       `${intentA}\n${intentB}\n\n`,
     );
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, "worker.evidence", WORKER_RESULT_MODEL_STEP,
+      WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, WORKER_DECISION_MODEL_STEP,
     ]);
-    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).toContain("capability-execution-1");
-    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).toContain("capability-execution-2");
+    expect(JSON.stringify(invoke.mock.calls[2]![0].messages)).toContain("capability-execution-1");
+    expect(JSON.stringify(invoke.mock.calls[2]![0].messages)).toContain("capability-execution-2");
+    expect(hasRuntimeMessageKind(invoke.mock.calls[2]![0].messages, "runtime_worker_capability_execution_assignment")).toBe(false);
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );

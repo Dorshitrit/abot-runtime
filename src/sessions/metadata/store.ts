@@ -47,12 +47,12 @@ export async function updateSessionMetadata(
   }
 }
 
-export async function deleteSessionMetadata(sessionsDir: string, sessionId: string): Promise<void> {
+export async function deleteSessionMetadata(sessionsDir: string, sessionId: string, required = false): Promise<void> {
   const target = metadataPath(sessionsDir, sessionId);
   await publishSessionProjection(target, async () => {
     await rm(target, { force: true });
     await rm(`${target}.source`, { force: true });
-  });
+  }, required);
 }
 
 async function readSourceMetadata(path: string): Promise<SessionMetadata | null> {

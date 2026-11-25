@@ -60,7 +60,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     try {
       await fixture.runOrdinaryRequest("Hello.");
       const rootStep = policy === "execution-agent-v1" ? "execution.decision" : "supervisor.decision";
-      const decisions = fixture.invoke.mock.calls.filter(([input]) => input.modelStep === rootStep && (policy === "execution-agent-v1" || supervisorFormatName(input) === "supervisor_skill_selection"));
+      const decisions = fixture.invoke.mock.calls.filter(([input]) => input.modelStep === rootStep && (policy === "execution-agent-v1" || supervisorFormatName(input) === "supervisor_fused_entry"));
       expect(decisions).toHaveLength(1);
       const system = scheduledModelMessages(decisions[0]![0])
         .filter(({ role }) => role === "system").map(({ content }) => content).join("\n");

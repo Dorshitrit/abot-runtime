@@ -1,6 +1,7 @@
 type ConversationPresence = {
   environmentId: string;
-  sessionId: string;
+  kind: "chat" | "agent";
+  id: string;
   expiresAt: number;
 };
 
@@ -20,10 +21,12 @@ export class NotificationPresence {
     this.clients.delete(client);
     if (message.active !== true) return;
     if (!isPresenceIdentity(message.environment)) return;
-    if (!isPresenceIdentity(message.sessionId)) return;
+    const agent = message.agentId !== undefined;
+    const id = agent ? message.agentId : message.sessionId;
+    if (!isPresenceIdentity(id) || (agent && message.sessionId)) return;
     this.clients.set(client, {
       environmentId: message.environment,
-      sessionId: message.sessionId,
+      kind: agent ? "agent" : "chat", id,
       expiresAt: this.now() + 60_000,
     });
   }
@@ -33,6 +36,14 @@ export class NotificationPresence {
   }
 
   isViewing(environmentId: string, sessionId: string): boolean {
+    return this.viewing(environmentId, "chat", sessionId);
+  }
+
+  isViewingAgent(environmentId: string, agentId: string): boolean {
+    return this.viewing(environmentId, "agent", agentId);
+  }
+
+  private viewing(environmentId: string, kind: ConversationPresence["kind"], id: string): boolean {
     const now = this.now();
     for (const [client, presence] of this.clients) {
       if (presence.expiresAt <= now) {
@@ -40,7 +51,7 @@ export class NotificationPresence {
         continue;
       }
       if (presence.environmentId !== environmentId) continue;
-      if (presence.sessionId === sessionId) return true;
+      if (presence.kind === kind && presence.id === id) return true;
     }
     return false;
   }

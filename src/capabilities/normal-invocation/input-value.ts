@@ -1,7 +1,40 @@
 import type {
+  ToolNormalInvocationInputValidation,
+  ToolNormalInvocationOperation,
   ToolNormalInvocationPropertyInput,
   ToolNormalInvocationScalarInput,
 } from "./contracts.js";
+import { isPlainObject } from "./contract-fields.js";
+import { matchesToolInputPropertyModes } from "./input-property-modes.js";
+
+/** Deterministic post-provider validation for the exact v1 input object. */
+export function validateToolNormalInvocationInput(
+  operation: ToolNormalInvocationOperation,
+  raw: unknown,
+): ToolNormalInvocationInputValidation {
+  if (!isPlainObject(raw)) return invalid("input must be an object");
+  const propertyNames = Object.keys(operation.input.properties);
+  const suppliedNames = Object.keys(raw);
+  const unknown = suppliedNames.find((name) => !propertyNames.includes(name));
+  if (unknown) return invalid(`input contains unknown property ${unknown}`);
+  const missing = operation.input.required.find((name) => !Object.hasOwn(raw, name));
+  if (missing) return invalid(`input is missing required property ${missing}`);
+  if (!matchesToolInputPropertyModes(operation.input.anyOf, suppliedNames))
+    return invalid("input properties do not match a declared mode");
+  const value: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(raw)) {
+    const schema = operation.input.properties[name];
+    if (!schema) continue;
+    const issue = validateToolNormalInvocationPropertyValue(schema, entry, `input.${name}`);
+    if (issue) return invalid(issue);
+    value[name] = Array.isArray(entry) ? Object.freeze([...entry]) : entry;
+  }
+  return Object.freeze({ ok: true as const, value: Object.freeze(value) });
+}
+
+function invalid(issue: string): ToolNormalInvocationInputValidation {
+  return Object.freeze({ ok: false as const, issue });
+}
 
 function validateScalarValue(
   schema: ToolNormalInvocationScalarInput,
@@ -21,6 +54,9 @@ function validateScalarValue(
       }
       if ("maxLength" in schema && value.length > schema.maxLength) {
         return `${path} must contain at most ${schema.maxLength} characters`;
+      }
+      if ("pattern" in schema && schema.pattern && !new RegExp(schema.pattern, "u").test(value)) {
+        return `${path} must match its declared pattern`;
       }
       return undefined;
     case "number":

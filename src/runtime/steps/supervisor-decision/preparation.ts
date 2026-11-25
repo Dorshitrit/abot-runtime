@@ -92,7 +92,7 @@ function canSelectSupervisorSkills(options: {
   return !options.skillReadHead?.state.skillReads?.some((read) => read.result.outcome === "failed");
 }
 
-function isExhaustedDuplicateSkillSelection(error: unknown): error is StructuredModelInvalidOutputError {
+export function isExhaustedDuplicateSkillSelection(error: unknown): error is StructuredModelInvalidOutputError {
   if (!(error instanceof StructuredModelInvalidOutputError)) return false;
   if (error.modelStep !== SUPERVISOR_DECISION_MODEL_STEP) return false;
   if (error.message !== "invalid_supervisor_decision") return false;

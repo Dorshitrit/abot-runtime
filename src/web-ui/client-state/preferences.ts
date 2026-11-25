@@ -1,3 +1,4 @@
+import { AGENT_DRAFT_PREFERENCE, assertAgentDraftPreference, mergeAgentDraftPreference } from "./agent-draft-preference.js";
 import { isColorPaletteId, PALETTE_PREFERENCE_KEY } from "../app/lib/color-palettes.js";
 import { isNavigationMode, NAVIGATION_PREFERENCE_KEY } from "../app/lib/navigation-display.js";
 import { isDeepStrictEqual } from "node:util";
@@ -6,6 +7,7 @@ import { assertPreferenceShape, isPreferenceObject as isObject } from "./prefere
 
 const scalarKeys = new Set(["abot-web.environmentId", "abot-web.lastToolPermissionMode", PALETTE_PREFERENCE_KEY, NAVIGATION_PREFERENCE_KEY]);
 const jsonKeys = new Set([
+  AGENT_DRAFT_PREFERENCE,
   "abot-web.pinnedSessions", "abot-web.currentSessionByEnvironment", "abot-web.sessionModes",
   "abot-web.sessionModels", "abot-web.lastModelByEnvironment", "abot-web.sessionSidebarByEnvironment",
   "abot.spark.launcher.position.v1", "abot-web.reasoningPreferences",
@@ -45,7 +47,8 @@ export function decodePreference(key: string, value: unknown): unknown {
   try { decoded = JSON.parse(value); }
   catch { throw new ClientStateError("invalid_preferences", "Workspace preferences must contain JSON."); }
   assertBoundedJson(decoded);
-  assertPreferenceShape(key, decoded);
+  if (key === AGENT_DRAFT_PREFERENCE) assertAgentDraftPreference(decoded);
+  else assertPreferenceShape(key, decoded);
   return decoded;
 }
 
@@ -76,7 +79,9 @@ export function updatePreference(preferences: ClientPreferences, input: Record<s
   const before = decodePreference(key, input.before);
   const after = decodePreference(key, input.value);
   const current = decodePreference(key, preferences[key] ?? null);
-  const merged = mergeChangedFields(before, after, current);
+  const merged = key === AGENT_DRAFT_PREFERENCE
+    ? mergeAgentDraftPreference(before, after, current)
+    : mergeChangedFields(before, after, current);
   if (merged === undefined) { delete preferences[key]; return; }
   const value = scalarKeys.has(key) ? String(merged) : JSON.stringify(merged);
   decodePreference(key, value);

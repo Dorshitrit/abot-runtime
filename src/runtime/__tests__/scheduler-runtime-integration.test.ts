@@ -162,7 +162,7 @@ describe("scheduled requests through runtime composition", () => {
     const pending = await scheduler.runNow(job.id);
     await scheduler.tick();
     expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
+      "supervisor_fused_entry",
     ]);
     expect((await scheduler.listRuns())[0].status).toBe("pending");
     release.open();

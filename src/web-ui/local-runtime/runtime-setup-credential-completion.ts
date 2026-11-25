@@ -19,6 +19,7 @@ export function canCompleteMissingRuntimeSetupCredential(
   if (requestedContext !== existing.contextWindowTokens) return false;
   if (input.supportsThinking !== undefined && input.supportsThinking !== existing.supportsThinking) return false;
   if (input.reasoningBudget !== undefined && !isDeepStrictEqual(input.reasoningBudget, existing.reasoningBudget)) return false;
+  if (input.reasoningSummary !== undefined && input.reasoningSummary !== existing.reasoningSummary) return false;
   // Both projections already normalize addresses to origins.
   if ((existing.baseUrl ?? "") !== (input.baseUrl ?? "")) return false;
   return !readRuntimeSetupCredential(rootDir, existing.apiKeyEnv);

@@ -17,6 +17,7 @@ import { buildCheckpointMessage } from "../context/semantic-compaction/checkpoin
 import { createVerifiedCompactionProjection } from "../context/verified-compaction-projection.js";
 import { dependencyObservationFixture, SELECTED_SOURCE, NESTED_SOURCE } from "./support/super-dependency-observation-fixture.js";
 import { createDependencyCheckpoints } from "./support/super-dependency-compaction-fixture.js";
+import { projectSelectedDependencyResultSources } from "../context/semantic-compaction/super-dependency-result-source.js";
 
 type Fixture = Awaited<ReturnType<typeof dependencyObservationFixture>>;
 
@@ -40,8 +41,11 @@ test("consumer sidecar admits selected observation sources with their original i
   const bound = bindSuperWorkerCompactionSources({}, f.head, f.call.callId);
   const sidecar = readSuperWorkerCompactionSidecar(bound)!;
   const expected = createDependencyCheckpoints(f).sources;
+  const summaries = projectSelectedDependencyResultSources(f.head, f.call);
   expect(sidecar.eligibleExecutionIds).toEqual([f.firstExecutionId, f.nestedExecutionId]);
-  expect(sidecar.sources).toEqual(expected);
+  expect(summaries.map(source => source.sourceRef)).toEqual([`dependency-result:${f.selectedResult.resultRef}`]);
+  expect(JSON.parse(summaries[0]!.content).summary).toBe(f.selectedResult.summary);
+  expect(sidecar.sources).toEqual([...expected, ...summaries]);
   expect(sidecar.sources.some(source => source.sourceRef === f.unselectedExecutionId)).toBe(false);
   expect(readSuperWorkerCompactionSidecar({ ...bound })).toBeUndefined();
 });
@@ -121,12 +125,14 @@ test.each(["runtime_worker_assignment", "runtime_worker_capability_execution_ass
   "%s compacts once, preserves assignment identity and restores without raw/summary duplication",
   async kind => {
     const f = await dependencyObservationFixture();
-    const compacted = createDependencyCheckpoints(f, { consumerOwned: true });
+    const observations = createDependencyCheckpoints(f).sources;
+    const summaries = projectSelectedDependencyResultSources(f.head, f.call);
+    const compacted = createDependencyCheckpoints(f, { sources: [...observations, ...summaries], consumerOwned: true });
     const checkpoint = compacted.checkpoints[0]!;
     const sourceMap = new Map(compacted.sources.map(source => [source.sourceRef, source]));
     const message = carrier(f, kind);
     const sidecar = readSuperWorkerCompactionSidecar(bindSuperWorkerCompactionSources({}, f.head, f.call.callId))!;
-    expect(scanDependencyObservationSources(message, sourceMap, sidecar)).toEqual(compacted.sources);
+    expect(scanDependencyObservationSources(message, sourceMap, sidecar)).toEqual(observations);
     const projection = resolveSuperDependencyObservationCompaction(sidecar);
     expect(projection.scanCompactionSources([message], checkpoint.scopeId, sourceMap)
       .map(entry => entry.source)).toEqual(compacted.sources);
@@ -210,7 +216,8 @@ test.each([true, false])("mixed ordinary/dependency sources keep source order an
   const compacted = createDependencyCheckpoints(f, { consumerOwned: true });
   const sidecar = readSuperWorkerCompactionSidecar(bindSuperWorkerCompactionSources({}, f.head, f.call.callId))!;
   const projection = resolveSuperDependencyObservationCompaction(sidecar);
-  const sourceMap = new Map(compacted.sources.map(source => [source.sourceRef, source]));
+  const summaries = projectSelectedDependencyResultSources(f.head, f.call);
+  const sourceMap = new Map([...compacted.sources, ...summaries].map(source => [source.sourceRef, source]));
   const assignment = carrier(f);
   const ordinary: ChatMessage = { role: "tool", toolCallId: "ordinary-tool", toolName: "fixture_read", content: "ORDINARY_SOURCE_BYTES" };
   const prefix: ChatMessage = { role: "system", content: "stable policy" };
@@ -218,10 +225,10 @@ test.each([true, false])("mixed ordinary/dependency sources keep source order an
   const tail: ChatMessage = { role: "user", content: "stable continuation" };
   const messages = [prefix, intent, ...(dependencyFirst ? [assignment, ordinary] : [ordinary, assignment]), tail];
   const scanned = projection.scanCompactionSources(messages, compacted.checkpoints[0]!.scopeId, sourceMap);
-  const dependencyIds = compacted.sources.map(source => source.sourceRef);
+  const dependencyIds = [...compacted.sources, ...summaries].map(source => source.sourceRef);
   expect(scanned.map(entry => entry.source.sourceRef)).toEqual(dependencyFirst
     ? [...dependencyIds, "tool-result:ordinary-tool"] : ["tool-result:ordinary-tool", ...dependencyIds]);
-  expect(scanned.map(entry => entry.index)).toEqual(dependencyFirst ? [2, 2, 3] : [2, 3, 3]);
+  expect(scanned.map(entry => entry.index)).toEqual(dependencyFirst ? [2, 2, 2, 3] : [2, 3, 3, 3]);
   for (const { source } of scanned) sourceMap.set(source.sourceRef, source);
   const checkpoint = { ...compacted.checkpoints[0]!, sourceDigests: scanned.map(({ source }) => ({
     sourceRef: source.sourceRef, sourceFingerprint: source.sourceFingerprint, digest: "MIXED_DIGEST_" + source.sourceRef,
@@ -245,7 +252,9 @@ test.each([true, false])("mixed ordinary/dependency sources keep source order an
 
 test.each([true, false])("an existing standalone checkpoint stays before covered dependencies (prior first: %s)", async priorFirst => {
   const f = await dependencyObservationFixture();
-  const compacted = createDependencyCheckpoints(f, { consumerOwned: true });
+  const observations = createDependencyCheckpoints(f).sources;
+  const summaries = projectSelectedDependencyResultSources(f.head, f.call);
+  const compacted = createDependencyCheckpoints(f, { sources: [...observations, ...summaries], consumerOwned: true });
   const checkpoint = compacted.checkpoints[0]!;
   const sourceMap = new Map(compacted.sources.map(source => [source.sourceRef, source]));
   const projection = resolveSuperDependencyObservationCompaction(

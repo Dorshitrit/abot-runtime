@@ -46,6 +46,54 @@ test.each(["lock", "lease"] as const)("handles a disappeared %s directory withou
   expect(await actual.readdir(context.stateDir)).toEqual([]);
 });
 
+test.each(["lock", "lease"] as const)("handles a disappeared %s directory during its initial stat", async (part) => {
+  const context = await createPortablePluginFixture("memory");
+  const storePath = join(context.stateDir, "memory.json");
+  const lockPath = `${storePath}.lock`;
+  const observedPath = part === "lock" ? lockPath : join(lockPath, "lease");
+  const release = await acquireStoreLock(storePath);
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  let injected = false;
+  vi.mocked(fs.lstat).mockImplementation((async (path: Parameters<typeof fs.lstat>[0], options: Parameters<typeof fs.lstat>[1]) => {
+    // Bigint observations belong to the separate directory-claim check.
+    if (String(path) !== observedPath || options !== undefined || injected) return actual.lstat(path, options);
+    injected = true;
+    await release();
+    throw Object.assign(new Error("Windows pending directory deletion"), { code: "EPERM" });
+  }) as typeof fs.lstat);
+  emulateWindowsLockObservation();
+  const acquired = await acquireStoreLock(storePath, { waitMs: 1000, retryMs: 1 });
+  expect(injected).toBe(true);
+  await acquired();
+  expect(await actual.readdir(context.stateDir)).toEqual([]);
+});
+
+test.each(["lock", "lease"] as const)("an initial %s stat denial preserves the existing live lease", async (part) => {
+  const context = await createPortablePluginFixture("memory");
+  const storePath = join(context.stateDir, "memory.json");
+  const lockPath = `${storePath}.lock`;
+  const observedPath = part === "lock" ? lockPath : join(lockPath, "lease");
+  const release = await acquireStoreLock(storePath);
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const ownerNames = await actual.readdir(join(lockPath, "lease"));
+  let injected = false;
+  vi.mocked(fs.lstat).mockImplementation((async (path: Parameters<typeof fs.lstat>[0], options: Parameters<typeof fs.lstat>[1]) => {
+    if (String(path) !== observedPath || options !== undefined || injected) return actual.lstat(path, options);
+    injected = true;
+    throw Object.assign(new Error("Permission denied"), { code: "EPERM" });
+  }) as typeof fs.lstat);
+  emulateWindowsLockObservation();
+  try {
+    await expect(acquireStoreLock(storePath, { waitMs: 1000, retryMs: 1 }))
+      .rejects.toMatchObject({ code: "memory_store_unavailable" });
+    expect(injected).toBe(true);
+    expect(await actual.readdir(join(lockPath, "lease"))).toEqual(ownerNames);
+  } finally {
+    await release();
+  }
+  expect(await actual.readdir(context.stateDir)).toEqual([]);
+});
+
 test.each(["unchanged", "unobservable"] as const)("preserves denial for an %s lock directory", async (kind) => {
   const context = await createPortablePluginFixture("memory");
   emulateWindowsLockObservation();

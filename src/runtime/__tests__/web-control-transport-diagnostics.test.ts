@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
@@ -110,7 +113,7 @@ test("resume reports the existing replay result without additional reads or chan
     finalState: { status: "completed", output: "private answer" },
   }));
   const f = transportFixture({
-    services: { sessions: { getRequestReplayById } },
+    services: { config: { paths: { runtimeDir: join(tmpdir(), `web-empty-agents-${randomUUID()}`) } }, sessions: { getRequestReplayById } },
   });
   f.emit({
     type: "resume_request",
@@ -150,7 +153,7 @@ test("missing replay keeps the existing two reads and approval lookup without ne
   const getRequestReplayById = vi.fn(async () => null);
   const list = vi.fn(async () => []);
   const f = transportFixture({
-    services: { sessions: { getRequestReplayById } },
+    services: { config: { paths: { runtimeDir: join(tmpdir(), `web-empty-agents-${randomUUID()}`) } }, sessions: { getRequestReplayById } },
     approvals: { list },
   });
   f.emit({

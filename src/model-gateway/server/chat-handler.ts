@@ -1,3 +1,4 @@
+import { GatewayModelIssues } from "./model-issues.js";
 import { resolveModelInvocation } from "../policy/invocation-policy.js";
 import type { ModelGatewayRequest } from "../types.js";
 import type {
@@ -32,6 +33,7 @@ export function createChatHandler(
     context: ModelGatewayInvocationContext = {},
   ): Promise<void> {
     const abortSignal = context.abortSignal ?? new AbortController().signal;
+    const issues = new GatewayModelIssues();
     try {
       abortSignal.throwIfAborted();
       const effectiveRequestBody = applyConfiguredModelPolicy(
@@ -71,6 +73,7 @@ export function createChatHandler(
       });
 
       const result = await providerAdapter.invoke({
+        onIssue: issues.observe,
         endpoint: "chat",
         abortSignal,
         requestBody: effectiveRequestBody,
@@ -88,6 +91,7 @@ export function createChatHandler(
       if (abortSignal.aborted) {
         return;
       }
+      issues.writeHeader(response);
       if (result.kind === "error") {
         return sendProviderError(response, result, effectiveRequestBody);
       }
@@ -96,11 +100,13 @@ export function createChatHandler(
       }
 
       await writeChatStreamResponse({
+        issues,
         invocation: result,
         response,
         abortSignal,
       });
     } catch (error) {
+      issues.writeHeader(response);
       respondToGatewayHandlerError({
         error,
         response,

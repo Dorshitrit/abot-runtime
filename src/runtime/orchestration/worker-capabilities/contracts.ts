@@ -13,6 +13,7 @@ import {
 } from "../role-calls/index.js";
 import type {
   ToolCatalogGroup,
+  ToolControlsRefinement,
   ToolDevelopmentRole,
   ToolRoutingCapability,
 } from "../../../capabilities/tool-types.js";
@@ -23,6 +24,7 @@ import type {
 } from "./approval-contracts.js";
 import type { ToolApprovalRequest } from "../../ports.js";
 import type { ToolInputDocumentation } from "../../../capabilities/normal-invocation/input-documentation.js";
+import type { ToolInputPropertyModes } from "../../../capabilities/normal-invocation/input-property-modes.js";
 
 export const WORKER_CAPABILITY_ID_MAX_LENGTH = ROLE_CAPABILITY_ID_MAX_LENGTH;
 /** Client-facing capability narration; never an execution objective or payload. */
@@ -74,6 +76,7 @@ export type WorkerCapabilityBoundedStringControl = Readonly<{
   type: "string";
   minLength: number;
   maxLength: number;
+  pattern?: string;
 }>;
 
 export type WorkerCapabilityUnboundedStringControl = Readonly<{
@@ -119,6 +122,7 @@ export type WorkerCapabilityControlsSchema = Readonly<{
   additionalProperties: false;
   properties: Readonly<Record<string, WorkerCapabilityControl>>;
   required: readonly string[];
+  anyOf?: ToolInputPropertyModes;
 }>;
 
 export const EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA: WorkerCapabilityControlsSchema =
@@ -144,8 +148,8 @@ export type WorkerCapabilityDescriptor = Readonly<{
   runtimePathControlIds?: readonly string[];
   /** Controls selected and frozen with capability identity before refinement. */
   selectionControlIds?: readonly string[];
-  /** Allows mechanical execution only when selection owns every control. */
-  controlsRefinement?: "mechanical_when_complete";
+  /** Capability-owned control selection mode; eligibility belongs to the model-step owner. */
+  controlsRefinement?: ToolControlsRefinement;
   /** Adapter captures an exact source before single-stage authoring. */
   preparedPayloadSource?: true;
   /** Manifest-owned routing metadata projected only in capability selection. */

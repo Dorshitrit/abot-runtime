@@ -65,7 +65,9 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
           ...(decision.title ? { title: decision.title } : {}),
         },
       };
-      if (!isSupervisorSkillWriteSelection(decision)) return { decision, steeringVersion };
+      if (!isSupervisorSkillWriteSelection(decision)) return {
+        decision, steeringVersion, memoryCandidates: outcome.memoryCandidates,
+      };
       return {
         steeringVersion, decision: {
           action: "prepare_skill_write", selection: decision,
@@ -79,6 +81,7 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
       return runSupervisorAuthoredResponse(request, {
         responseRecommendation: options.responseRecommendation,
         responseRecommendationOrigin: options.responseRecommendationOrigin,
+        memoryCandidates: options.memoryCandidates,
         call: options.call,
         skillReadHead: options.head,
         toolResults: options.toolResults,

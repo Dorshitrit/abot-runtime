@@ -1,3 +1,4 @@
+import { GatewayModelIssues } from "./model-issues.js";
 import { InputTokenCountDiagnostics } from "../observability/input-token-count-diagnostics.js";
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { resolveModelInvocation } from "../policy/invocation-policy.js";
@@ -31,6 +32,7 @@ export function createInputTokenCountHandler(
     context: ModelGatewayInvocationContext = {},
   ): Promise<void> {
     const abortSignal = context.abortSignal ?? new AbortController().signal;
+    const issues = new GatewayModelIssues();
     const diagnostics = new InputTokenCountDiagnostics("model-gateway.server", requestBody);
     try {
       abortSignal.throwIfAborted();
@@ -71,6 +73,7 @@ export function createInputTokenCountHandler(
 
       diagnostics.setPhase("provider_count");
       const result = await providerAdapter.countInputTokens({
+        onIssue: issues.observe,
         endpoint: "chat",
         abortSignal,
         requestBody: effectiveRequestBody,
@@ -87,6 +90,7 @@ export function createInputTokenCountHandler(
         return;
       }
       if (result.kind === "error") {
+        issues.writeHeader(response);
         diagnostics.failed({ kind: "provider_result", statusCode: result.statusCode, aborted: false });
         return sendText(response, result.statusCode, result.message);
       }
@@ -109,6 +113,7 @@ export function createInputTokenCountHandler(
         inputTokens: result.inputTokens,
       });
       diagnostics.setPhase("response_write");
+      issues.writeHeader(response);
       return sendJson(response, 200, {
         inputTokens: result.inputTokens,
         profileId: invocation.profile.id,
@@ -118,6 +123,7 @@ export function createInputTokenCountHandler(
         source: "provider_input_token_count",
       });
     } catch (error) {
+      issues.writeHeader(response);
       diagnostics.failed({ kind: "exception", error, aborted: abortSignal.aborted });
       respondToGatewayHandlerError({
         error,

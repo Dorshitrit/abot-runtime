@@ -34,7 +34,7 @@ export function createProjectChangesFeature(options) {
   });
   function shouldAutoOpen(state) {
     if (!activeWorkspace || !wideViewport?.matches || autoSuppressed || !canAutoOpen()) return false;
-    if (state.open || state.loading) return false;
+    if (state.open || state.loading || state.error) return false;
     return hasPositiveChanges(state.changes);
   }
   const controller = createProjectChangesController({
@@ -49,7 +49,7 @@ export function createProjectChangesFeature(options) {
   function syncPanel(input) {
     const anchorId = latestAnswerIdentity(input.messages, input.getActivityForMessage);
     const scope = getScope();
-    const identity = JSON.stringify([scope?.environmentId, scope?.sessionId, anchorId]);
+    const identity = JSON.stringify([scope?.environmentId, scope?.sessionId]);
     if (owner !== identity) { owner = identity; autoSuppressed = false; }
     controller.sync({ anchorId: activeWorkspace && wideViewport?.matches ? anchorId : "", isLatestWindow: input.isLatestWindow });
   }

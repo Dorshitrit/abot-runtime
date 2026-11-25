@@ -1,4 +1,5 @@
 import type { ModelProviderAdapter } from "../contracts.js";
+import { observeParameterOmissions } from "../parameter-issues.js";
 import { getProviderParameterCapabilities } from "../parameter-capabilities.js";
 import { emitOpenAISchemaDiagnostics } from "./diagnostics.js";
 import { countOpenAIInputTokens } from "./input-token-count.js";
@@ -8,6 +9,7 @@ import {
 } from "./protocol.js";
 import { embedWithOpenAI } from "./embeddings.js";
 import { invokeOpenAIResponses } from "./responses-invocation.js";
+import { applyOpenAIComputedOutputBudget } from "./output-budget.js";
 
 export function createOpenAIProviderAdapter(): ModelProviderAdapter {
   return Object.freeze({
@@ -34,6 +36,8 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
         onFormatProjection: (diagnostics) =>
           emitOpenAISchemaDiagnostics(requestId, diagnostics),
       });
+      const parameters = applyOpenAIComputedOutputBudget(params, payload);
+      observeParameterOmissions({ ...params, parameters, operation: params.endpoint });
       return invokeOpenAIResponses(params, {
         url: `${settings.baseUrl}/responses`,
         accessToken: settings.apiKey,

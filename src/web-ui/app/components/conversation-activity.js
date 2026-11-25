@@ -19,6 +19,7 @@ import { isNonToolTimelineEvent } from "../lib/tool-timeline.js";
 import { buildMemoryActivities, isMemoryRetrievalEvent } from "../lib/memory-activity-model.js";
 import { createConversationMemoryActivity } from "./conversation-memory-activity.js";
 import { isBasketDiscoveryEvent } from "../lib/basket-activity-model.js";
+import { isFilePayloadToolRequest } from "../lib/file-payload-handoff.js";
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -50,7 +51,8 @@ function presentEvent(event) {
     ? textOf(event.name, "Event")
     : formatEventLabel(event);
   let tone = textOf(event?.tone) || eventTone(event);
-  if (isUncompletedToolEvent(event)) {
+  const handoff = isFilePayloadToolRequest(event);
+  if (handoff || isUncompletedToolEvent(event)) {
     name = formatEventLabel({ ...event, name: eventName });
     tone = "neutral";
   }
@@ -58,7 +60,7 @@ function presentEvent(event) {
     ...event,
     eventName,
     name,
-    summary: isPresentedEvent
+    summary: isPresentedEvent && !handoff
       ? textOf(event.summary)
       : formatEventDetail(event),
     tone,

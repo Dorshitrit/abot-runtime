@@ -19,7 +19,7 @@ export function createCompactHomeLayout({
   let dialog;
   const mounts = createDashboardWidgetMounts({
     getEntry: id => entries.get(id), canUseDashboardWidgetHost: () => enabled && workspace === "home",
-    open(entry) { ensureDialog(); dialog.open(entry, { host: homeRegion || root }); entry.onOpen?.(); dialog.refresh(); },
+    open(entry) { ensureDialog(); entry.onBeforeOpen?.(); dialog.open(entry, { host: homeRegion || root }); entry.onOpen?.(); dialog.refresh(); },
     close(element, button) { if (dialog?.isExpanded(element, button)) dialog.close({ restoreFocus: false }); },
     isExpanded: (element, button) => dialog?.isExpanded(element, button) === true,
   });
@@ -59,6 +59,7 @@ export function createCompactHomeLayout({
   function open(id) {
     const entry = entries.get(id);
     if (!canOpenWidget(entry)) return false;
+    entry.onBeforeOpen?.();
     dialog.open(entry);
     entry.onOpen?.();
     dialog.refresh();
@@ -112,16 +113,16 @@ export function createCompactHomeLayout({
   }
 
   function register({ id, label, icon = "neutral", element, getSummary,
-    isAvailable = () => true, emptyMessage, onOpen, getReturnParent }) {
+    isAvailable = () => true, emptyMessage, onOpen, onBeforeOpen, getReturnParent, homeCard = true }) {
     if (!element) return () => {};
     ensureSurface();
-    const { button, render } = grid ? createHomeWidgetCard({ documentRoot: root.ownerDocument, id, label, icon }) : {};
-    const entry = { id, label, icon, element, getSummary, isAvailable, emptyMessage, onOpen, getReturnParent, button, render };
+    const { button, render } = grid && homeCard ? createHomeWidgetCard({ documentRoot: root.ownerDocument, id, label, icon }) : {};
+    const entry = { id, label, icon, element, getSummary, isAvailable, emptyMessage, onOpen, onBeforeOpen, getReturnParent, button, render };
     entries.set(id, entry);
     if (button) element.classList.add("home-widget-source");
     const position = widgetOrder.indexOf(id);
     const following = [...entries.values()].find((candidate) => widgetOrder.indexOf(candidate.id) > position);
-    grid?.insertBefore(button, following?.button || null);
+    if (button) grid?.insertBefore(button, following?.button || null);
     button?.addEventListener("click", () => open(id));
     refresh();
     return () => {

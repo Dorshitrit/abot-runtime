@@ -1,8 +1,6 @@
+import { collectDecisionMaxLengthConstraints, projectStrictControlsSchema } from "../../model/decision-schema.js";
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
-import {
-  createStructuredDecisionEnvelopeSchema,
-  structuredDecisionVariantSchemaPath,
-} from "../../model/structured-decision-envelope.js";
+import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import { isRoleCapabilityId } from "../../orchestration/role-calls/index.js";
 import {
   WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
@@ -11,7 +9,6 @@ import {
   normalizeWorkerCapabilityControlsSchema,
   partitionWorkerCapabilityControlsSchema,
   validateWorkerCapabilitySelectionControls,
-  type WorkerCapabilityControl,
   type WorkerCapabilityControls,
   type WorkerCapabilityControlsPartition,
   type WorkerCapabilityControlsSchema,
@@ -200,7 +197,7 @@ export function createWorkerDecisionFormat(
               : {}),
             ...(group.partition.selectionControlIds.length > 0
               ? {
-                  selectionControls: projectControlsSchema(
+                  selectionControls: projectStrictControlsSchema(
                     group.partition.selectionSchema,
                   ),
                 }
@@ -211,7 +208,7 @@ export function createWorkerDecisionFormat(
         ? [
             exactObject({
               action: literal("invoke_capability"),
-              controls: projectControlsSchema(
+              controls: projectStrictControlsSchema(
                 pendingSingleCapability.controlsPartition.remainingSchema,
               ),
             }),
@@ -230,7 +227,7 @@ export function createWorkerDecisionFormat(
             workerCapabilityBatchExecutionSlotId(index),
             {
               ...exactObject({
-                controls: projectControlsSchema(
+                controls: projectStrictControlsSchema(
                   capability.controlsPartition.remainingSchema,
                 ),
               }),
@@ -260,13 +257,6 @@ export function createWorkerDecisionFormat(
         }),
       ]
     : [];
-  const singleCapabilityVariantCount = allowSingleCapabilityInvocation
-    ? singleCapabilityVariants.length
-    : 0;
-  const capabilityVariantStartIndex =
-    returnResultVariants.length + returnFailureVariants.length;
-  const batchVariantIndex =
-    capabilityVariantStartIndex + singleCapabilityVariantCount;
   const variants = [
     ...returnResultVariants,
     ...returnFailureVariants,
@@ -280,58 +270,13 @@ export function createWorkerDecisionFormat(
         ]
       : []),
   ];
+  const schema = createStructuredDecisionEnvelopeSchema(variants);
   return {
     type: "json_schema",
     name: "worker_decision",
     strict: true,
-    postValidatedSchemaConstraints: [
-      ...(allowSingleCapabilityInvocation && singleCapabilityVariants.length > 0
-        ? decisionPhase === "capability_selection"
-          ? singleSelectionGroups.flatMap((group, index) => {
-              const variantPath = structuredDecisionVariantSchemaPath(
-                capabilityVariantStartIndex + index,
-                variants.length,
-              );
-              return [
-                {
-                  keyword: "maxLength" as const,
-                  path: `${variantPath}/properties/intent/maxLength`,
-                },
-                ...(group.requiresPayloadAuthoringObjective
-                  ? [
-                      {
-                        keyword: "maxLength" as const,
-                        path: `${variantPath}/properties/authoringObjective/maxLength`,
-                      },
-                    ]
-                  : []),
-                ...collectControlMaxLengthConstraints(
-                  group.partition.selectionSchema,
-                  `${variantPath}/properties/selectionControls`,
-                ),
-              ];
-            })
-          : collectControlMaxLengthConstraints(
-              pendingSingleCapability!.controlsPartition.remainingSchema,
-              `${structuredDecisionVariantSchemaPath(capabilityVariantStartIndex, variants.length)}/properties/controls`,
-            )
-        : []),
-      ...(batchEnabled
-        ? decisionPhase === "capability_selection"
-          ? collectBatchSelectionMaxLengthConstraints({
-              groups: batchSelectionGroups,
-              basePath: `${structuredDecisionVariantSchemaPath(batchVariantIndex, variants.length)}/properties/invocations/items`,
-            })
-          : pendingBatchCapabilities!.flatMap((capability, index) => {
-              const itemPath = `${structuredDecisionVariantSchemaPath(batchVariantIndex, variants.length)}/properties/invocations/properties/${workerCapabilityBatchExecutionSlotId(index)}/properties`;
-              return collectControlMaxLengthConstraints(
-                capability.controlsPartition.remainingSchema,
-                `${itemPath}/controls`,
-              );
-            })
-        : []),
-    ],
-    schema: createStructuredDecisionEnvelopeSchema(variants),
+    postValidatedSchemaConstraints: collectDecisionMaxLengthConstraints(schema),
+    schema,
   };
 }
 
@@ -426,7 +371,7 @@ function projectCapabilitySelectionItemSchema(
         : {}),
       ...(group.partition.selectionControlIds.length > 0
         ? {
-            selectionControls: projectControlsSchema(
+            selectionControls: projectStrictControlsSchema(
               group.partition.selectionSchema,
             ),
           }
@@ -434,59 +379,6 @@ function projectCapabilitySelectionItemSchema(
     }),
   );
   return variants.length === 1 ? variants[0]! : { anyOf: variants };
-}
-
-function collectBatchSelectionMaxLengthConstraints(
-  params: Readonly<{
-    groups: readonly WorkerCapabilitySelectionSchemaGroup[];
-    basePath: string;
-  }>,
-): Array<Readonly<{ keyword: "maxLength"; path: string }>> {
-  return params.groups.flatMap((group, index) => {
-    const itemPath =
-      params.groups.length === 1
-        ? params.basePath
-        : `${params.basePath}/anyOf/${index}`;
-    return [
-      {
-        keyword: "maxLength" as const,
-        path: `${itemPath}/properties/intent/maxLength`,
-      },
-      ...(group.requiresPayloadAuthoringObjective
-        ? [
-            {
-              keyword: "maxLength" as const,
-              path: `${itemPath}/properties/authoringObjective/maxLength`,
-            },
-          ]
-        : []),
-      ...collectControlMaxLengthConstraints(
-        group.partition.selectionSchema,
-        `${itemPath}/properties/selectionControls`,
-      ),
-    ];
-  });
-}
-
-function projectControlsSchema(
-  schema: WorkerCapabilityControlsSchema,
-): Record<string, unknown> {
-  const required = new Set(schema.required);
-  return {
-    type: "object",
-    properties: Object.fromEntries(
-      Object.entries(schema.properties).map(([controlId, control]) => [
-        controlId,
-        required.has(controlId)
-          ? projectControlSchema(control)
-          : {
-              anyOf: [projectControlSchema(control), { type: "null" }],
-            },
-      ]),
-    ),
-    required: Object.keys(schema.properties),
-    additionalProperties: false,
-  };
 }
 
 function capabilityIntentSelectionSchema(): Record<string, unknown> {
@@ -513,54 +405,6 @@ function validAuthoringObjective(value: unknown): value is string {
     value.length > 0 &&
     value.length <= WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH
   );
-}
-
-function projectControlSchema(
-  control: WorkerCapabilityControl,
-): Record<string, unknown> {
-  if (control.type === "array") {
-    return {
-      type: "array",
-      items: projectControlSchema(control.items),
-      minItems: control.minItems,
-      maxItems: control.maxItems,
-    };
-  }
-  if (control.type === "string" && "enum" in control) {
-    return { type: "string", enum: [...control.enum] };
-  }
-  return { ...control };
-}
-
-function collectControlMaxLengthConstraints(
-  schema: WorkerCapabilityControlsSchema,
-  basePath: string,
-): Array<Readonly<{ keyword: "maxLength"; path: string }>> {
-  return Object.entries(schema.properties).flatMap(([controlId, control]) => {
-    const propertyPath = `${basePath}/properties/${escapeJsonPointer(controlId)}${
-      schema.required.includes(controlId) ? "" : "/anyOf/0"
-    }`;
-    if (control.type === "array") {
-      return collectScalarMaxLengthConstraint(
-        control.items,
-        `${propertyPath}/items`,
-      );
-    }
-    return collectScalarMaxLengthConstraint(control, propertyPath);
-  });
-}
-
-function collectScalarMaxLengthConstraint(
-  control: Exclude<WorkerCapabilityControl, { type: "array" }>,
-  path: string,
-): Array<Readonly<{ keyword: "maxLength"; path: string }>> {
-  return control.type === "string" && "maxLength" in control
-    ? [{ keyword: "maxLength", path: `${path}/maxLength` }]
-    : [];
-}
-
-function escapeJsonPointer(input: string): string {
-  return input.replace(/~/gu, "~0").replace(/\//gu, "~1");
 }
 
 function exactObject(

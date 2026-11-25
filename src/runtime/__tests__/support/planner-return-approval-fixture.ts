@@ -1,5 +1,6 @@
-import { workerEvidenceReply } from "./worker-evidence-script.js";
-import { vi } from "vitest";
+import { workerFusedReply } from "./worker-evidence-script.js";
+import { expect, vi } from "vitest";
+import { readInvalidOutputCapsules } from "./invalid-output-request.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import { SUPERVISOR_WORKER_V1_EXECUTION_POLICY } from "../../request/role-executor-composition.js";
 import { createApprovalRunnerFixture } from "./request-approval-runner-fixture.js";
@@ -50,6 +51,13 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
       }
       if (input.modelStep === "planner.decision") {
         plannerCount += 1;
+        if (plannerCount === 2) {
+          const child = readInvalidOutputCapsules(input, "runtime_child_result").at(-1)!;
+          expect(child).toMatchObject({ childCallId: "call-3", callerCallId: "call-2" });
+          const report = JSON.parse(child.summary);
+          expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+            executionOutcomes: [{ capabilityId: "fixture.observe", outcome: approved ? "succeeded" : "failed" }] });
+        }
         const terminal = approved
           ? { action: "return_result", result: summary }
           : { action: "return_failure", reason: summary };
@@ -71,11 +79,9 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
           meta: {},
         };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount === 0);
       if (input.modelStep === "worker.decision") {
         workerCount += 1;
-        return {
-          text: decision(
+        return workerFusedReply(input,
             workerCount === 1
               ? {
                   action: "invoke_capability",
@@ -83,17 +89,13 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
                   intent: "Observe the original target.",
                 }
               : { action: "return_result" },
-          ),
-          meta: {},
-        };
+        );
       }
       if (input.modelStep === "capability.controls")
         return {
           text: decision({ action: "invoke_capability", controls: {} }),
           meta: {},
         };
-      if (input.modelStep === "worker.result")
-        return { text: "The original target action settled.", meta: {} };
       if (input.modelStep === "supervisor.response")
         return { text: "The delegated action settled.", meta: {} };
       throw new Error(`unexpected model step: ${input.modelStep}`);

@@ -1,4 +1,5 @@
 import { escapeHtml, escapeAttribute, formatTime } from "../../lib/text-format.js";
+import { notificationErrorBadge, notificationIssueDetails, notificationIssueAction } from "./error-presentation.js";
 
 export const NOTIFICATION_KIND_LABELS = Object.freeze({
   reply: "Assistant replies",
@@ -66,6 +67,10 @@ export function notificationSourceUrl(item) {
     return "";
   }
   if (url.origin !== "https://abot.invalid") return "";
+  if (item.agentSource) {
+    const expected = new URLSearchParams({ environment: item.environmentId, agent: item.agentSource.agentId });
+    return item.sourceUrl === `/agents?${expected}` ? item.sourceUrl : "";
+  }
   if (item.kind === "automation")
     return hasBoundAutomationSource(item, url) ? `${url.pathname}${url.search}` : "";
   if (!["/chat", "/learning", "/home", "/notifications"].includes(url.pathname)) return "";
@@ -88,18 +93,20 @@ export function renderNotificationItem(item, busy) {
   const read = item.readAt != null;
   const source = notificationSourceUrl(item);
   const label = NOTIFICATION_KIND_LABELS[item.kind] || "Notification";
-  const delivery = DELIVERY_LABELS[item.delivery?.status] || "Delivery not confirmed";
+  const delivery = item.channel === "in-app" ? "In-app only"
+    : DELIVERY_LABELS[item.delivery?.status] || "Delivery not confirmed";
   const attributes = `data-notification-id="${escapeAttribute(item.id)}"`;
   const readAction = read ? "Mark unread" : "Mark read";
   const icon = NOTIFICATION_KIND_ICONS[item.kind] || NOTIFICATION_KIND_ICONS.reply;
   const preview = notificationBodyRepeatsTitle(item) ? ""
     : `<span class="notification-item-preview" dir="auto">${escapeHtml(item.body)}</span>`;
-  return `<li class="notification-item ${read ? "" : "is-unread"}" ${attributes}>
+  return `<li class="notification-item ${read ? "" : "is-unread"} ${item.severity === "error" ? "is-error" : ""}" ${attributes}>
     <span class="notification-kind-icon" role="img" aria-label="${escapeAttribute(label)}" title="${escapeAttribute(label)}"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span>
     <details class="notification-item-details" ${attributes}>
       <summary data-notification-detail="${escapeAttribute(item.id)}">
         <span class="notification-item-heading">
           <span class="notification-item-title" role="heading" aria-level="3" dir="auto">${escapeHtml(item.title)}</span>
+          ${notificationErrorBadge(item)}
           ${read ? "" : '<span class="notification-read-state" aria-label="Unread">Unread</span>'}
           <svg class="notification-expand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 3 5 5-5 5" /></svg>
         </span>
@@ -108,12 +115,14 @@ export function renderNotificationItem(item, busy) {
       <div class="notification-item-expanded">
         <p dir="auto">${escapeHtml(item.body)}</p>
         <div class="notification-item-meta"><span>${escapeHtml(label)}</span><span>${escapeHtml(delivery)}</span></div>
+        ${notificationIssueDetails(item)}
         ${renderNotificationDeliveryError(item.delivery)}
       </div>
     </details>
     <div class="notification-item-footer">
       ${renderNotificationTimestamp(item.createdAt)}
       <div class="notification-item-actions">
+        ${notificationIssueAction(item, busy)}
         <button type="button" data-notification-action="read" ${attributes} aria-label="${readAction}" ${busy ? "disabled" : ""}>${readAction}</button>
         ${source ? `<a href="${escapeAttribute(source)}" data-notification-action="open" ${attributes}>Open <span aria-hidden="true">↗</span></a>` : ""}
       </div>

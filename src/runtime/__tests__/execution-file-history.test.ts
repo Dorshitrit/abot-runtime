@@ -8,6 +8,7 @@ import { routeFilePayloadAuthor } from "../request/execution-file-payload/author
 import { resolveRequestExecutionPolicy } from "../request/role-executor-composition.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { filePayloadEvidence, filePayloadFixture, filePayloadInput, filePayloadSource } from "./support/execution-file-payload-fixture.js";
+import { filePayloadOutput } from "./support/execution-file-output-fixture.js";
 
 const DETAIL = "CANONICAL_HISTORY_TOOL_FACT";
 const SUMMARY = `Prior tool established ${DETAIL}.`;
@@ -27,7 +28,11 @@ test.each([false, true])("EA file author preserves passive history through inter
   expect(text).not.toContain("HISTORICAL_ASSISTANT_CLAIM");
   expect(filePayloadEvidence(projection.messages).settledCapabilityResults).toEqual([]);
   expect(projection.messages.filter(({ role }) => role === "tool" || role === "assistant")).toEqual([]);
-  expect(filePayloadSource(projection.messages)?.content).toContain("EXACT_TARGET\\r\\n");
+  const source = filePayloadSource(projection.messages);
+  expect(projection.messages.filter(({ content }) => content.startsWith('{"kind":"execution_file_source_v1"'))).toEqual([source]);
+  expect(projection.messages.at(-1)).toEqual(source);
+  expect(JSON.parse(source!.content)).toMatchObject({ sourceText: "EXACT_TARGET\r\n",
+    sourceState: "current_at_payload_preparation", coverage: "complete_selected_range" });
   if (compacted) expect(text).toContain(SUMMARY);
   else expect(text).toContain("runtime_execution_history_reference_v1");
 });
@@ -35,15 +40,20 @@ test.each([false, true])("EA file author preserves passive history through inter
 test("file RAW admission compacts history with the existing controller without losing exact target or task", async () => {
   const f = await historyFixture();
   f.counts.push(30_000, 1_000);
-  f.invoke.mockResolvedValue({ text: "accepted body", meta: {} });
+  f.invoke.mockImplementation(async (input) => ({ text: filePayloadOutput(input.messages, "accepted body"), meta: {} }));
+  const input = filePayloadInput();
+  const expectedSource = filePayloadSource(buildFilePayloadInput(f.request, input).messages);
   const author = routeFilePayloadAuthor(f.request, { author: vi.fn() },
     resolveRequestExecutionPolicy("execution-agent-v1").authority);
-  await expect(author.author(filePayloadInput())).resolves.toEqual({ status: "authored", body: "accepted body" });
+  await expect(author.author(input)).resolves.toEqual({ status: "authored", body: "accepted body" });
   expect(f.compact).toHaveBeenCalledOnce();
   expect(f.invoke).toHaveBeenCalledOnce();
   const invoked = f.invoke.mock.calls[0]![0];
   expect(invoked.modelStep).toBe("execution.file_payload.raw");
-  const text = (invoked.messages as readonly ChatMessage[]).map(({ content }) => content).join("\n");
+  const messages = invoked.messages as readonly ChatMessage[];
+  expect(messages.filter(({ content }) => content.startsWith('{"kind":"execution_file_source_v1"'))).toEqual([expectedSource]);
+  expect(messages.at(-1)).toEqual(expectedSource);
+  const text = messages.map(({ content }) => content).join("\n");
   expect(text).toContain(SUMMARY);
   expect(text).toContain("EXACT_TARGET\\r\\n");
   expect(text).toContain("Apply the accepted precise file change.");

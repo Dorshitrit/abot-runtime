@@ -37,6 +37,7 @@ export function createMemoryEmbeddingConnectionFeature({
       root,
       getEnvironmentId,
       loadStatus: (environmentId) => credentials(environmentId).loadStatus(),
+      loadManagedServer: runtimeClient.getManagedLlamaServer ? environmentId => runtimeClient.getManagedLlamaServer(environmentId) : undefined,
       saveConnection: (input, memoryOptions, environmentId) =>
         credentials(environmentId, memoryOptions).saveEmbedding(input),
       discoverModels: (providerId, environmentId) =>

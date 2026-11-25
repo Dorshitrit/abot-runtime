@@ -4,6 +4,7 @@ import { createComputerAccessFeature } from "../../web-ui/app/computer-access-fe
 // @ts-expect-error Browser onboarding policy has no declaration surface.
 import { createOnboardingWorkspaceAccess } from "../../web-ui/app/components/onboarding-workspace-access.js";
 import { FakeElement } from "./support/model-setup-wizard-harness.js";
+import { HomeWidgetElement } from "./support/home-widgets-harness.js";
 
 const setupNeeded = {
   paired: false,
@@ -26,24 +27,11 @@ const ready = {
   readiness: { ...setupNeeded.readiness, ready: true, route: "companion", platforms: [] },
 };
 
-class HomeElement extends FakeElement {
+class HomeElement extends HomeWidgetElement {
   scrollIntoView = vi.fn();
   click = vi.fn(() => { this.dispatch("click"); });
-  insertBefore(node: FakeElement, reference: FakeElement | null) {
-    node.remove();
-    const index = reference ? this.children.indexOf(reference) : -1;
-    this.children.splice(index < 0 ? this.children.length : index, 0, node);
-    node.parentElement = this;
-    return node;
-  }
-  before(node: FakeElement) {
-    (this.parentElement as HomeElement | null)?.insertBefore(node, this);
-  }
   prepend(node: FakeElement) {
     this.insertBefore(node, this.children[0] as FakeElement || null);
-  }
-  removeEventListener(name: string, listener: (event: any) => void) {
-    this.listeners.set(name, (this.listeners.get(name) || []).filter((entry) => entry !== listener));
   }
 }
 
@@ -89,6 +77,9 @@ function homeHarness({ hidden = false, supported = true, runtimeReady = true, sn
   const environmentSelect = documentRoot.createElement("select") as HomeElement;
   documentRoot.body.append(homeWorkspacePanel);
   homeWorkspacePanel.append(homeDashboardRoot);
+  const slot = documentRoot.createElement("section");
+  slot.setAttribute("data-home-computer", "");
+  homeDashboardRoot.append(slot);
   function setHomeVisible(visible: boolean) {
     homeWorkspacePanel.hidden = !visible;
     if (visible) homeWorkspacePanel.attributes.delete("hidden");
@@ -124,6 +115,8 @@ function homeHarness({ hidden = false, supported = true, runtimeReady = true, sn
   disposers.push(feature.dispose);
   const card = homeWorkspacePanel.querySelector(".home-computer-access") as HomeElement;
   return { feature, card, homeWorkspacePanel, homeDashboardRoot, homeWorkspaceButton, documentRoot, runtimeClient, onChange, setHomeVisible, observers, listeners,
+    trigger: slot.querySelector("button")!,
+    dialog: () => homeWorkspacePanel.querySelector('dialog[aria-labelledby="home-computer-detail-title"]')!,
     setEnvironment(value: string) { environment = value; environmentSelect.dispatch("change"); },
     setRuntimeAvailability,
     setRuntimeReady(value: boolean) { setRuntimeAvailability({ status: value ? "ready" : "setup_required" }); } };
@@ -162,27 +155,49 @@ test("ready status and unpairing use the existing shared connection API", async 
   expect(h.onChange).toHaveBeenCalled();
 });
 
-test("Home hides connected permissions until management is opened explicitly", async () => {
+test("the first connection card opens a popup with the existing permissions and reopens after dismissal", async () => {
   const h = homeHarness();
   await settle();
-  expect(h.card.querySelector("[data-system-host-management]")).toBeNull();
-  h.feature.open();
+  const source = h.card;
+  expect(h.dialog()).toBeNull();
+  expect(h.trigger.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(h.trigger.querySelector("[data-connection-status]")?.textContent).toContain("Connected");
+  h.trigger.dispatch("click");
   await settle();
-  const disclosure = h.card.querySelector("[data-system-host-management]")!;
-  expect(disclosure.attributes.has("open")).toBe(true);
-  expect(disclosure.querySelector(".system-host-summary-permissions")).not.toBeNull();
-  expect(disclosure.querySelector("summary")?.textContent).not.toContain("Unpairing disconnects");
-
-  disclosure.open = true;
-  disclosure.dispatch("toggle");
-  await h.feature.load();
-  expect(h.card.querySelector("[data-system-host-management]")?.attributes.has("open")).toBe(true);
-
-  const refreshed = h.card.querySelector("[data-system-host-management]")!;
-  refreshed.open = false;
-  refreshed.dispatch("toggle");
-  await h.feature.load();
+  expect(h.dialog().open).toBe(true);
+  expect(h.dialog().contains(source)).toBe(true);
+  expect(h.documentRoot.activeElement).toBe(h.dialog().querySelector("[data-home-widget-close]"));
+  expect(h.card.querySelector("[data-mac-permissions-check]")).toBeNull();
+  expect(h.card.querySelector(".system-host-permissions")).not.toBeNull();
   expect(h.card.querySelector("[data-system-host-management]")).toBeNull();
+  await h.feature.load();
+  expect(h.dialog().contains(source)).toBe(true);
+  h.dialog().dispatch("cancel");
+  expect(h.dialog().open).toBe(false);
+  expect(source.parentElement).toBe(h.homeWorkspacePanel);
+  expect(h.documentRoot.activeElement).toBe(h.trigger);
+  h.trigger.dispatch("click");
+  expect(h.dialog().open).toBe(true);
+  expect(h.dialog().contains(source)).toBe(true);
+  expect(h.runtimeClient.requestSystemHostPermissions).not.toHaveBeenCalled();
+  expect(h.runtimeClient.revokeSystemHostConnection).not.toHaveBeenCalled();
+});
+
+test.each(["workspace", "environment", "availability"])("%s changes dismiss the computer popup without stealing destination focus", async (change) => {
+  const h = homeHarness();
+  await settle();
+  h.trigger.dispatch("click");
+  const popup = h.dialog();
+  const destination = h.documentRoot.createElement("button");
+  h.documentRoot.body.append(destination);
+  destination.focus();
+  if (change === "workspace") h.setHomeVisible(false);
+  if (change === "environment") h.setEnvironment("dev");
+  if (change === "availability") h.setRuntimeReady(false);
+  await settle();
+  expect(popup.open).toBe(false);
+  expect(h.card.parentElement).toBe(h.homeWorkspacePanel);
+  expect(h.documentRoot.activeElement).toBe(destination);
 });
 
 test("manual Mac pairing uses the existing pairing API from the Home card", async () => {
@@ -264,7 +279,8 @@ test("Home environment changes invalidate pending native permission checks even 
     permissions: { screenRecording: "granted", accessibility: "granted" }, restartMayBeRequired: false });
   await settle();
   expect(h.feature.state.nativeMacPermissions).toBeNull();
-  expect(h.card.querySelector(".system-host-summary-permissions")?.textContent).toContain("SYSTEM · not checked");
+  expect(h.card.querySelector(".system-host-permission-state")?.textContent).toBe("Not checked");
+  expect(h.dialog().open).toBe(false);
   expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(3);
 });
 
@@ -280,16 +296,33 @@ test("a failed refresh keeps the card visible and reports unavailable status", a
   expect(h.feature.state.statusUnavailable).toBe(true);
 });
 
-test("open navigates to Home before focusing and scrolling the computer card", async () => {
+test("open navigates to Home before focusing its popup", async () => {
   const h = homeHarness({ hidden: true });
   h.feature.open();
   await settle();
 
   expect(h.homeWorkspaceButton.click).toHaveBeenCalledOnce();
   expect(h.homeWorkspacePanel.hidden).toBe(false);
-  expect(h.card.querySelector("[data-system-host-management]")?.attributes.has("open")).toBe(true);
-  expect(h.card.scrollIntoView).toHaveBeenCalledOnce();
-  expect(h.documentRoot.activeElement).toBe(h.card);
+  expect(h.dialog().open).toBe(true);
+  expect(h.dialog().contains(h.card)).toBe(true);
+  expect(h.documentRoot.activeElement).toBe(h.dialog().querySelector("[data-home-widget-close]"));
+});
+
+test("explicit opening from SPARK keeps the popup outside hidden Dashboard and does not restore hidden card focus", async () => {
+  const h = homeHarness();
+  await settle();
+  h.homeDashboardRoot.setAttribute("hidden", "");
+  expect(h.feature.open()).toBe(true);
+  const popup = h.dialog();
+  expect(popup.parentElement).toBe(h.homeWorkspacePanel);
+  expect(popup.closest("[hidden]")).toBeNull();
+  expect(h.documentRoot.activeElement).toBe(popup.querySelector("[data-home-widget-close]"));
+  const destination = h.documentRoot.createElement("button");
+  h.documentRoot.body.append(destination);
+  destination.focus();
+  popup.dispatch("cancel");
+  expect(h.documentRoot.activeElement).toBe(destination);
+  expect(popup.parentElement).toBe(h.homeDashboardRoot);
 });
 
 test("refused Home navigation leaves focus and scrolling untouched", () => {
@@ -423,8 +456,8 @@ test("configured catalog refresh and recovery preserve Home computer access and 
     await h.feature.load();
     expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(reads + 2);
     expect(h.feature.open()).toBe(true);
-    expect(h.documentRoot.activeElement).toBe(h.card);
-    expect(h.card.querySelector("[data-system-host-management]")?.attributes.has("open")).toBe(true);
+    expect(h.dialog().open).toBe(true);
+    expect(h.documentRoot.activeElement).toBe(h.dialog().querySelector("[data-home-widget-close]"));
   }
   expect(h.homeWorkspaceButton.click).toHaveBeenCalledTimes(3);
 });

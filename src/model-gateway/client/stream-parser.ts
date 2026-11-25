@@ -1,9 +1,12 @@
 import { providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
+import { providerStreamDisconnectionCause } from "../protocol/provider-stream-disconnection.js";
 import type { ModelTokenUsage } from "../types.js";
 import { normalizeModelTokenUsage } from "../protocol/usage.js";
 import { ModelGatewayInvocationError } from "./invocation-error.js";
 
 export type StreamCallbacks = {
+  /** Internal gateway diagnostics never contribute to assistant text or thinking. */
+  onDiagnostic?: (diagnostic: unknown) => void;
   onThinking?: (text: string) => void;
   onToken?: (text: string) => void;
   onUsage?: (usage: ModelTokenUsage) => void;
@@ -30,9 +33,11 @@ type ParsedStreamEvent = {
   data?: unknown;
   error?: unknown;
   contextOverflow?: unknown;
+  providerDisconnection?: unknown;
   message?: unknown;
   usage?: unknown;
   doneReason?: unknown;
+  diagnostic?: unknown;
 };
 
 function readText(value: unknown): string {
@@ -111,7 +116,7 @@ function throwStreamError(
   throw new ModelGatewayInvocationError(
     "stream",
     `model_stream_error: ${errorText}`,
-    providerContextOverflowCause(message.contextOverflow),
+    providerStreamDisconnectionCause(message.providerDisconnection) ?? providerContextOverflowCause(message.contextOverflow),
   );
 }
 
@@ -199,6 +204,11 @@ export function applyStreamLine(
   const messageType = typeof message.type === "string" ? message.type : "";
   const stream = typeof message.stream === "string" ? message.stream : "";
   const data = readObject(message.data);
+
+  if (messageType === "diagnostic") {
+    callbacks.onDiagnostic?.(message.diagnostic);
+    return currentText;
+  }
 
   if (isErrorEvent(messageType, stream)) {
     return throwStreamError(message, data, callbacks);

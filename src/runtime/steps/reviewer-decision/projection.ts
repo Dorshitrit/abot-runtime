@@ -28,6 +28,7 @@ import {
   traceReviewerSnapshotRejected,
 } from "./diagnostics.js";
 import { projectReviewerDelegatedContext } from "./delegated-context.js";
+import { projectReviewerRoleResultContinuations } from "./role-result-continuation.js";
 import {
   projectReviewerFinalEvidence,
   type ReviewerEvidenceCandidate,
@@ -250,6 +251,8 @@ function projectReviewerReviewSnapshotUnchecked(
   );
   evidence.push(...finalEvidence.evidence);
   projectionComplete = finalEvidence.projectionComplete && projectionComplete;
+  const roleResults = projectReviewerRoleResultContinuations(facts, evidence, params.referenceDataBudget);
+  projectionComplete = roleResults.projectionComplete && projectionComplete;
 
   const snapshot: ReviewerReviewSnapshot = deepFreeze({
     reviewScopeId: `review:${reviewer.callId}:r${head.revision}`,
@@ -260,7 +263,7 @@ function projectReviewerReviewSnapshotUnchecked(
     freshness: "current",
     allowedGapKinds: REVIEWER_GAP_KINDS,
     subjects,
-    facts,
+    facts: roleResults.facts,
     evidence,
   });
   return Object.freeze({ snapshot, finalEvidence, callerObjectiveSource });

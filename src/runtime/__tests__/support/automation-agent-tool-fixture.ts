@@ -4,7 +4,7 @@ import type { AutomationDraftRecord } from "../../automations/storage-records.js
 import type { ToolRegistry } from "../../ports.js";
 import type { createSchedulerRuntimeFixture } from "./scheduler-runtime-fixture.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 type Studio = NonNullable<Fixture["application"]["services"]["automations"]>;
@@ -60,15 +60,12 @@ export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
         : { action: "respond" };
       return { text: JSON.stringify({ decision: action }), meta: {} };
     }
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, workerAssessments++ % 2 === 0);
     if (input.modelStep === "worker.decision")
-      return { text: JSON.stringify({ decision: { action: "invoke_capability",
-        capabilityId: operation.operationId, intent: "Observe the fixture." } }), meta: {} };
+      return workerFusedReply(input, workerAssessments++ % 2 === 0
+        ? { action: "invoke_capability", capabilityId: operation.operationId, intent: "Observe the fixture." }
+        : { action: "return_result" });
     if (input.modelStep === "capability.controls")
       return { text: JSON.stringify({ decision: { action: "invoke_capability", controls: {} } }), meta: {} };
-    if (input.modelStep === "worker.result")
-      return { text: "The fixture was observed.", meta: {} };
     if (input.modelStep === "execution.response" || input.modelStep === "supervisor.response")
       return { text: `Observed via ${policy}.`, meta: {} };
     throw new Error(`unexpected_model_step:${String(input.modelStep)}`);

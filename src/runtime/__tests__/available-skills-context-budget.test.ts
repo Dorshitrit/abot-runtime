@@ -41,7 +41,7 @@ async function fixture(policy: "execution-agent-v1" | "supervisor-worker-v1") {
 
 function assertCatalog(input: KnowledgeModelInput) {
   const content = messages(input)[0]!.content;
-  if (supervisorFormatName(input) === "supervisor_skill_selection") {
+  if (supervisorFormatName(input) === "supervisor_fused_entry") {
     const catalog = JSON.parse(content.split("\n").find((line) => line.startsWith('{"kind":"runtime_supervisor_skill_candidates_v1"'))!);
     expect(catalog.skills).toContainEqual({ skillId: skill.skillId, name: skill.name, description: skill.description });
   } else {
@@ -103,18 +103,17 @@ test("SUPER retains discovery above the compaction threshold and reads directly"
   const f = await fixture("supervisor-worker-v1");
   const prompt = "Consult the named reference. " + "Context detail. ".repeat(2800);
   await f.run(prompt, [
-    { step: "supervisor.decision", output: input => decision(defaultSupervisorPresentation(input)) },
     { step: "supervisor.decision", output: input => {
-      expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_entry");
       assertAboveCompactionThreshold(input);
       assertCatalog(input);
-      return decision({ action: "read_skills", skillIds: [skill.skillId] });
+      return decision({ ...defaultSupervisorPresentation(input), action: "read_skills", skillIds: [skill.skillId] });
     } },
     { step: "supervisor.decision", output: input => {
-      expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_routing");
       expect(capsules(input, "runtime_core_skill_read_v1").map(({ document }) => document))
         .toEqual([skill]);
-      return decision({ requiresProcedure: false, responseRecommendation: "Explain the supplied reference." });
+      return decision({ action: "respond", responseRecommendation: "Explain the supplied reference." });
     } },
     { step: "supervisor.response", output: input => {
       const references = capsules(input, "runtime_core_skill_read_v1");

@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -35,7 +35,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory")
     return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+  if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
   expect(input.modelStep).toBe("worker.result");
   return "The requested explanation is complete.";
 }
@@ -48,11 +48,11 @@ test("publishes presentation once, selects from lean metadata, then classifies a
     policy: "supervisor-worker-v1", enabled: false,
     present(input) {
       const text = JSON.stringify(input.messages);
-      for (const value of [skill.skillId, skill.name, skill.description, skill.content]) expect(text).not.toContain(value);
-      expect(input.format).toMatchObject({ name: "supervisor_presentation", schema: {
-        properties: { decision: { required: ["acknowledgement", "title"], additionalProperties: false } },
-      } });
-      expect(JSON.stringify(input.format)).not.toContain('"action"');
+      for (const value of [skill.skillId, skill.name, skill.description]) expect(text).toContain(value);
+      expect(text).not.toContain(skill.content);
+      expect(input.format).toMatchObject({ name: "supervisor_fused_entry" });
+      expect(JSON.stringify(input.format)).toContain('"acknowledgement"');
+      expect(JSON.stringify(input.format)).toContain('"title"');
       return defaultSupervisorPresentation(input);
     },
     selectSkills(input) {
@@ -61,7 +61,7 @@ test("publishes presentation once, selects from lean metadata, then classifies a
         expect(text).not.toContain(value);
       expect(modelMessages(input).filter(({ role, content }) => role === "user" && content === REQUEST_PROMPT)).toHaveLength(1);
       const schema = JSON.stringify(input.format);
-      for (const field of ["acknowledgement", "title", "objective", "invoke_role", "respond"]) expect(schema).not.toContain(`"${field}"`);
+      for (const field of ["objective", "invoke_role", "respond"]) expect(schema).not.toContain(`"${field}"`);
       expect(++selections).toBe(1);
       expect(text).toContain(skill.name);
       expect(text).toContain(skill.description);
@@ -69,8 +69,8 @@ test("publishes presentation once, selects from lean metadata, then classifies a
       expect(text).toContain(irrelevant.name);
       return { action: "read_skills", skillIds: [skill.skillId] };
     },
-    classifyProcedure(input) {
-      expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+    delegate(input) {
+      expect(supervisorFormatName(input)).toBe("supervisor_fused_routing");
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
         .toEqual([expect.objectContaining({
           authority: "passive_reference", purpose: "skill_guidance", document: skill,
@@ -78,7 +78,7 @@ test("publishes presentation once, selects from lean metadata, then classifies a
       expect(JSON.stringify(input.messages)).not.toContain(irrelevant.content);
       for (const action of ["list_skills", "read_skills"])
         expect(JSON.stringify(input.format)).not.toContain(`"${action}"`);
-      return { requiresProcedure: false, responseRecommendation: "Answer with the accepted guidance." };
+      return { action: "respond", responseRecommendation: "Answer with the accepted guidance." };
     },
     onInput(input) {
       if (input.modelStep !== "supervisor.response") return;
@@ -89,7 +89,7 @@ test("publishes presentation once, selects from lean metadata, then classifies a
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+    "supervisor_fused_entry", "supervisor_fused_routing", "supervisor.response",
   ]);
   for (const [input] of f.gatewayInvoke.mock.calls) {
     if (supervisorFormatName(input) === "supervisor_skill_selection") continue;
@@ -111,7 +111,7 @@ test("no matching Skill continues to ordinary routing without any read", async (
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+    "supervisor_fused_entry", "supervisor.response",
   ]);
 });
 
@@ -159,6 +159,7 @@ test("steering during routing revises the route without reopening an accepted Sk
       expect(++selections).toBe(1);
       return { action: "continue" };
     },
+    classifyProcedure: () => ({ requiresProcedure: true }),
     decide(input) {
       if (++routes === 1) {
         f.requestSteering.append({ steerId: "routing-change", text: "Use the phase guide for this request." });
@@ -174,7 +175,7 @@ test("steering during routing revises the route without reopening an accepted Sk
   expect(routes).toBe(2);
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.store.list).toHaveBeenCalledOnce();
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
 });
 
 test.each([true, false])("complete supplied metadata offers every candidate without a LIST action (read: %s)", async (read) => {
@@ -199,17 +200,23 @@ test.each([true, false])("complete supplied metadata offers every candidate with
       const schema = JSON.stringify(input.format);
       expect(schema).not.toContain('"list_skills"');
       expect(schema).toContain('"read_skills"');
-      expect(schema).toContain('"continue"');
+      expect(schema).toContain('"requiresProcedure"');
       expect(++selections).toBe(1);
       for (const document of documents) expect(text).toContain(document.description);
       expect(schema).toContain(`"${target.skillId}"`);
       return read ? { action: "read_skills", skillIds: [target.skillId] } : { action: "continue" };
     },
     classifyProcedure(input) {
+      expect(read).toBe(false);
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1")
-        .map(({ document }) => document)).toEqual(read ? [target] : []);
-      if (!read) expect(JSON.stringify(input.messages)).not.toContain(target.content);
+        .map(({ document }) => document)).toEqual([]);
+      expect(JSON.stringify(input.messages)).not.toContain(target.content);
       return { requiresProcedure: false, responseRecommendation: "Answer the current request." };
+    },
+    delegate(input) {
+      expect(read).toBe(true);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1").map(({ document }) => document)).toEqual([target]);
+      return { action: "respond", responseRecommendation: "Answer the current request." };
     },
     onInput(input) {
       if (input.modelStep !== "supervisor.response") return;
@@ -239,15 +246,17 @@ test("after a role return a repeated successful ID is repaired without a second 
       selections++;
       if (selections === 1) return { action: "read_skills", skillIds: [skill.skillId] };
       const messages = modelMessages(input);
-      const state = JSON.parse(messages[1]!.content as string);
-      expect(state.skills).toEqual([{ skillId: skill.skillId, name: skill.name, nameTruncated: false }]);
+      expect(jsonMessages(input)).toContainEqual(expect.objectContaining({
+        kind: "runtime_core_skill_read_v1", document: skill,
+      }));
+      expect(JSON.stringify(input.format)).not.toContain(`"${skill.skillId}"`);
       if (selections === 2) return { action: "read_skills", skillIds: [skill.skillId] };
       return { action: "continue" };
     },
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate() { routes++; return invokeWorker; },
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       expect(++routes).toBe(2);
       return { action: "respond" };
     },
@@ -255,9 +264,9 @@ test("after a role return a repeated successful ID is repaired without a second 
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(f.store.read.mock.calls).toEqual([[skill.skillId]]);
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
-    "worker.evidence", "worker.result", "supervisor_skill_selection",
-    "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
+    "supervisor_fused_entry", "supervisor_fused_routing",
+    "worker.decision", "worker.result", "supervisor_resume_skill_routing",
+    "supervisor_resume_skill_routing", "supervisor.response",
   ]);
 });
 
@@ -272,7 +281,7 @@ test("an empty catalog bypasses selection and routes without a Store read", asyn
   expect(selectSkills).not.toHaveBeenCalled();
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_procedure_gate", "supervisor.response",
+    "supervisor_fused_entry", "supervisor.response",
   ]);
 });
 
@@ -280,7 +289,7 @@ test("reading every remaining candidate bypasses the next selection and retains 
   const selectSkills = vi.fn(() => ({ action: "read_skills", skillIds: [skill.skillId, irrelevant.skillId] }));
   const f = fixture({
     policy: "supervisor-worker-v1", enabled: false, selectSkills,
-    classifyProcedure: () => ({ requiresProcedure: false, responseRecommendation: "Answer using the guides." }),
+    delegate: () => ({ action: "respond", responseRecommendation: "Answer using the guides." }),
     onInput(input) {
       if (input.modelStep !== "supervisor.response") return;
       expect(JSON.stringify(input.messages)).toContain(skill.content);
@@ -314,7 +323,7 @@ test.each(["name", "unknown", "duplicate", "mixed"])("repairs an invalid %s batc
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate() { routes++; return invokeWorker; },
     decide(input) {
-      if (supervisorFormatName(input) !== "supervisor_decision") return finishWorker(input);
+      if (!["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return finishWorker(input);
       expect(++routes).toBe(2);
       return { action: "respond" };
     },
@@ -336,7 +345,7 @@ test("persistent repeated IDs exhaust exactly two repairs and use deterministic 
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate: () => invokeWorker,
     decide(input) {
-      if (supervisorFormatName(input) === "supervisor_decision") return invokeWorker;
+      if (["supervisor_decision", "supervisor_decision_with_memory_candidates", "supervisor_resume_skill_routing"].includes(supervisorFormatName(input) ?? "")) return invokeWorker;
       return finishWorker(input);
     },
   });
@@ -356,8 +365,8 @@ test("persistent repeated IDs exhaust exactly two repairs and use deterministic 
   expect(f.store.read.mock.calls).toEqual([[skill.skillId]]);
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
-    "worker.evidence", "worker.result", "supervisor_skill_selection",
-    "supervisor_skill_selection", "supervisor_skill_selection",
+    "supervisor_fused_entry", "supervisor_fused_routing",
+    "worker.decision", "worker.result", "supervisor_resume_skill_routing",
+    "supervisor_resume_skill_routing", "supervisor_resume_skill_routing",
   ]);
 });

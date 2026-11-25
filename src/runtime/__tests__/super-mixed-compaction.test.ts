@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import {
   captureRequestContextCompaction,
   restoreRequestContextCompaction,
@@ -29,9 +29,8 @@ import {
 test("B1: mixed supervision and execution checkpoint survives Worker result handoff", async () => {
   const { ledger, head, call, view, store, checkpoint } =
     await mixedWorkerFixture();
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => input.modelStep === "worker.evidence"
-    ? workerEvidenceReply(input, false, "Target evidence was read.")
-    : { text: "Target evidence was read.", meta: {} });
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) =>
+    workerFusedReply(input, { action: "return_result" }, "Target evidence was read."));
   const request = createTestRequestExecutionScope({
     requestId: head.state.requestId,
     sessionId: "mixed-session",
@@ -98,16 +97,19 @@ test("B1: mixed supervision and execution checkpoint survives Worker result hand
       }),
     },
   });
-  expect(decision).toEqual({
-    action: "return_result",
-    result: "Target evidence was read.",
+  expect(decision.action).toBe("return_result");
+  if (decision.action !== "return_result") throw new Error("expected_worker_report");
+  const report = JSON.parse(decision.result);
+  expect(report).toMatchObject({
+    kind: "runtime_worker_execution_report_v1",
+    assessment: { established: "Target evidence was read.", requiresExecution: false },
   });
+  expect(report.evidence.requestToolResults.semanticCheckpoint.coveredSources).toEqual(checkpoint.sourceDigests);
   expect(store.get(checkpoint.scopeId)?.sourceDigests).toEqual(
     checkpoint.sourceDigests,
   );
   expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.evidence",
-    "worker.result",
+    "worker.decision",
   ]);
 });
 

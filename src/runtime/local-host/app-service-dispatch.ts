@@ -6,6 +6,7 @@ import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
 import { dispatchLocalSparkHomeService, isLocalSparkHomeService } from "./app-spark-home-services.js";
+import { listOrdinarySessionPage } from "./ordinary-session-page.js";
 import type { AutomationService } from "../automations/service.js";
 
 export const LOCAL_SESSION_METHODS = [
@@ -13,6 +14,7 @@ export const LOCAL_SESSION_METHODS = [
   "createAssistantConversation",
   "getAllSessions",
   "listSessions",
+  "listOrdinary",
   "getSessionById",
   "getSessionSnapshot",
   "getRequestReplayById",
@@ -25,6 +27,7 @@ export const LOCAL_SESSION_METHODS = [
   "appendRequestEvent",
   "deleteSession",
   "deleteSessionWithStats",
+  "purgeDeletedSessionSidecars",
   "resetSession",
   "clearSessionMessages",
   "deleteMessage",
@@ -123,6 +126,7 @@ export async function dispatchLocalServiceCall(
   services: RuntimeEnvironmentServices,
   method: string,
   args: readonly unknown[],
+  customSessions?: Pick<SessionStore, "getAllSessions">,
 ): Promise<unknown> {
   if (isLocalSparkHomeService(method)) return dispatchLocalSparkHomeService(services, method, args);
   const [service, operation, extra] = method.split(".");
@@ -131,6 +135,7 @@ export async function dispatchLocalServiceCall(
     return selectServiceMethod(services.informationBasket, operation, LOCAL_INFORMATION_BASKET_METHODS)(...args);
   if (service === "personalSkills")
     return selectServiceMethod(services.personalSkills, operation, LOCAL_PERSONAL_SKILL_METHODS)(...args);
+  if (method === "sessions.listOrdinary") return listOrdinarySessionPage(services.config.paths, args, customSessions);
   if (service === "sessions")
     return selectServiceMethod(
       services.sessions,

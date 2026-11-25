@@ -2,6 +2,7 @@ import { createStartupScreen } from "./components/startup-screen.js";
 import { createWorkspaceRouteController } from "./controllers/workspace-route-controller.js";
 import { createPreferenceViewSync } from "./controllers/preference-view-sync.js";
 import { textOf } from "./lib/text-format.js";
+import { createAgentsFeature } from "./agents-feature.js";
 import { createAutomationsFeature } from "./automations-feature.js";
 import { createSparkChatFeature } from "./spark-chat-feature.js";
 import { createSparkHomeFeature } from "./spark-home-feature.js";
@@ -54,6 +55,9 @@ export async function bootstrapWebApp({
     getEnvironmentId: () => dom.environmentSelect.value,
     onNavigationChange: () => routes?.sync(),
   });
+  const agents = createAgentsFeature({ dom, client, shell, getEnvironmentId: () => dom.environmentSelect.value,
+    onNavigationChange: () => { routes?.sync(); notifications?.presenceChanged?.(); } });
+  notifications?.setAgents?.(agents);
   routes = navigation
     ? createWorkspaceRouteController({
         shell,
@@ -61,6 +65,7 @@ export async function bootstrapWebApp({
         selection,
         schedules,
         automations,
+        agents,
         getEnvironmentId: () => dom.environmentSelect.value,
         getSessionId: () => state.currentSessionId,
         changeEnvironment: navigation.bindings.changeEnvironment,
@@ -93,6 +98,7 @@ export async function bootstrapWebApp({
   void configuration.refreshComputerAccess?.();
   schedules.refreshAvailability();
   automations.refreshAvailability();
+  agents.refreshAvailability();
   notifications?.refreshAvailability();
   skills?.refreshAvailability();
   informationBasket?.refreshAvailability();
@@ -112,6 +118,7 @@ export async function bootstrapWebApp({
   navigation?.bindings.initializeEnvironment?.();
   learning?.environmentChanged();
   spark.environmentChanged();
+  void agents.environmentChanged();
   sparkHome.environmentChanged();
   learning?.setWorkspace(shell.activeWorkspace());
   homeComposer.environmentChanged();

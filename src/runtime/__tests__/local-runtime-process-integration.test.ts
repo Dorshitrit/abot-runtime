@@ -153,7 +153,7 @@ describe("local Runtime across separate processes", { timeout: 75_000 }, () => {
     });
     const pending = await waitForPending(local, job.id);
     expect(local.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
+      "supervisor_fused_entry",
     ]);
     release.open();
     await ordinary;

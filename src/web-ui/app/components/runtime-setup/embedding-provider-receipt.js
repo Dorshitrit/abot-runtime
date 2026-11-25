@@ -30,4 +30,5 @@ export function applySavedEmbeddingProviderReceipt(state, payload, selection) {
   if (!existing) providers.push(receipt);
   state.providers = providers;
   state.provider = id;
+  state.managedLlamaEmbedding = false;
 }

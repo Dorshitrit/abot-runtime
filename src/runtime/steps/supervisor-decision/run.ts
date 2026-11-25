@@ -28,19 +28,21 @@ import {
 } from "./working-directory.js";
 import { SUPERVISOR_RESPONSE_MODEL_STEP } from "../supervisor-response/contracts.js";
 import { resolveCanonicalReviewerCompletionTargetText } from "../reviewer-decision/contracts.js";
-import type { ChatMessage } from "../../../model-gateway/types.js";
+import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 
 import { createDecisionOutcome, runRoutingPhase, runWorkingDirectoryPhase, requiresWorkingDirectory, tracePhaseSuperseded } from "./decision-phases.js";
-import { prepareSupervisorDecision } from "./preparation.js";
+import { isExhaustedDuplicateSkillSelection, prepareSupervisorDecision } from "./preparation.js";
 import { isSupervisorSkillLookup } from "./skill-selection.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { canOfferSupervisorSkillAuthoring } from "../supervisor-skill-authoring/input.js";
 import { runSupervisorSkillAuthoring } from "../supervisor-skill-authoring/run.js";
 import { canRecallSupervisorMemory, projectSupervisorProcedureEntry } from "./procedure-entry.js";
 import { traceDebug } from "../../observability/debug-logger.js";
-import { runSupervisorProcedureGate } from "./procedure-gate.js";
-import { buildSupervisorDelegationInput } from "./delegation-input.js";
+import { runFusedSupervisorEntry } from "./fused-entry.js";
+import { prepareSupervisorMemoryRouting } from "./memory-routing.js";
+import { preserveSupervisorMemoryRoutingContext } from "./memory-compaction.js";
+import { canAdmitSupervisorResumeSkillRouting, extendSupervisorResumeSkillRoutingInput, prepareSupervisorResumeSkillRouting, SupervisorResumeSkillRoutingBudgetFallback } from "./resume-skill-routing.js";
 
 export async function runSupervisorDecision(
   request: RequestExecutionScope,
@@ -77,9 +79,7 @@ export async function runSupervisorDecision(
   const entrySteeringVersion = requestSteering.snapshot().version;
   const procedureState = projectSupervisorProcedureEntry(options, entrySteeringVersion);
   const procedureEntry = procedureState.classifyProcedure;
-  // Eligibility and recalled facts describe this exact intent, including when
-  // the canonical receipt was omitted by the caller and regenerated above.
-  const boundSteeringVersion = procedureEntry ? entrySteeringVersion : recallSteeringVersion;
+  const boundSteeringVersion = recallSteeringVersion;
   traceDebug("runtime.supervisor", "procedure.entry.projected", {
     ...baseDiagnostic, classifyProcedure: procedureEntry,
     allowInitialMemoryRecall: procedureState.allowInitialMemoryRecall,
@@ -88,7 +88,7 @@ export async function runSupervisorDecision(
   });
   const routingDiagnostic: SupervisorDecisionDiagnosticContext = Object.freeze({
     ...baseDiagnostic,
-    decisionPhase: procedureEntry ? "delegation" : "routing",
+    decisionPhase: "routing",
   });
   const workingDirectoryDiagnostic: SupervisorDecisionDiagnosticContext =
     Object.freeze({
@@ -105,6 +105,12 @@ export async function runSupervisorDecision(
     rootCallId: options.call.rootCallId,
     ...(options.resume ? { returnedResultRef: options.resume.returnedResultRef } : {}),
   });
+  if (procedureEntry) {
+    return runFusedSupervisorEntry(request, {
+      ...options, diagnostic: baseDiagnostic, skillSelectionWindow, procedureState,
+      boundSteeringVersion: entrySteeringVersion, memoryRecallMessage, initialMemoryMessage,
+    });
+  }
   const supervisorToolEvidence = createSupervisorToolEvidence(request, {
     head: options.skillReadHead,
     callId: options.call.callId,
@@ -142,12 +148,16 @@ export async function runSupervisorDecision(
     }, request.executionPolicy.authority),
   );
 
+  let resumeSkillFusionDeferred = false;
   for (;;) {
+    const resumeSkillRouting = resumeSkillFusionDeferred ? undefined : prepareSupervisorResumeSkillRouting(request, {
+      ...options, skillSelectionWindow,
+    });
     const preparation = await prepareSupervisorDecision(request, {
       diagnostic: baseDiagnostic,
       includeAcknowledgement: options.resume === undefined && options.includeAcknowledgement === true,
       includeTitle: options.resume === undefined && (options.includeTitle ?? request.shouldGenerateSessionTitle ?? false),
-      allowSkillReads: request.knowledgeSkillStore !== undefined && options.allowSkillReads !== false,
+      allowSkillReads: !resumeSkillRouting && request.knowledgeSkillStore !== undefined && options.allowSkillReads !== false,
       skillReadHead: options.skillReadHead,
       ...(options.resume ? { resume: options.resume } : {}),
       skillSelectionWindow,
@@ -157,27 +167,7 @@ export async function runSupervisorDecision(
     if (isSupervisorSkillLookup(preparation.selection)) {
       return createDecisionOutcome({ ...preparation.selection, ...preparation.presentation }, preparation.steeringVersion);
     }
-    const gate = procedureEntry
-      ? await runSupervisorProcedureGate(request, {
-        diagnostic: { ...baseDiagnostic, decisionPhase: "procedure_gate" },
-        skillReadHead: options.skillReadHead,
-        boundSteeringVersion: preparation.steeringVersion,
-        ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
-        ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
-      })
-      : undefined;
-    if (gate) assertBoundModelStepSteeringCurrent(requestSteering, gate.steeringVersion);
-    if (gate?.decision.requiresProcedure === false) {
-      return createDecisionOutcome({
-        action: "respond",
-        responseRecommendation: gate.decision.responseRecommendation,
-        ...preparation.presentation,
-      }, gate.steeringVersion);
-    }
-    const buildRoutingInput = procedureEntry
-      ? buildSupervisorDelegationInput
-      : buildSupervisorDecisionInput;
-    const input = buildRoutingInput(request, {
+    let input = buildSupervisorDecisionInput(request, {
       allowSkillAuthoring: canOfferSupervisorSkillAuthoring(request, options),
       allowMemoryRecall: canRecallSupervisorMemory(procedureState, {
         enabled: request.longTermMemory?.enabled === true,
@@ -209,25 +199,69 @@ export async function runSupervisorDecision(
           }),
       diagnostic: routingDiagnostic,
     });
-    const routing = await runRoutingPhase({
-      request,
-      requestSteering,
-      boundSteeringVersion: preparation.steeringVersion,
-      input,
-      diagnostic: routingDiagnostic,
-      contextCompaction: createSupervisorArtifactPathsReadmissionController(
-        request,
-        {
-          projection: input.artifactPathsProjection,
-          format: input.format,
-          includeInstructions: true,
-          controller: createSupervisorCapabilityBriefReadmissionController(
-            request,
-            { input, controller: contextCompaction },
-          ),
-        },
-      ),
+    if (resumeSkillRouting) {
+      input = extendSupervisorResumeSkillRoutingInput(input, resumeSkillRouting);
+      if (!canAdmitSupervisorResumeSkillRouting(request, input, contextCompaction)) {
+        resumeSkillFusionDeferred = true;
+        continue;
+      }
+    }
+    const memoryRouting = await prepareSupervisorMemoryRouting(request, {
+      input, resume: options.resume, steeringVersion: preparation.steeringVersion, contextCompaction,
     });
+    const createRoutingCompaction = (format: ModelGatewayJsonSchemaFormat) =>
+      createSupervisorArtifactPathsReadmissionController(request, {
+        projection: input.artifactPathsProjection, format, includeInstructions: true,
+        controller: createSupervisorCapabilityBriefReadmissionController(request, {
+          input: { ...input, format }, controller: contextCompaction,
+        }),
+      });
+    let routing: Awaited<ReturnType<typeof runRoutingPhase>>;
+    try {
+      routing = await runRoutingPhase({
+        request,
+        requestSteering,
+        boundSteeringVersion: preparation.steeringVersion,
+        input,
+        resumeSkillRouting,
+        memoryRouting: memoryRouting ? {
+          ...memoryRouting,
+          contextCompaction: preserveSupervisorMemoryRoutingContext(
+            createRoutingCompaction(memoryRouting.format), {
+              ...memoryRouting,
+              // Pin the whole fused appendix, including complete Skill metadata.
+              instructionAppendix: [resumeSkillRouting?.instructionAppendix, memoryRouting.instructionAppendix].filter(Boolean).join("\n\n"),
+            },
+          ),
+        } : undefined,
+        diagnostic: routingDiagnostic,
+        contextCompaction: resumeSkillRouting
+          ? preserveSupervisorMemoryRoutingContext(createRoutingCompaction(input.format), resumeSkillRouting)
+          : createRoutingCompaction(input.format),
+      });
+    } catch (error) {
+      request.abortSignal.throwIfAborted();
+      if (!resumeSkillRouting) throw error;
+      if (error instanceof SupervisorResumeSkillRoutingBudgetFallback) {
+        resumeSkillFusionDeferred = true;
+        continue;
+      }
+      if (!isExhaustedDuplicateSkillSelection(error)) throw error;
+      assertBoundModelStepSteeringCurrent(requestSteering, preparation.steeringVersion);
+      skillSelectionWindow.complete();
+      traceDebug("runtime.supervisor", "skill_selection.rejected", {
+        ...routingDiagnostic, steeringVersion: preparation.steeringVersion,
+        issues: error.issues.map(({ code, path }) => ({ code, path })),
+        repairAttempts: error.repairAttempts, disposition: "continue_routing",
+      });
+      continue;
+    }
+    if (resumeSkillRouting) {
+      assertBoundModelStepSteeringCurrent(requestSteering, routing.steeringVersion);
+      skillSelectionWindow.complete();
+    }
+    if (routing.decision.action === "read_skills")
+      return createDecisionOutcome(routing.decision, routing.steeringVersion);
     if (routing.decision.action === "author_skill") {
       const authored = await runSupervisorSkillAuthoring(request, {
         ...options, diagnostic: baseDiagnostic,
@@ -251,7 +285,7 @@ export async function runSupervisorDecision(
       );
     }
     if (!requiresWorkingDirectory(routing.decision)) {
-      return createDecisionOutcome({ ...routing.decision, ...preparation.presentation }, routing.steeringVersion);
+      return createDecisionOutcome({ ...routing.decision, ...preparation.presentation }, routing.steeringVersion, routing.memoryCandidates);
     }
 
     if (!requestSteering.isCurrent(routing.steeringVersion)) {
@@ -278,7 +312,6 @@ export async function runSupervisorDecision(
       input: workingDirectoryInput,
       boundSteeringVersion,
       frozenDecision: routing.decision,
-      exactContext: procedureEntry,
       artifactPathsProjection: input.artifactPathsProjection,
       diagnostic: workingDirectoryDiagnostic,
       contextCompaction: createSupervisorArtifactPathsReadmissionController(

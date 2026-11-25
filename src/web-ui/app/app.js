@@ -122,6 +122,7 @@ const shell = createWorkspaceShell({
   dom,
   onNavigationChange: () => { configWorkspace?.syncSummary(); workspaceRoutes?.sync(); },
   isWorkspaceAvailable: (destination) => {
+    if (destination === "agents") return runtimeClient.supportsAgents();
     if (skills?.isWorkspaceAvailable(destination) === false) return false;
     if (informationBasket?.isWorkspaceAvailable(destination) === false) return false;
     if (!notifications?.isWorkspaceAvailable(destination)) return false;
@@ -162,6 +163,7 @@ stepTimeouts = createStepTimeoutFeature({
 });
 notifications = createNotificationsFeature({
   dom, state, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId, send: sendRealtime,
+  reviewStepTimeout: stepTimeouts.review,
 });
 const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
   createRuntimeOnboardingFeature({
@@ -171,6 +173,7 @@ const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
     state,
     reloadModels: () => configWorkspace.reloadAppliedEnvironmentModels(),
     reloadCatalog: loadModels,
+    onFirstModelReady: (environment) => dashboardFeature?.offerSocketSetup(environment),
     setMessageStatus: setMessageActivityStatus,
     onStateChange: () => {
       updateComposerSendState();

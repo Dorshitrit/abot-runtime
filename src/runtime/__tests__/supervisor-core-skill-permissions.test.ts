@@ -41,7 +41,7 @@ test.each(["abot_skills", "*"].flatMap((selector) =>
     meta: {},
   })));
   await fixture.runOrdinaryRequest("Read the private guide.");
-  const decisions = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate");
+  const decisions = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_fused_entry");
   expect(decisions.length).toBeGreaterThan(0);
   for (const [input] of decisions) {
     expect(JSON.stringify(input.format)).not.toContain('"list_skills"');
@@ -74,7 +74,7 @@ test("SUPER READ needs no ASK approval even without a registered Skill tool", as
   await fixture.runOrdinaryRequest("Read the private guide.");
   expect(selections).toBe(1);
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
-  const gates = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate");
+  const gates = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_fused_routing");
   expect(gates).toHaveLength(1);
   expect(capsules(gates[0]![0], "runtime_core_skill_read_v1").map(({ document }) => document))
     .toEqual([document]);

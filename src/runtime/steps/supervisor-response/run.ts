@@ -33,7 +33,7 @@ import {
   resolveRequestSteeringInbox,
   type RequestSteeringSnapshot,
 } from "../../request/request-steering.js";
-import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
+import type { MemoryCandidate, RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
 import {
   canAuthorConversationMemory,
@@ -79,6 +79,8 @@ export async function runSupervisorAuthoredResponse(
     skillReadHead?: RoleCallLedgerHead;
     resume?: SupervisorResponseResumeContext;
     steeringSnapshot?: RequestSteeringSnapshot;
+    /** Already assessed by the accepted routing activation, including an empty result. */
+    memoryCandidates?: readonly MemoryCandidate[];
   }>,
 ): Promise<RootAuthoredResponse> {
   const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
@@ -86,7 +88,7 @@ export async function runSupervisorAuthoredResponse(
     options.steeringSnapshot ?? requestSteering.snapshot();
   const memoryEnabled = request.longTermMemory?.enabled === true;
   const memoryAuthoringVersion =
-    memoryEnabled && request.longTermMemory?.learning
+    memoryEnabled && (request.longTermMemory?.learning || options.memoryCandidates !== undefined)
       ? steeringSnapshot.version
       : undefined;
   const boundSteeringVersion =
@@ -100,7 +102,7 @@ export async function runSupervisorAuthoredResponse(
       ? options.steeringSnapshot?.version
       : undefined);
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryToolEvidence = memoryEnabled
+  const memoryToolEvidence = memoryEnabled && options.memoryCandidates === undefined
     ? createSupervisorToolEvidence(request, {
         head: options.skillReadHead,
         callId: options.call.callId,
@@ -112,15 +114,13 @@ export async function runSupervisorAuthoredResponse(
     memoryRecallMessage: memoryEnabled ? options.memoryRecallMessage : undefined,
     initialMemoryMessage: memoryEnabled ? options.initialMemoryMessage : undefined,
   };
-  const memoryAuthoringContext = memoryEnabled
+  const memoryAuthoringContext = memoryEnabled && options.memoryCandidates === undefined
     ? await prepareConversationMemoryAuthoring(request, steeringSnapshot)
     : undefined;
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryCandidates = canAuthorConversationMemory(
-    request,
-    memoryAuthoringContext,
-  )
-    ? await authorSupervisorMemoryCandidates({
+  let memoryCandidates = memoryEnabled ? options.memoryCandidates ?? Object.freeze([]) : Object.freeze([]);
+  if (options.memoryCandidates === undefined && canAuthorConversationMemory(request, memoryAuthoringContext)) {
+    memoryCandidates = await authorSupervisorMemoryCandidates({
         request,
         boundSteeringVersion,
         ...(memoryAuthoringContext ? { memoryAuthoringContext } : {}),
@@ -132,8 +132,8 @@ export async function runSupervisorAuthoredResponse(
             : {}),
         }).context.messages,
         contextCompaction: createSupervisorResponseCompaction(request, options, memoryToolEvidence),
-      })
-    : Object.freeze([]);
+      });
+  }
   const supervisorToolEvidence = createSupervisorToolEvidence(request, {
     head: options.skillReadHead,
     callId: options.call.callId,

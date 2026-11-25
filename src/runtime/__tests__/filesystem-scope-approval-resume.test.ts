@@ -96,10 +96,10 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const invoke = model.invoke.getMockImplementation()!;
     let rootEstablished = false;
     model.invoke.mockImplementation(async (input) => {
-      const cwdPhase =
+      const directorySelection =
         typeof input.format === "object" &&
-        input.format?.name === "supervisor_working_directory";
-      if (cwdPhase) {
+        input.format?.name === "supervisor_fused_routing";
+      if (directorySelection) {
         assertFilesystemScope(input, originalRoot, null, true, {});
       } else if (
         input.modelStep === "capability.controls" ||
@@ -126,9 +126,9 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         else expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
       } else expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
       const result = await invoke(input);
-      if (!cwdPhase && input.modelStep !== "execution.decision") return result;
+      if (!directorySelection && input.modelStep !== "execution.decision") return result;
       const parsed = JSON.parse(result.text);
-      const selected = cwdPhase ? parsed : parsed.decision;
+      const selected = parsed.decision;
       if (Object.hasOwn(selected, "workingDirectory")) {
         selected.workingDirectory = "LUNA";
         rootEstablished = true;

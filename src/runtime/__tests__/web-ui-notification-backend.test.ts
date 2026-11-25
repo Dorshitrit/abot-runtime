@@ -8,7 +8,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { NotificationPage } from "../../web-ui/notifications/contracts.js";
 
 const boundary = vi.hoisted(() => ({
-  publish: undefined as ((event: Record<string, unknown>) => void) | undefined,
+  publish: undefined as ((event: Record<string, unknown>, environmentId: string) => void) | undefined,
   replays: new Map<string, Record<string, unknown>>(),
   executeHostOperation: vi.fn(),
   decide: vi.fn(async () => ({ accepted: true, duplicate: false })),
@@ -20,7 +20,7 @@ vi.mock("../../web-ui/local-runtime/environment-registry.js", () => ({
   RuntimeEnvironmentRegistry: class {
     constructor(
       private readonly options: { rootDir: string },
-      bindings: { publish?: (event: Record<string, unknown>) => void },
+      bindings: { publish?: (event: Record<string, unknown>, environmentId: string) => void },
     ) {
       boundary.publish = bindings.publish;
     }
@@ -160,7 +160,7 @@ async function fixture() {
         ids: [id],
         read: true,
       }),
-    publish: (event: Record<string, unknown>) => boundary.publish!(event),
+    publish: (event: Record<string, unknown>, environmentId = "dev") => boundary.publish!(event, environmentId),
     connect: (client: WebSocket) => backend.handleRealtimeConnection(client),
     async restart() {
       await backend.stop();
@@ -202,6 +202,15 @@ test("a Runtime completion without any browser persists through HTTP and backend
   expect((await f.inbox("prod")).items).toEqual([]);
 });
 
+test("a completion accepted just before shutdown reaches the inbox before the backend is recreated", async () => {
+  const f = await fixture(), browser = realtimeClient();
+  f.connect(browser.client);
+  f.publish(completed("at-shutdown"));
+  await f.restart();
+  expect(browser.sent.some((event) => event.requestId === "at-shutdown")).toBe(true);
+  expect((await f.inbox()).items.map((item) => item.requestId)).toEqual(["at-shutdown"]);
+});
+
 test("actual realtime presence suppresses only the focused environment and conversation", async () => {
   const f = await fixture();
   const browser = realtimeClient();
@@ -214,7 +223,7 @@ test("actual realtime presence suppresses only the focused environment and conve
   });
   f.publish(completed("focused"));
   f.publish(completed("other-conversation", "dev", "other"));
-  f.publish(completed("same-session-other-environment", "prod"));
+  f.publish(completed("same-session-other-environment", "prod"), "prod");
   await expect.poll(async () => (await f.inbox("prod")).items.length).toBe(1);
   expect((await f.inbox()).items.map((item) => item.requestId)).toEqual([
     "other-conversation",
@@ -312,7 +321,9 @@ test.each([true, false])("accepted approval %s marks only its notification read 
   const f = await fixture();
   const event = { type: "event", name: "tool.approval.required", environment: "dev",
     sessionId: "conversation", requestId: "request-1", approvalId: "approval-1" };
-  for (const value of [event, { ...event, approvalId: "approval-2" }, { ...event, environment: "prod" }]) f.publish(value);
+  f.publish(event);
+  f.publish({ ...event, approvalId: "approval-2" });
+  f.publish({ ...event, environment: "prod" }, "prod");
   await expect.poll(async () => (await f.inbox()).unreadCount).toBe(2);
   const decision = { ...event, approved, waitId: "wait-1", generation: "generation-1", revision: 1, commandId: "command-1" };
   if (approved) {

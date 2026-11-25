@@ -96,11 +96,13 @@ export class RequestActivationEvents {
       cause: SessionRequestTerminalCause;
       message: SessionTerminalMessage;
       error: string;
+      sourceIssueId?: string;
       prepareFailure?: () => Promise<
         Readonly<{
           cause: SessionRequestTerminalCause;
           message: SessionTerminalMessage;
           error: string;
+          sourceIssueId?: string;
         }>
       >;
     }>,
@@ -139,6 +141,7 @@ export class RequestActivationEvents {
         cause: failure.cause,
         message: failure.message,
         error: failure.error,
+        ...(failure.sourceIssueId ? { sourceIssueId: failure.sourceIssueId } : {}),
       }),
     );
   }

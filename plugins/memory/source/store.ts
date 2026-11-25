@@ -9,6 +9,7 @@ import {
 } from "./types.js";
 import { acquireStoreLock } from "./store-lock.js";
 import { replacePreparedMemoryFile } from "./prepared-memory-replacement.js";
+import { reportMemoryStorageFailure } from "./storage-diagnostics.js";
 
 const MAX_STORE_BYTES = 4 * 1024 * 1024;
 const MAX_STORE_ENTRIES = 2_000;
@@ -228,6 +229,7 @@ export class MemoryStore {
       return;
     } catch (error) {
       if (fileSystemErrorCode(error) !== "ENOENT") {
+        reportMemoryStorageFailure("initialize-access", error);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable.",
@@ -242,6 +244,7 @@ export class MemoryStore {
       } catch (error) {
         if (error instanceof MemoryStoreError) throw error;
         if (fileSystemErrorCode(error) !== "ENOENT") {
+          reportMemoryStorageFailure("legacy-read", error);
           throw new MemoryStoreError(
             "memory_store_unavailable",
             "Memory store is unavailable.",
@@ -261,6 +264,7 @@ export class MemoryStore {
       return await readStoreFile(this.#filePath);
     } catch (error) {
       if (error instanceof MemoryStoreError) throw error;
+      reportMemoryStorageFailure("read", error);
       throw new MemoryStoreError(
         "memory_store_unavailable",
         "Memory store is unavailable.",

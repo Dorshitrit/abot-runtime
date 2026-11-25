@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MODEL_STEPS } from "../../shared/model-steps.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { createDefaultToolRegistry } from "../default-adapters.js";
 import { directRespondText } from "./support/supervisor-direct-respond.js";
 import { expectDirectDelegation } from "./support/supervisor-delegation-events.js";
@@ -259,7 +260,7 @@ describe("Supervisor-root request runner slice", () => {
         modelStep: SUPERVISOR_DECISION_MODEL_STEP,
         debugRequestId: request.requestId,
         format: expect.objectContaining({
-          type: "json_schema", name: "supervisor_procedure_gate", strict: true,
+          type: "json_schema", name: "supervisor_fused_entry", strict: true,
         }),
         messages: [
           expect.objectContaining({ role: "system" }),
@@ -368,7 +369,7 @@ describe("Supervisor-root request runner slice", () => {
     ).toEqual({ ok: false, reason: "request_not_active" });
   });
 
-  test("binds the exact Gemma project scope only after frozen Planner routing", async () => {
+  test("binds the exact Gemma project scope in combined Planner routing", async () => {
     const plannerObjective = `Complete the existing project in ${PLANNER_WORKING_DIRECTORY}, including its implementation, connectivity, data, and functionality.`;
     const plannerResult = "The exact project outcome is complete.";
     let invocationIndex = 0;
@@ -437,70 +438,21 @@ describe("Supervisor-root request runner slice", () => {
     expect(gatewayInvoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
-      SUPERVISOR_DECISION_MODEL_STEP,
-      SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
 
-    const routingFormat = gatewayInvoke.mock.calls[2]![0].format;
-    const workingDirectoryFormat = gatewayInvoke.mock.calls[3]![0].format;
-    expect(routingFormat).toMatchObject({ name: "supervisor_delegation" });
-    expect(JSON.stringify(routingFormat)).not.toContain("workingDirectory");
-    expect(workingDirectoryFormat).toMatchObject({
-      name: "supervisor_working_directory",
-      strict: true,
-      schema: {
-        type: "object",
-        required: ["workingDirectory"],
-        additionalProperties: false,
-      },
-    });
-    const serializedWorkingDirectoryFormat = JSON.stringify(
-      workingDirectoryFormat,
-    );
-    expect(serializedWorkingDirectoryFormat).not.toContain("roleId");
-    expect(serializedWorkingDirectoryFormat).not.toContain("objective");
-    expect(serializedWorkingDirectoryFormat).not.toContain(
-      "workerCapabilityScope",
-    );
-    expect(serializedWorkingDirectoryFormat).not.toContain("catalogGroupIds");
-    expect(
-      Object.keys(
-        (
-          workingDirectoryFormat as {
-            schema: { properties: Record<string, unknown> };
-          }
-        ).schema.properties,
-      ),
-    ).toEqual(["workingDirectory"]);
+    const routingFormat = gatewayInvoke.mock.calls[1]![0].format;
+    expect(routingFormat).toMatchObject({ name: "supervisor_fused_routing", strict: true });
+    const schema = (routingFormat as { schema: { properties: { decision: { anyOf: Array<{ properties: { roleId?: { enum: string[] } }; required: string[] }> } } } }).schema;
+    const plannerVariant = schema.properties.decision.anyOf.find(variant => variant.properties.roleId?.enum.includes("planner"));
+    expect(plannerVariant?.required).toEqual(expect.arrayContaining(["action", "roleId", "objective", "workingDirectory"]));
+    expect(gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input))).not.toContain("supervisor_working_directory");
 
-    const frozenInvocation = (
-      gatewayInvoke.mock.calls[3]![0].messages as readonly Readonly<{
-        content: string;
-      }>[]
-    ).flatMap((message) => {
-      try {
-        const parsed = JSON.parse(message.content) as Record<string, unknown>;
-        return parsed.kind === "runtime_supervisor_frozen_invocation_v1"
-          ? [parsed]
-          : [];
-      } catch {
-        return [];
-      }
-    });
-    expect(frozenInvocation).toEqual([
-      {
-        kind: "runtime_supervisor_frozen_invocation_v1",
-        authority: "canonical_runtime_state",
-        roleId: "planner",
-        objective: plannerObjective,
-      },
-    ]);
   });
 
-  test("does not open a stale child when steering arrives during title publication after phase two", async () => {
+  test("does not open a stale child when steering arrives during title publication after combined routing", async () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const requestSteering = createRequestSteeringInbox({
@@ -572,12 +524,10 @@ describe("Supervisor-root request runner slice", () => {
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
-      SUPERVISOR_DECISION_MODEL_STEP,
-      SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
-    expect(gatewayInvoke.mock.calls[3]![0].format).toMatchObject({
-      name: "supervisor_working_directory",
+    expect(gatewayInvoke.mock.calls[1]![0].format).toMatchObject({
+      name: "supervisor_fused_routing",
     });
     expect(
       onEvent.mock.calls.some(
@@ -616,7 +566,7 @@ describe("Supervisor-root request runner slice", () => {
     );
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
+      if (input.modelStep === WORKER_DECISION_MODEL_STEP) return workerFusedReply(input, { action: "return_result" });
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -711,7 +661,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_DECISION_MODEL_STEP,
       WORKER_RESULT_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
@@ -869,19 +819,10 @@ describe("Supervisor-root request runner slice", () => {
       expect.arrayContaining([
         expect.objectContaining({
           scope: "runtime.supervisor",
-          event: "decision.accepted",
+          event: "delegation.context.projected",
           decisionPhase: "delegation",
-          selectedAction: "invoke_role",
-          selectedRoleId: "planner",
-          workingDirectoryIncluded: false,
-          workingDirectoryLength: 0,
-        }),
-        expect.objectContaining({
-          scope: "runtime.supervisor",
-          event: "working_directory.accepted",
-          decisionPhase: "working_directory",
-          workingDirectoryIncluded: true,
-          workingDirectoryLength: PLANNER_WORKING_DIRECTORY.length,
+          callId: "call-1",
+          allowedRoleIds: expect.arrayContaining(["planner"]),
         }),
         expect.objectContaining({
           scope: "runtime.role_executors",
@@ -922,7 +863,7 @@ describe("Supervisor-root request runner slice", () => {
     );
   });
 
-  test("leaves initial capability selection to the direct Worker", async () => {
+  test("limits the direct Worker to the initially delegated capability groups", async () => {
     const invoke = vi
       .fn<ModelGatewayClient["invoke"]>()
       .mockResolvedValueOnce({
@@ -936,7 +877,7 @@ describe("Supervisor-root request runner slice", () => {
         }),
         meta: {},
       })
-      .mockImplementationOnce(async (input) => workerEvidenceReply(input, false))
+      .mockImplementationOnce(async (input) => workerFusedReply(input, { action: "return_result" }))
       .mockResolvedValueOnce({
         text: "They localize the first failing change for faster debugging.",
         meta: {},
@@ -1007,7 +948,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke).toHaveBeenCalledTimes(5);
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_DECISION_MODEL_STEP,
       WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
@@ -1022,10 +963,10 @@ describe("Supervisor-root request runner slice", () => {
     expect(supervisorMessages[0]!.content).not.toContain("mutate_system_state");
     const workerInvocation = invoke.mock.calls[1]![0];
     expect(workerInvocation).toMatchObject({
-      modelStep: MODEL_STEPS.WORKER_EVIDENCE,
+      modelStep: WORKER_DECISION_MODEL_STEP,
       format: {
         type: "json_schema",
-        name: "worker_evidence_assessment",
+        name: "worker_evidence_and_selection",
         strict: true,
       },
     });
@@ -1033,7 +974,7 @@ describe("Supervisor-root request runner slice", () => {
       role: string;
       content: string;
     }>;
-    expect(workerMessages).toHaveLength(4);
+    expect(workerMessages).toHaveLength(5);
     expect(JSON.parse(workerMessages[1]!.content)).toEqual({
       kind: "runtime_request_source_v1",
       authority: "reference_data",
@@ -1058,9 +999,6 @@ describe("Supervisor-root request runner slice", () => {
         {
           capabilityId: "inspect_system_state",
         },
-        {
-          capabilityId: "mutate_system_state",
-        },
       ],
       availableChildRoleIds: [],
     });
@@ -1070,7 +1008,7 @@ describe("Supervisor-root request runner slice", () => {
           capabilityId: string;
         }>
       ).map(({ capabilityId }) => capabilityId),
-    ).toEqual(["inspect_system_state", "mutate_system_state"]);
+    ).toEqual(["inspect_system_state"]);
 
     const resumedInvocation = invoke.mock.calls[3]![0];
     const resumedMessages = resumedInvocation.messages as Array<{
@@ -1092,6 +1030,7 @@ describe("Supervisor-root request runner slice", () => {
       objective:
         "Explain one concrete benefit of small implementation checkpoints.",
       workingDirectory: DIRECT_WORKER_WORKING_DIRECTORY,
+      workerCapabilityScope: { catalogGroupIds: ["observe"] },
     });
     expect(JSON.parse(resumedMessages.at(-1)!.content)).toMatchObject({
       kind: "runtime_child_result",
@@ -1139,7 +1078,7 @@ describe("Supervisor-root request runner slice", () => {
       "The recommendation incorporates the reported actionable signal.";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
+      if (input.modelStep === WORKER_DECISION_MODEL_STEP) return workerFusedReply(input, { action: "return_result" });
       invocationIndex += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1261,7 +1200,7 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_DECISION_MODEL_STEP,
       WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
@@ -1331,7 +1270,6 @@ describe("Supervisor-root request runner slice", () => {
       "The revised bounded approach is ready for the Supervisor.";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, true);
       invocationIndex += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1350,13 +1288,7 @@ describe("Supervisor-root request runner slice", () => {
           };
         case 2:
           expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-          return {
-            text: encodeDecision({
-              action: "return_failure",
-              reason: failure,
-            }),
-            meta: {},
-          };
+          return workerFusedReply(input, { action: "return_failure", reason: failure });
         case 3:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
           expect(readRuntimeChildResults(messages)).toMatchObject([
@@ -1448,7 +1380,6 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
       WORKER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
@@ -1513,7 +1444,6 @@ describe("Supervisor-root request runner slice", () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     let supervisorDecisionCount = 0;
-    let workerResultCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       if (input.modelStep === SUPERVISOR_DECISION_MODEL_STEP) {
         supervisorDecisionCount += 1;
@@ -1529,32 +1459,22 @@ describe("Supervisor-root request runner slice", () => {
           meta: {},
         };
       }
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
-      if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
-        workerResultCount += 1;
-        return { text: `Bounded child ${workerResultCount} completed.`, meta: {} };
-      }
       throw new Error(`unexpected model step ${input.modelStep}`);
     });
-    const request = createRequest(invoke, {
-      modelPolicy: {
-        ...modelPolicy,
-        profiles: {
-          ...modelPolicy.profiles,
-          "runtime-default": {
-            ...modelPolicy.profiles["runtime-default"],
-            contextWindowTokens: 128_000,
-          },
-        },
-      },
-    });
+    const request = createRequest(invoke, { modelPolicy: { ...modelPolicy, profiles: {
+      "runtime-default": { ...modelPolicy.profiles["runtime-default"], contextWindowTokens: 128_000 },
+    } } });
 
-    await expect(runRequestRunner(request)).rejects.toThrow(
+    await expect(runRequestRunner(rebindTestRequestExecutionPolicy(request, {
+      ...request.executionPolicy, roleExecutors: createRoleExecutorRegistry([
+        createObservationRoleExecutor("worker", "Bounded child completed."),
+      ]),
+    }))).rejects.toThrow(
       "role_executor_child_invocation_invalid:supervisor:call_limit_exceeded",
     );
 
     expect(supervisorDecisionCount).toBe(48);
-    expect(workerResultCount).toBe(47);
+    expect(invoke).toHaveBeenCalledTimes(48);
     expect(
       invoke.mock.calls.some(
         ([input]) => input.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP,
@@ -1594,8 +1514,6 @@ describe("Supervisor-root request runner slice", () => {
     const observation = "SYSTEM_STATE_7_4";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE && invocationIndex === 1)
-        return workerEvidenceReply(input, true);
       if (input.modelStep === WORKER_RESULT_MODEL_STEP)
         return { text: `Consumed canonical observation: ${observation}`, meta: {} };
       invocationIndex += 1;
@@ -1612,14 +1530,10 @@ describe("Supervisor-root request runner slice", () => {
             meta: {},
           };
         case 2:
-          return {
-            text: encodeDecision({
-              action: "invoke_capability",
-              capabilityId: "inspect_system_state",
-              intent: "Inspect the current system state.",
-            }),
-            meta: {},
-          };
+          return workerFusedReply(input, {
+            action: "invoke_capability", capabilityId: "inspect_system_state",
+            intent: "Inspect the current system state.",
+          });
         case 3:
           return {
             text: encodeDecision({
@@ -1649,8 +1563,8 @@ describe("Supervisor-root request runner slice", () => {
               },
             ],
           });
-          expect(input.modelStep).toBe(MODEL_STEPS.WORKER_EVIDENCE);
-          return workerEvidenceReply(input, false);
+          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
+          return workerFusedReply(input, { action: "return_result" });
         }
         case 5:
           return {
@@ -1711,11 +1625,9 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
       WORKER_DECISION_MODEL_STEP,
       CAPABILITY_CONTROLS_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
-      WORKER_RESULT_MODEL_STEP,
+      WORKER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
@@ -1863,8 +1775,6 @@ describe("Supervisor-root request runner slice", () => {
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE && invocationIndex === 1)
-        return workerEvidenceReply(input, true);
       if (input.modelStep === WORKER_RESULT_MODEL_STEP)
         return { text: "The requested file was created.", meta: {} };
       invocationIndex += 1;
@@ -1883,16 +1793,11 @@ describe("Supervisor-root request runner slice", () => {
           };
         case 2:
           expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-          return {
-            text: encodeDecision({
-              action: "invoke_capability",
-              capabilityId: "write_complete_file",
-              intent: "Create the exact requested file.",
-              authoringObjective,
-              selectionControls: { path: logicalTarget },
-            }),
-            meta: {},
-          };
+          return workerFusedReply(input, {
+            action: "invoke_capability", capabilityId: "write_complete_file",
+            intent: "Create the exact requested file.", authoringObjective,
+            selectionControls: { path: logicalTarget },
+          });
         case 3: {
           expect(input.modelStep).toBe(
             WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
@@ -1936,7 +1841,7 @@ describe("Supervisor-root request runner slice", () => {
           return { text: body, meta: {} };
         }
         case 4: {
-          expect(input.modelStep).toBe(MODEL_STEPS.WORKER_EVIDENCE);
+          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
           const messages = input.messages as readonly Readonly<{
             role: string;
             content: string;
@@ -1957,7 +1862,7 @@ describe("Supervisor-root request runner slice", () => {
               },
             ],
           });
-          return workerEvidenceReply(input, false);
+          return workerFusedReply(input, { action: "return_result" });
         }
         case 5:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
@@ -2001,11 +1906,9 @@ describe("Supervisor-root request runner slice", () => {
 
       expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
         SUPERVISOR_DECISION_MODEL_STEP,
-        MODEL_STEPS.WORKER_EVIDENCE,
         WORKER_DECISION_MODEL_STEP,
         WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
-        MODEL_STEPS.WORKER_EVIDENCE,
-        WORKER_RESULT_MODEL_STEP,
+        WORKER_DECISION_MODEL_STEP,
         SUPERVISOR_DECISION_MODEL_STEP,
         SUPERVISOR_RESPONSE_MODEL_STEP,
       ]);
@@ -2178,7 +2081,7 @@ describe("Supervisor-root request runner slice", () => {
     let invocationIndex = 0;
     let reviewerDecision: Record<string, unknown> | undefined;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
+      if (input.modelStep === WORKER_DECISION_MODEL_STEP) return workerFusedReply(input, { action: "return_result" });
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -2326,7 +2229,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
-      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_DECISION_MODEL_STEP,
       WORKER_RESULT_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,

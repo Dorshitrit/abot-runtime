@@ -1,3 +1,5 @@
+import { createOrdinaryChatEventPublisher } from "./local-runtime/agent-event-scope.js";
+import { assertOrdinaryWebSession } from "../runtime/agents/session-association.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
 
@@ -33,6 +35,7 @@ export class LocalRuntimeWebBackend {
   private readonly realtime: LocalRealtimeController;
   private readonly controls: LocalRuntimeControlRoutes;
   private readonly notifications: WebNotificationService;
+  private readonly ordinaryEvents: ReturnType<typeof createOrdinaryChatEventPublisher>;
   private readonly notificationRoutes: WebNotificationRoutes;
 
   constructor(options: LocalRuntimeBackendOptions) {
@@ -48,10 +51,15 @@ export class LocalRuntimeWebBackend {
     );
     this.clients = clients;
     const requests = new LocalRequestExecution(clients);
+    this.ordinaryEvents = createOrdinaryChatEventPublisher({
+      runtimeDir: (id) => this.environments.get(id).services.config.paths.runtimeDir,
+      publish: (event) => requests.publishScheduled(event),
+      unavailable: (id) => console.error(`Chat event association unavailable for ${id}.`),
+    });
     this.environments = new RuntimeEnvironmentRegistry(resolvedOptions, {
       homeAppearance: createSavedAppearanceReferenceReader(options.rootDir ?? process.cwd()),
       requestOptions: (run) => requests.scheduledRequestOptions(run),
-      publish: (event) => requests.publishScheduled(event),
+      publish: this.ordinaryEvents.publish,
       publishLearning: createLearningChangeNotifier(clients),
       publishSparkHome: createSparkHomeChangeNotifier(clients),
       publishInformationBasket: (environmentId) =>
@@ -72,6 +80,7 @@ export class LocalRuntimeWebBackend {
       environment: (id) => this.environments.get(id),
       isViewing: (environment, session) =>
         clients.presence.isViewing(environment, session),
+      isViewingAgent: (environment, id) => clients.presence.isViewingAgent(environment, id),
       changed: (environment) =>
         clients.broadcast({
           type: "workspace_changed",
@@ -91,6 +100,7 @@ export class LocalRuntimeWebBackend {
       readStates,
       this.notifications.observeRead,
       this.notifications.observeApprovalDecision,
+      this.notifications,
     );
     this.realtime = new LocalRealtimeController(
       resolvedOptions,
@@ -158,7 +168,8 @@ export class LocalRuntimeWebBackend {
   }
 
   validateQueueTarget(input: Record<string, unknown>): Promise<void> {
-    return validateRuntimeQueueTarget(input, (id) => this.environments.get(id).services.sessions);
+    return validateRuntimeQueueTarget(input, (id) => this.environments.get(id).services.sessions,
+      (id, sessionId) => assertOrdinaryWebSession(this.environments.get(id).services.config.paths.runtimeDir, sessionId));
   }
 
   handleRealtimeConnection(client: WebSocket): void {
@@ -172,6 +183,7 @@ export class LocalRuntimeWebBackend {
   async start(environmentIds: readonly string[]): Promise<void> {
     await this.api.initializeSessionReadState(environmentIds);
     await this.environments.start(environmentIds);
+    await this.api.startAgents(environmentIds);
   }
 
   environmentConfig() {
@@ -183,7 +195,24 @@ export class LocalRuntimeWebBackend {
   }
 
   async stop(): Promise<void> {
-    await this.notifications.stop();
-    await this.environments.stop();
+    // Fence new managed actions synchronously, before any existing cleanup awaits.
+    const managedCleanup = (async () => { await this.api.closeManagedLlama(); })();
+    const results = await Promise.allSettled([
+      (async () => {
+        await this.api.stopAgents();
+        // Finish classifying accepted events while the environment and its notification store are available.
+        await this.ordinaryEvents.stop();
+        await this.notifications.stop();
+        await this.environments.stop();
+      })(),
+      managedCleanup,
+    ]);
+    const failures: unknown[] = [];
+    for (const result of results) {
+      if (result.status === "rejected") failures.push(result.reason);
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Runtime and managed llama.cpp cleanup failed.");
   }
 }

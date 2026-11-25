@@ -67,11 +67,10 @@ export function prepareWorkerReferenceContext(
   ) {
     throw new Error("worker_tool_results_message_binding_invalid");
   }
-  const requestToolResultsMessage =
-    requestToolResults.results.length > 0
-      ? (options.requestToolResultsContextMessage ??
-        buildRequestToolResultsMessage(requestToolResults))
-      : undefined;
+  const requestToolResultsMessage = options.requestToolResultsContextMessage ??
+    (requestToolResults.results.length > 0
+      ? buildRequestToolResultsMessage(requestToolResults)
+      : undefined);
   if (operationSupervision && !canonicalState.canonicalSource) {
     throw new Error("worker_operation_supervision_source_missing");
   }

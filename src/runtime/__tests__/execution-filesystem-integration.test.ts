@@ -22,6 +22,7 @@ import { parseExecutionAgentDecisionOutput } from "../steps/execution-agent/inde
 import { refineExecutionCapabilityInvocations } from "../steps/execution-agent/refinement.js";
 import { createObservationControlsFixture, observationRefinementCall } from "./support/execution-observation-controls-fixture.js";
 import type { WorkerCapabilityAdapterResult, WorkerSettledCapabilityResult } from "../orchestration/worker-capabilities/contracts.js";
+import { filePayloadOutput } from "./support/execution-file-output-fixture.js";
 
 const roots: string[] = [];
 const states: RequestToolState[] = [];
@@ -80,10 +81,10 @@ async function fixture(policyId: "execution-agent-v1" | "supervisor-worker-v1", 
   const assignmentProvenance = call.roleId === "worker"
     ? projectWorkerCapabilityPayloadSourceProvenance({ ledger, head, call }) : undefined;
   const outputs: string[] = [];
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     const text = outputs.shift();
     if (text === undefined) throw new Error("unexpected_model_call");
-    return { text, meta: {} };
+    return { text: input.modelStep === "execution.file_payload.raw" ? filePayloadOutput(input.messages, text) : text, meta: {} };
   });
   const events: { name: string; [key: string]: unknown }[] = [];
   const request = createTestRequestExecutionScope({
@@ -174,6 +175,46 @@ function readRangeRef(result: WorkerCapabilityAdapterResult): string {
   return range;
 }
 
+test.each(["decline", "truncated_control", "mixed"])(
+  "EA author %s leaves the original file intact and emits no mutation success", async (kind) => {
+    const f = await fixture("execution-agent-v1");
+    const original = "\uFEFFconst original = 1;\r\n";
+    await writeFile(join(f.root, "target.txt"), original);
+    const observed = await f.execute("read_text", { path: "target.txt" });
+    const reason = "The selected range is insufficient for this change.";
+    f.invoke.mockImplementation(async (input) => {
+      const write = filePayloadOutput(input.messages, "candidate");
+      const abort = filePayloadOutput(input.messages, reason, "abort");
+      const outputs: Record<string, string> = {
+        decline: abort, truncated_control: abort.slice(0, -5), mixed: write + abort,
+      };
+      return { text: outputs[kind]!, meta: {} };
+    });
+    const result = await f.execute("edit_text", { path: "target.txt", range_ref: readRangeRef(observed) },
+      "unused fixture body", [settledRead(observed, "read-1")]);
+    expect(result).toMatchObject({ outcome: "failed", observedEffect: "none", exactResult: {
+      kind: "runtime_capability_rejection_v1", stage: "before_external_execution",
+      code: kind === "decline" ? "payload_author_declined" : "payload_model_output_invalid",
+    } });
+    if (kind === "decline") expect(result.summary).toContain(reason);
+    expect(await readFile(join(f.root, "target.txt"), "utf8")).toBe(original);
+    expect(f.invoke).toHaveBeenCalledOnce();
+    expect(f.events.filter(({ name }) => name === "tool.payload.failed")).toHaveLength(1);
+    expect(f.events.filter(({ name }) => name === "tool.payload.completed")).toEqual([]);
+    expect(f.events.filter(({ name }) => name === "tool.completed").map(({ tool }) => tool)).toEqual(["read_text"]);
+  },
+);
+
+test("EA RAW empty content deletes only the selected range", async () => {
+  const f = await fixture("execution-agent-v1");
+  await writeFile(join(f.root, "target.txt"), "keep\nremove\n");
+  const observed = await f.execute("read_text", { path: "target.txt", start_line: 2, end_line: 2 });
+  expect(await f.execute("edit_text", { path: "target.txt", range_ref: readRangeRef(observed) }, ""))
+    .toMatchObject({ outcome: "succeeded" });
+  expect(await readFile(join(f.root, "target.txt"), "utf8")).toBe("keep\n");
+  expect(f.invoke).toHaveBeenCalledOnce();
+});
+
 test("EA replaces an explicitly selected earlier window without choosing the latest read or receiving unread content", async () => {
   const f = await fixture("execution-agent-v1");
   const first = "const first = 1;\n";
@@ -208,7 +249,7 @@ test.each(["missing", "null", "unknown", "stale"])("EA rejects a %s range before
   const f = await fixture("execution-agent-v1");
   await writeFile(join(f.root, "target.txt"), "original\n");
   const observed = await f.execute("read_text", { path: "target.txt" });
-  const range_ref = kind === "null" ? null : kind === "unknown" ? "range:unknown" : readRangeRef(observed);
+  const range_ref = kind === "null" ? null : kind === "unknown" ? "range:00000000-0000-4000-8000-000000000001" : readRangeRef(observed);
   if (kind === "stale") await writeFile(join(f.root, "target.txt"), "external change\n");
   const controls = { path: "target.txt", ...(kind === "missing" ? {} : { range_ref }) };
   const editing = f.execute("edit_text", controls, "replacement\n", [settledRead(observed, "read-1")]);
@@ -265,7 +306,7 @@ test("installing the EA plugin preserves SUPER catalog and exact legacy payload 
 });
 
 test("EA selects its required range once without a Controls model turn", async () => {
-  const rangeRef = "range:captured-window";
+  const rangeRef = "range:00000000-0000-4000-8000-000000000002";
   const f = await fixture("execution-agent-v1");
   const descriptor = f.provider.getDescriptors().find(({ capabilityId }) => capabilityId === "edit_text")!;
   const original = JSON.stringify(descriptor);

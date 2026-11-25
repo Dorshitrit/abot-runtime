@@ -5,7 +5,7 @@ import type { WorkerCapabilityDescriptor } from "../../orchestration/worker-capa
 import { createRequestExecutionScope } from "../../request/execution-scope.js";
 import { createRequestSteeringInbox } from "../../request/request-steering.js";
 import { createTestRequestExecutionScope } from "./request-execution-scope.js";
-import { supervisorFormatName } from "./supervisor-model-phases.js";
+import { defaultSupervisorPresentation, supervisorFormatName } from "./supervisor-model-phases.js";
 
 export type ProcedureModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
 export const PROCEDURE_PROMPT = "  Save the preceding summary in report.txt.  ";
@@ -51,7 +51,11 @@ export function createProcedureOrchestrationFixture(
       return { text: JSON.stringify({ decision: { acknowledgement: "I will handle the current request." } }), meta: {} };
     if (phase === "supervisor_skill_selection")
       return { text: JSON.stringify({ decision: { action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId] } }), meta: {} };
+    if (phase === "supervisor_fused_entry" && options.skills)
+      return { text: JSON.stringify({ decision: { action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId], ...defaultSupervisorPresentation(input) } }), meta: {} };
     const output = await decide(input);
+    if (phase === "supervisor_fused_entry" && typeof output === "object" && output !== null)
+      return { text: JSON.stringify({ decision: { ...output, ...defaultSupervisorPresentation(input) } }), meta: {} };
     return { text: typeof output === "string" ? output : JSON.stringify({ decision: output }), meta: {} };
   });
   const request = createTestRequestExecutionScope({

@@ -1,3 +1,4 @@
+import { sourceIssueDetails } from "../../shared/source-issue.js";
 import { hasSuperContextContract } from "../context/super-context-policy.js";
 import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 import { readModelGatewayUserMessage } from "../../model-gateway/client.js";
@@ -413,6 +414,7 @@ class RequestHandlingSession {
         commandId: randomUUID(),
         cause: classifyRequestTerminalCause(this.lifecycle.signal),
         error: message,
+        ...sourceIssueDetails(primary),
         message: this.ordinaryFailureMessage(primary),
         ...(this.superFailurePolicy
           ? {
@@ -420,6 +422,7 @@ class RequestHandlingSession {
                 message: await this.prepareSuperFailureMessage(primary),
                 cause: classifyRequestTerminalCause(this.lifecycle.signal),
                 error: this.failureCode(primary),
+                ...sourceIssueDetails(primary),
               }),
             }
           : {}),
@@ -430,7 +433,7 @@ class RequestHandlingSession {
         return { kind: "awaiting_approval", lifecycle: current };
       return;
     }
-    const details: Record<string, unknown> = {};
+    const details: Record<string, unknown> = sourceIssueDetails(primary);
     const providerMessage = readModelGatewayUserMessage(primary);
     const canPresentProviderFailure = !this.lifecycle.signal.aborted && providerMessage !== undefined;
     if (canPresentProviderFailure) details.stoppedResponse = providerMessage;

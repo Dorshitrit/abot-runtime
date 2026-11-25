@@ -1,4 +1,5 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import type { MemoryCandidate } from "../../long-term-memory/contracts.js";
 import type { MemoryRecallDecision } from "../memory-recall-decision.js";
 import type { SkillReadDecision } from "../skill-read-decision.js";
 import type { SupervisorSkillAuthoringSelection } from "../supervisor-skill-authoring/contract.js";
@@ -92,6 +93,8 @@ export type SupervisorDecision =
 export type SupervisorDecisionOutcome = Readonly<{
   decision: SupervisorDecision;
   steeringVersion: number;
+  /** Accepted authoring for this activation only; never part of the role ledger. */
+  memoryCandidates?: readonly MemoryCandidate[];
 }>;
 
 export type SupervisorRoutingInvokeRoleDecision =

@@ -75,7 +75,7 @@ test("an initial request without a complete prior turn adds no fabricated source
   expect(input.context.omittedHistoryMessageIds).toEqual([]);
 });
 
-test("delegation receives exact captured Skill capsules while capability catalogs remain outside", async () => {
+test("delegation preserves exact captured Skill capsules alongside Worker group discovery", async () => {
   const f = await createCoreSkillContextFixture();
   await f.read();
   const head = f.ledger.current();
@@ -103,8 +103,8 @@ test("delegation receives exact captured Skill capsules while capability catalog
   expect(serialized).not.toContain("CAPABILITY_DESCRIPTION_SENTINEL");
   expect(serialized).not.toContain("runtime_execution_capability_catalog_v1");
   expect(input.workerCapabilityAffordances).toEqual([]);
-  expect(input.availableWorkerCapabilityCatalog).toEqual([]);
-  expect(JSON.stringify(input.format)).not.toContain("workerCapabilityScope");
+  expect(input.availableWorkerCapabilityCatalog).toEqual([{ groupId: "write", memberCount: 1, effects: ["mutation"] }]);
+  expect(JSON.stringify(input.format)).toContain("workerCapabilityScope");
   expect(f.ledger.current()).toBe(head);
   expect(JSON.stringify(head.state)).toBe(before);
 });
@@ -194,4 +194,31 @@ test("a long latest source stays exact even when its estimate exceeds the provid
   expect(input.context.budget.estimatedInputTokens).toBeGreaterThan(input.context.budget.availableInputTokens);
   expect(input.context.compaction.applied).toBe(false);
   expect(f.invoke).not.toHaveBeenCalled();
+});
+
+
+test("initial Worker catalog and passive brief reach context and parser without changing Planner semantics", () => {
+  const f = fixture({ sessionArtifactPaths: ["prior/report.txt"] });
+  const catalog = [{ groupId: "read", memberCount: 1, effects: ["observation" as const] }];
+  const entries = [{ toolName: "fixture_reader", operationId: "fixture_read", summary: "BRIEF_DISCOVERY_SENTINEL", catalogGroups: ["read"], effect: "read_only" as const }];
+  const options = { toolResults: EMPTY_RESULTS, availableWorkerCapabilityCatalog: catalog,
+    capabilityBriefEntries: entries, capabilityBriefBudgetMessages: [{ role: "user" as const, content: "BUDGET_ONLY_SENTINEL" }] };
+  const input = buildSupervisorDelegationInput(f.request, options);
+  expect(input.availableWorkerCapabilityCatalog).toEqual(catalog);
+  expect(JSON.stringify(input.context.messages)).toContain("fixture_reader");
+  expect(JSON.stringify(input.context.messages)).not.toContain("BUDGET_ONLY_SENTINEL");
+  expect(input.context.messages.findIndex(m => m.content.includes("fixture_reader")))
+    .toBeLessThan(input.context.messages.findIndex(m => m.content === input.artifactPathsProjection!.message.content));
+  expect(input.context.messages[0]!.content).toContain("Worker selects capabilities and controls");
+  const worker = { action: "invoke_role", roleId: "worker", objective: "Read the requested source." };
+  expect(parseSupervisorDelegationOutput(JSON.stringify({ decision: worker }), input).ok).toBe(false);
+  const decision = { ...worker, workerCapabilityScope: { catalogGroupIds: ["read"] } };
+  expect(parseSupervisorDelegationOutput(JSON.stringify({ decision }), input)).toEqual({ ok: true, decision });
+  const planner = buildSupervisorDelegationInput(f.request, { ...options, allowedRoleIds: ["planner"] });
+  expect(planner.availableWorkerCapabilityCatalog).toEqual([]);
+  expect(JSON.stringify(planner.format)).not.toContain("workerCapabilityScope");
+  expect(JSON.stringify(planner.context.messages)).not.toContain("fixture_reader");
+  expect(JSON.stringify(planner.context.messages)).not.toContain("Worker selects capabilities and controls");
+  const plannerDecision = { ...worker, roleId: "planner" };
+  expect(parseSupervisorDelegationOutput(JSON.stringify({ decision: plannerDecision }), planner)).toEqual({ ok: true, decision: plannerDecision });
 });

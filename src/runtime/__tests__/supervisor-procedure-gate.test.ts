@@ -112,11 +112,12 @@ test("projects only instructions and the exact current request when no settled h
   expect(input.modelStep).toBe("supervisor.decision");
   expect(input.context.messages).toHaveLength(2);
   expect(input.context.messages[0]!.role).toBe("system");
-  expect(input.context.messages[1]).toEqual({ role: "user", content: f.request.prompt });
+  expect(input.context.messages[1]).toEqual({ role: "user", content: f.request.prompt, attachments: f.request.attachments });
   expect(input.context.selectedHistoryMessageIds).toEqual([]);
   expect(input.context.budget.parts.selectedHistoryInputTokens).toBe(0);
   expect(input.context.budget.parts.referenceInputTokens).toBe(0);
-  expect(JSON.stringify(input.context.messages)).not.toContain("SENTINEL");
+  expect(JSON.stringify(input.context.messages)).not.toContain("HISTORY_SENTINEL");
+  expect(JSON.stringify(input.context.messages)).toContain("ATTACHMENT_SENTINEL");
   expect(f.store.list).not.toHaveBeenCalled();
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.memory.retrieve).not.toHaveBeenCalled();

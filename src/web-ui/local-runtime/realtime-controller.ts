@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import { assertOrdinaryWebSession } from "../../runtime/agents/session-association.js";
 
 import type { JsonObject, LocalRuntimeBackendOptions } from "./contracts.js";
 import { RuntimeEnvironmentRegistry } from "./environment-registry.js";
@@ -62,6 +63,7 @@ export class LocalRealtimeController {
       return;
     }
     if (message.type === "steer_request") {
+      await this.assertOrdinarySteeringTarget(message);
       const acknowledgement = await this.requests.handleSteer(message, (id) =>
         this.environments.get(id),
       );
@@ -88,6 +90,19 @@ export class LocalRealtimeController {
     }
   }
 
+  private async assertOrdinarySteeringTarget(message: JsonObject): Promise<void> {
+    const requestId = getString(message.requestId).trim();
+    const active = this.requests.healthDetails().find((entry) => entry.requestId === requestId);
+    const environmentId = getString(active?.environment) || getString(message.environment).trim();
+    if (!environmentId || !requestId) return;
+    const environment = this.environments.get(environmentId);
+    const runtimeDir = environment.services.config.paths.runtimeDir;
+    const sessionId = getString(active?.sessionId) || getString(message.sessionId);
+    if (sessionId) await assertOrdinaryWebSession(runtimeDir, sessionId);
+    const replay = await environment.services.sessions.getRequestReplayById(requestId, 0, sessionId || undefined);
+    if (replay) await assertOrdinaryWebSession(runtimeDir, replay.sessionId);
+  }
+
   private async resume(client: WebSocket, message: JsonObject): Promise<void> {
     const requestId = getString(message.requestId);
     if (!requestId) return;
@@ -103,11 +118,15 @@ export class LocalRealtimeController {
       afterSeq: getNumber(message.afterSeq),
     });
     const environment = this.environments.get(environmentId);
+    const runtimeDir = environment.services.config.paths.runtimeDir;
+    const sessionHint = getString(message.sessionId);
+    if (sessionHint) await assertOrdinaryWebSession(runtimeDir, sessionHint);
     let replay = await environment.services.sessions.getRequestReplayById(
       requestId,
       getNumber(message.afterSeq),
       getString(message.sessionId) || undefined,
     );
+    if (replay) await assertOrdinaryWebSession(runtimeDir, replay.sessionId);
     if (!replay?.finalState) {
       await this.approvals.resume(environmentId, requestId, replay?.sessionId);
       replay = await environment.services.sessions.getRequestReplayById(
@@ -116,6 +135,7 @@ export class LocalRealtimeController {
         replay?.sessionId || getString(message.sessionId) || undefined,
       );
     }
+    if (replay) await assertOrdinaryWebSession(runtimeDir, replay.sessionId);
     for (const event of replay?.events ?? []) {
       this.clients.send(client, { ...event, environment: environmentId });
     }

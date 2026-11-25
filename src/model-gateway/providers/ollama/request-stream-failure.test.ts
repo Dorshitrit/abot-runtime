@@ -18,23 +18,13 @@ import type { ModelGatewayRequest } from "../../types.js";
 const PARTIAL_ANSWER = "Partial answer before provider failure.";
 const PROVIDER_FAILURE = "Synthetic midstream provider failure";
 const FAILURE_EXPLANATION = "The model service stopped before the response was complete. Try again.";
-const PRESENTATION_FRAME = {
-  message: {
-    content: JSON.stringify({
-      decision: {
-        acknowledgement: "Synthetic QA response",
-        title: "Synthetic QA response",
-      },
-    }),
-  },
-  done: true,
-  done_reason: "stop",
-};
 const DECISION_FRAME = {
   message: {
     content: JSON.stringify({
       decision: {
         requiresProcedure: false,
+        acknowledgement: "Synthetic QA response",
+        title: "Synthetic QA response",
         responseRecommendation: "Synthetic QA response",
       },
     }),
@@ -103,7 +93,6 @@ test.each([
   async ({ failureFrames, cause }) => {
     const harness = await createFailureHarness();
     const responses = [
-      [PRESENTATION_FRAME],
       [DECISION_FRAME],
       failureFrames,
     ];
@@ -142,14 +131,12 @@ test.each([
 
     expect(gatewayRequests.map((request) => request.modelStep)).toEqual([
       "supervisor.decision",
-      "supervisor.decision",
       "supervisor.response",
     ]);
-    expect(gatewayRequests.slice(0, 2).map((request) => request.format)).toEqual([
-      expect.objectContaining({ name: "supervisor_presentation" }),
-      expect.objectContaining({ name: "supervisor_procedure_gate" }),
+    expect(gatewayRequests.slice(0, 1).map((request) => request.format)).toEqual([
+      expect.objectContaining({ name: "supervisor_fused_entry" }),
     ]);
-    expect(providerFetch).toHaveBeenCalledTimes(3);
+    expect(providerFetch).toHaveBeenCalledTimes(2);
     expect(responses).toEqual([]);
     expect(harness.events.filter(({ type }) => type === "completed")).toEqual(
       [],

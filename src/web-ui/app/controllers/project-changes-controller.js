@@ -58,17 +58,23 @@ export function createProjectChangesController({ client, getScope, render, Abort
     const key = scopeKey;
     const scope = { ...getScope() };
     summaryAbort = new AbortControllerImpl();
-    state = { ...state, loading: true, changes: null, error: "", selectedId: "", file: null, fileLoading: false, fileError: "" };
+    state = { ...state, loading: true, error: "", file: null, fileLoading: false, fileError: "", restoreFocus: false };
     render(state);
     try {
       const result = await client.loadProjectChanges({ environmentId: scope.environmentId, sessionId: scope.sessionId, signal: summaryAbort.signal });
       if (!ownsSummary(version, key)) return;
-      state = { ...state, loading: false, changes: result.changes };
+      const selectedId = result.changes.files.some((file) => file.id === state.selectedId) ? state.selectedId : "";
+      state = { ...state, loading: false, changes: result.changes, selectedId };
     } catch {
       if (!ownsSummary(version, key)) return;
-      state = { ...state, loading: false, error: "Project changes could not be loaded. Try refreshing." };
+      state = { ...state, loading: false, error: state.changes
+        ? "Project changes could not be loaded. Showing previous data. Try refreshing."
+        : "Project changes could not be loaded. Try refreshing." };
     }
-    if (ownsSummary(version, key)) render(state);
+    if (ownsSummary(version, key)) {
+      render(state);
+      if (ownsSummary(version, key) && state.open && state.selectedId && !state.error) await selectFile(state.selectedId);
+    }
   }
   function sync({ anchorId = "", isLatestWindow = true } = {}) {
     const scope = getScope();
@@ -78,7 +84,7 @@ export function createProjectChangesController({ client, getScope, render, Abort
       return;
     }
     if (scopeKey === key && state.anchorId === anchorId && matchesBoundRequest(scope)) return;
-    reset();
+    if (scopeKey !== key) reset();
     scopeKey = key;
     boundRequestId = scope.activeRequestId || "";
     state = { ...state, anchorId };
@@ -96,7 +102,7 @@ export function createProjectChangesController({ client, getScope, render, Abort
     render(state);
   }
   async function selectFile(fileId) {
-    if (!state.open || state.loading) return;
+    if (!state.open || state.loading || state.error || !ownsScope(scopeKey)) return;
     const revision = state.changes?.revision;
     if (!revision || !state.changes.files.some((file) => file.id === fileId)) return;
     cancelDetail();

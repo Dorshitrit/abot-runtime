@@ -1,4 +1,5 @@
 import { renderSetupPromptCacheField, setupPromptCacheInput } from "./prompt-cache-fields.js";
+import { renderSetupReasoningSummaryField, setupReasoningSummaryInput } from "./reasoning-summary-fields.js";
 import { renderChatgptLogo } from "../chatgpt-accounts/sign-in-button.js";
 import { renderConnectionInspection } from "./connection-inspection.js";
 import { renderSetupReasoningFields, validateSetupReasoningFields } from "./reasoning-fields.js";
@@ -75,7 +76,7 @@ export function renderConnectionFields(state) {
       readonly: !canEditSetupConnection(state),
       help: "Use a value supported by your model. Larger windows need more memory on local servers. You can change this later in Models.",
     });
-  const reasoning = renderSetupReasoningFields(state, !canEditSetupConnection(state)) + renderSetupPromptCacheField(state, !canEditSetupConnection(state));
+  const reasoning = renderSetupReasoningFields(state, !canEditSetupConnection(state)) + renderSetupPromptCacheField(state, !canEditSetupConnection(state)) + renderSetupReasoningSummaryField(state, !canEditSetupConnection(state));
   if (providerType === "openai-chatgpt") return '<div data-chatgpt-connection></div>' + model + reasoning;
   if (providerType === "llamacpp") {
     const address = state.existingProvider ? "" : renderConnectionField({
@@ -92,7 +93,9 @@ export function renderConnectionFields(state) {
       placeholder: credentialConfigured ? "Leave blank to keep your saved key" : "Optional server API key",
       help: "Saved privately on the ABot server. Leave empty for a server without authentication.",
     });
-    return model + address + key + renderConnectionInspection(state) + reasoning;
+    const managedSlot = !state.existingProvider && canEditSetupConnection(state)
+      ? '<div data-managed-llama-slot></div>' : "";
+    return managedSlot + model + address + key + renderConnectionInspection(state) + reasoning;
   }
   if (providerType === "ollama") {
     if (state.existingProvider) return model + renderConnectionInspection(state) + reasoning;
@@ -145,7 +148,7 @@ export function validateConnectionFields({
   providerType,
   baseUrl,
   existingProvider = false,
-  supportsThinking, reasoningBudgetMode, reasoningBudgetTokens, promptCache,
+  supportsThinking, reasoningBudgetMode, reasoningBudgetTokens, promptCache, reasoningSummary,
 }) {
   const model = validateRuntimeSetupModelId(modelId);
   if (!model.valid)
@@ -165,7 +168,7 @@ export function validateConnectionFields({
   }
   const reasoning = validateSetupReasoningFields({ providerType, supportsThinking, reasoningBudgetMode, reasoningBudgetTokens });
   if (!reasoning.valid) return reasoning;
-  return { valid: true, input: { ...input, ...reasoning.input, ...setupPromptCacheInput(providerType, promptCache) } };
+  return { valid: true, input: { ...input, ...reasoning.input, ...setupPromptCacheInput(providerType, promptCache), ...setupReasoningSummaryInput(providerType, reasoningSummary) } };
 }
 
 export function showConnectionFieldError(

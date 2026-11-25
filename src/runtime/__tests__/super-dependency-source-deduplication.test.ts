@@ -13,6 +13,7 @@ import {
   projectRequestToolResults,
 } from "../context/request-tool-results.js";
 import { projectSuperDependencyObservations } from "../context/super-dependency-observations.js";
+import { dependencyResultSourceRef } from "../context/semantic-compaction/super-dependency-result-source.js";
 import { prepareSuperSourceInventory } from "../context/super-compaction/source-inventory.js";
 import { CompactionSourceInvariantError } from "../context/compaction-source-invariant.js";
 import {
@@ -114,9 +115,11 @@ test.each(["before-resume", "after-resume"] as const)(
       ? [assignment, receiptMessage] : [receiptMessage, assignment];
     const scanned = projection.scanCompactionSources(messages, scopeId, sourceMap);
     const sources = scanned.map(entry => entry.source);
-    expect(sources.map(source => source.sourceRef))
+    const dependencyRef = dependencyResultSourceRef(fixture.selectedResult.resultRef);
+    expect(sources.map(source => source.sourceRef).filter(ref => ref !== dependencyRef))
       .toEqual([firstExecutionId, nestedExecutionId, ownExecutionId]);
-    expect(sources).toHaveLength(3);
+    expect(sources.filter(source => source.sourceRef === dependencyRef)).toHaveLength(1);
+    expect(sources).toHaveLength(4);
     for (const source of sources) {
       expect(source).toEqual(sourceMap.get(source.sourceRef));
       expect(source.sourceFingerprint).toBe(hash(source.content));
@@ -169,6 +172,7 @@ test.each(["before-resume", "after-resume"] as const)(
 
 test("SUPER rejects repeated source identity with changed bytes before registration", async () => {
   const fixture = await overlappingSourcesFixture();
+  const originalSources = new Map(fixture.sourceMap);
   const first: ChatMessage = {
     role: "tool", toolName: "fixture_read", toolCallId: "repeated-call", content: "ORIGINAL_BYTES",
   };
@@ -179,7 +183,7 @@ test("SUPER rejects repeated source identity with changed bytes before registrat
   expect(() => fixture.projection.scanCompactionSources(
     [first, changed], fixture.scopeId, fixture.sourceMap,
   )).toThrow("context_compaction_source_identity_conflict");
-  expect(fixture.sourceMap.size).toBe(3);
+  expect(fixture.sourceMap).toEqual(originalSources);
   expect(fixture.sourceMap.has("tool-result:repeated-call")).toBe(false);
 });
 

@@ -233,6 +233,16 @@ export function buildExecutionContinuationMessages(
   memoryRecalls: readonly MemoryRecallContinuation[] = [],
   childContinuations: readonly ExecutionChildContinuation[] = [],
 ): readonly ChatMessage[] {
+  return buildExecutionContinuation(head, call, memoryRecalls, childContinuations).messages;
+}
+
+/** Keep the final ledger group intact for consumers that place current evidence at the tail. */
+export function buildExecutionContinuation(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame,
+  memoryRecalls: readonly MemoryRecallContinuation[],
+  childContinuations: readonly ExecutionChildContinuation[],
+): Readonly<{ messages: readonly ChatMessage[]; latestGroup: readonly ChatMessage[] }> {
   assertExecutionRoot(head, call);
   const executions = head.state.capabilityExecutions.filter(
     (execution) => execution.callId === call.callId,
@@ -263,7 +273,10 @@ export function buildExecutionContinuationMessages(
   continuations.sort(
     (left, right) => left.invocationAttempt - right.invocationAttempt,
   );
-  return Object.freeze(continuations.flatMap(({ messages }) => messages));
+  return {
+    messages: Object.freeze(continuations.flatMap(({ messages }) => messages)),
+    latestGroup: continuations.at(-1)?.messages ?? [],
+  };
 }
 
 function buildAcceptedActionMessage(

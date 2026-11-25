@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type ExecRequestPolicy = "execution-agent-v1" | "supervisor-worker-v1";
@@ -33,13 +33,7 @@ function delegatedDecision(turn: number) {
       workerCapabilityScope: { catalogGroupIds: ["exec"] },
       acknowledgement: "I will verify the project.",
     };
-  if (turn === 3)
-    return {
-      action: "invoke_capability",
-      capabilityId: "execute_command",
-      intent: "Verify the project.",
-    };
-  expect(turn).toBe(4);
+  expect(turn).toBe(2);
   return { action: "respond" };
 }
 
@@ -48,11 +42,14 @@ export function createExecRequestScript(
   command: string,
 ) {
   let decisions = 0;
+  let workerDecisions = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-    if (input.modelStep === "worker.evidence")
-      return workerEvidenceReply(input, decisions < 3);
-    if (input.modelStep === "worker.result")
-      return { text: EXEC_REQUEST_FINAL, meta: {} };
+    if (input.modelStep === "worker.decision") {
+      expect(++workerDecisions).toBeLessThanOrEqual(2);
+      return workerFusedReply(input, workerDecisions === 1
+        ? { action: "invoke_capability", capabilityId: "execute_command", intent: "Verify the project." }
+        : { action: "return_result" });
+    }
     if (input.modelStep === "execution.response")
       return { text: EXEC_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "supervisor.response")
@@ -75,13 +72,6 @@ export function createExecRequestScript(
       return { text: JSON.stringify({ decision }), meta: {} };
     }
     decisions += 1;
-    const isDelegatedDirectorySelection =
-      policy === "supervisor-worker-v1" && decisions === 2;
-    if (isDelegatedDirectorySelection)
-      return {
-        text: JSON.stringify({ workingDirectory: "." }),
-        meta: {},
-      };
     const decision =
       policy === "execution-agent-v1"
         ? executionDecision(decisions)

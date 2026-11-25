@@ -21,6 +21,7 @@ export function createEmbeddingSetupStep({
   getEnvironmentId,
   getPreferredProvider = () => "",
   loadStatus,
+  loadManagedServer,
   discoverModels,
   saveEmbedding,
   onChange,
@@ -39,6 +40,9 @@ export function createEmbeddingSetupStep({
     loaded: false,
     error: "",
     message: "",
+    managedServer: null,
+    managedLlamaEmbedding: false,
+    managedAvailable: Boolean(loadManagedServer),
   };
   let loadedConnectionProvider = "";
   let preferConnectionProvider = false;
@@ -79,11 +83,14 @@ export function createEmbeddingSetupStep({
       loaded: false,
       error: "",
       message: "",
+      managedServer: null,
+      managedLlamaEmbedding: false,
     });
   }
 
   function invalidateConnection() {
-    const { provider, model, baseUrl, newProviderId, useApiKey } = state;
+    const { provider, model, baseUrl, newProviderId } = state;
+    const useApiKey = state.useApiKey && !state.managedLlamaEmbedding;
     const connectionProviderChanged =
       loadedConnectionProvider !== getPreferredProvider();
     reset();
@@ -155,9 +162,14 @@ export function createEmbeddingSetupStep({
     if (state.loaded || state.busy) return;
     const connectionProvider = getPreferredProvider();
     await run(
-      loadStatus,
+      async () => {
+        const payload = await loadStatus();
+        const managed = await loadManagedServer?.().catch(() => null);
+        return { ...payload, managedServer: managed?.server ?? null };
+      },
       (payload) => {
         state.status = payload.status || {};
+        state.managedServer = payload.managedServer;
         state.providers = state.status.providers || [];
         const hasRetainedProvider = Boolean(retainedEmbeddingProvider());
         state.provider = initialEmbeddingProvider(connectionProvider);
@@ -251,6 +263,10 @@ export function createEmbeddingSetupStep({
       input.useApiKey = state.useApiKey;
     }
     if (apiKey) input.apiKey = apiKey;
+    if (state.managedLlamaEmbedding) {
+      input.managedLlamaEmbedding = true;
+      input.managedLlamaRevision = state.managedServer?.revision;
+    }
     const providerSelection = {
       type: selectedProviderType(),
       providerId: input.providerId,
@@ -266,6 +282,7 @@ export function createEmbeddingSetupStep({
           state.status = payload.status || {};
           state.providers = state.status.providers || state.providers;
           state.provider = state.status.providerId || state.provider;
+          if (state.status.providerId) state.managedLlamaEmbedding = false;
           state.model = state.status.model || state.model;
           state.message = "Embedding check passed. Memory is configured.";
         },
@@ -281,6 +298,8 @@ export function createEmbeddingSetupStep({
 
   function input(field, value) {
     if (state.busy) return;
+    const leavesManagedSelection = state.managedLlamaEmbedding && ["embedding-model", "embedding-url", "embedding-key"].includes(field);
+    if (leavesManagedSelection) { state.managedLlamaEmbedding = false; state.useApiKey = false; }
     if (field === "embedding-model") state.model = value;
     if (field === "embedding-url") {
       if (state.baseUrl !== value) state.useApiKey = false;
@@ -294,12 +313,14 @@ export function createEmbeddingSetupStep({
       '.runtime-setup-action[type="submit"]',
     );
     if (action) action.textContent = primaryLabel();
+    if (leavesManagedSelection) onChange();
   }
 
   function change(field, value) {
     if (state.busy || field !== "embedding-provider") return;
     clearSecret();
     state.provider = value;
+    state.managedLlamaEmbedding = false;
     state.useApiKey = false;
     if (value.startsWith("new:"))
       state.baseUrl = defaultSetupProviderAddress(selectedProviderType());
@@ -324,6 +345,19 @@ export function createEmbeddingSetupStep({
       renderEmbeddingSetup(state, selectedProviderType(), selectedProvider()),
     primaryLabel,
     click: (action) => {
+      if (action === "embedding-refresh-managed" && loadManagedServer && !state.busy)
+        void run(loadManagedServer, payload => {
+          state.managedServer = payload.server;
+          if (state.managedLlamaEmbedding) state.useApiKey = false;
+          state.managedLlamaEmbedding = false;
+        }, "Managed server status is unavailable.");
+      if (action === "embedding-managed" && !state.busy && state.managedServer?.phase === "ready" && state.managedServer.settings?.embedding) {
+        const model = state.managedServer.settings.embedding;
+        clearSecret();
+        Object.assign(state, { provider: "new:llamacpp", model: model.alias, baseUrl: "http://127.0.0.1:" + model.port,
+          newProviderId: suggestEmbeddingConnectionId(state.providers), useApiKey: true, managedLlamaEmbedding: true, error: "" });
+        onChange();
+      }
       if (action === "embedding-discover") void discover();
       if (action === "embedding-reload") void load();
     },

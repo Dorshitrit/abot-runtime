@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -16,35 +16,34 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
 
 test.each(["found", "empty", "unavailable", "oversized"] as const)(
-  "initial recall re-gates %s before responding with the full receipt", async outcome => {
-    let gates = 0;
+  "initial recall routes %s before responding with the full receipt", async outcome => {
+    let routes = 0;
     const record = outcome === "oversized"
       ? { ...MEMORY_RECORD, content: "WHOLE_LARGE_FACT ".repeat(100) } : MEMORY_RECORD;
     const receiptOutcome = outcome === "oversized" ? "found" : outcome;
     const f = createMemoryRecallHarness({
       policy: "supervisor-worker-v1",
-      classifyProcedure(input) {
-        if (++gates === 1) return { requiresProcedure: true };
+      classifyProcedure: () => ({ requiresProcedure: true }),
+      delegate(input) {
+        if (++routes === 1) {
+          expect(JSON.stringify(input.format)).toContain('"recall_memory"');
+          expect(recallCapsules(input)).toEqual([]);
+          return { action: "recall_memory", query: RECALL_QUERY };
+        }
         const messages = modelMessages(input);
-        expect(messages.map(({ role }) => role)).toEqual(["system", "user", "assistant", "tool"]);
-        const result = messages.at(-1)!;
+        expect(messages.filter(({ role }) => role !== "system").map(({ role }) => role)).toEqual(["user", "assistant", "tool"]);
+        const result = messages.find(({ role }) => role === "tool")!;
         expect(result).toMatchObject({ role: "tool", toolCallId: "recall-1", toolName: "recall_memory" });
         expect(result.content).toContain(receiptOutcome);
-        expect(result.content.length).toBeLessThanOrEqual(1_000);
-        if (outcome === "found") expect(result.content).toContain(record.content);
-        if (outcome === "oversized") expect(result.content).not.toContain("WHOLE_LARGE_FACT");
-        expect(recallCapsules(input)).toEqual([]);
-        return { requiresProcedure: false, responseRecommendation: "Answer using the lookup outcome." };
+        if (outcome === "found" || outcome === "oversized") expect(result.content).toContain(record.content);
+        expect(recallCapsules(input)).toHaveLength(1);
+        expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
+        return { action: "respond", responseRecommendation: "Answer using the lookup outcome." };
       },
       async retrieve({ query }) {
         if (query === REQUEST_PROMPT) return { available: true, records: [] };
         if (outcome === "unavailable") return { available: false, records: [], reason: "embedding_unavailable" };
         return { available: true, records: outcome === "found" || outcome === "oversized" ? [record] : [] };
-      },
-      delegate(input) {
-        expect(JSON.stringify(input.format)).toContain('"recall_memory"');
-        expect(recallCapsules(input)).toEqual([]);
-        return { action: "recall_memory", query: RECALL_QUERY };
       },
       decide: () => { throw new Error("Unexpected legacy decision or child"); },
     });
@@ -53,7 +52,7 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
     expect(f.getAdapters).not.toHaveBeenCalled();
     const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
     expect(calls.flatMap(input => supervisorFormatName(input) ?? [])).toEqual([
-      "supervisor_presentation", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_procedure_gate",
+      "supervisor_fused_entry_with_memory_candidates", "supervisor_fused_routing", "supervisor_fused_routing",
     ]);
     for (const input of calls.filter(input => input.modelStep === "supervisor.response")) {
       const action = modelMessages(input).find(message => message.toolCalls?.[0]?.name === "recall_memory");
@@ -80,7 +79,8 @@ test.each([true, false])("a direct answer with memory enabled=%s never requests 
   expect(f.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual(enabled ? [REQUEST_PROMPT] : []);
   expect(f.getAdapters).not.toHaveBeenCalled();
   const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
-  expect(calls.filter(input => supervisorFormatName(input) === "supervisor_procedure_gate")).toHaveLength(1);
+  expect(calls.filter(input => supervisorFormatName(input) === (enabled
+    ? "supervisor_fused_entry_with_memory_candidates" : "supervisor_fused_entry"))).toHaveLength(1);
   expect(calls.flatMap(recallCapsules)).toEqual([]);
 });
 
@@ -88,12 +88,12 @@ test("the builtin overview still reaches direct response without adding a final-
   const f = createMemoryRecallHarness({
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ({ action: "read_skills", skillIds: [WHAT_CAN_I_DO_SKILL.skillId] }),
-    classifyProcedure(input) {
+    delegate(input) {
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
         .toEqual([expect.objectContaining({
           authority: "passive_reference", purpose: "skill_guidance", document: WHAT_CAN_I_DO_SKILL,
         })]);
-      return { requiresProcedure: false, responseRecommendation: "Explain supported uses." };
+      return { action: "respond", responseRecommendation: "Explain supported uses." };
     },
     decide: () => { throw new Error("Unexpected legacy routing or child"); },
   });
@@ -146,12 +146,12 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
       },
       decide(input) {
         if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-        if (input.modelStep === "worker.evidence") {
+        if (input.modelStep === "worker.decision") {
           expect(JSON.stringify(input.messages)).toContain(objective);
-          return workerEvidenceDecision(input, false);
+          return workerFusedDecision(input, { action: "return_result" });
         }
         if (input.modelStep === "worker.result") return "The assigned observation is unavailable.";
-        expect(supervisorFormatName(input)).toBe("supervisor_decision");
+        expect(supervisorFormatName(input)).toBe("supervisor_decision_with_memory_candidates");
         expect(recallCapsules(input)).toHaveLength(1);
         // Returning from a child keeps the established global recall policy.
         expect(JSON.stringify(input.format)).toContain('"recall_memory"');
@@ -160,8 +160,8 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
     });
     await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
     const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
-    expect(calls.filter(input => supervisorFormatName(input) === "supervisor_procedure_gate")).toHaveLength(2);
-    expect(calls.filter(input => input.modelStep === "worker.evidence")).toHaveLength(1);
+    expect(calls.filter(input => supervisorFormatName(input) === "supervisor_fused_entry_with_memory_candidates")).toHaveLength(1);
+    expect(calls.filter(input => input.modelStep === "worker.decision")).toHaveLength(1);
     expect(delegations).toBe(2);
     expect(f.memory.retrieve).toHaveBeenCalledTimes(2);
   },
@@ -190,9 +190,9 @@ test("a true re-gate can select Planner and preserve its completed child result"
         };
         return { action: "return_result", result };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return result;
-      expect(supervisorFormatName(input)).toBe("supervisor_decision");
+      expect(supervisorFormatName(input)).toBe("supervisor_decision_with_memory_candidates");
       expect(jsonMessages(input)).toContainEqual(expect.objectContaining({
         kind: "runtime_child_result", roleId: "planner", outcome: "completed", summary: result,
       }));
@@ -202,7 +202,7 @@ test("a true re-gate can select Planner and preserve its completed child result"
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(delegations).toBe(2);
   expect(plannerCalls).toBe(2);
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate")).toHaveLength(2);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_fused_entry_with_memory_candidates")).toHaveLength(1);
   expect(f.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT, RECALL_QUERY]);
 });
 
@@ -216,7 +216,7 @@ test("disabled memory does not expose recall at the initial delegation boundary"
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       if (input.modelStep === "worker.result") return "No external observation was available.";
       return { action: "respond" };
     },
@@ -232,11 +232,14 @@ test.each(["delegation", "retrieval"] as const)(
     const steeringText = "Answer the new question without using the earlier preference.";
     const f = createMemoryRecallHarness({
       policy: "supervisor-worker-v1",
-      classifyProcedure: () => ++gates === 1
-        ? { requiresProcedure: true }
-        : { requiresProcedure: false, responseRecommendation: "Answer the new question." },
-      delegate() {
+      classifyProcedure: () => { gates += 1; return { requiresProcedure: true }; },
+      delegate(input) {
         delegated += 1;
+        if (delegated === 2) {
+          expect(JSON.stringify(input.messages)).toContain(steeringText);
+          expect(recallCapsules(input)).toEqual([]);
+          return { action: "respond", responseRecommendation: "Answer the new question." };
+        }
         if (stage === "delegation")
           expect(f.requestSteering.append({ steerId: "supersede-recall", text: steeringText }).ok).toBe(true);
         return { action: "recall_memory", query: RECALL_QUERY };
@@ -250,8 +253,8 @@ test.each(["delegation", "retrieval"] as const)(
       decide: () => { throw new Error("Unexpected legacy decision or child"); },
     });
     await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
-    expect(gates).toBe(2);
-    expect(delegated).toBe(1);
+    expect(gates).toBe(1);
+    expect(delegated).toBe(2);
     expect(f.memory.retrieve.mock.calls.map(([input]) => input.query))
       .toEqual(stage === "delegation" ? [REQUEST_PROMPT] : [REQUEST_PROMPT, RECALL_QUERY]);
     expect(f.getAdapters).not.toHaveBeenCalled();

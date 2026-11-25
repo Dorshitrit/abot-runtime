@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   defaultNotificationPreferences,
   NotificationInputError,
+  type AgentReplyNotification,
   type NotificationDelivery,
   type NotificationListQuery,
   type NotificationPage,
@@ -12,9 +13,13 @@ import {
   type NotificationReadResult,
   type WebNotification,
 } from "./contracts.js";
-import { applyNotificationRetention } from "./retention.js";
+import { applyNotificationRetention, retireNotifications } from "./retention.js";
 import { applyExplicitNotificationReadOverride, initializeNotificationReadSynchronization } from "./storage-metadata.js";
 import { parseNotificationReadChange } from "./request-input.js";
+import type { NotificationIssueOccurrence } from "./issue-contracts.js";
+import { isNotificationIssueOccurrence } from "./issue-schema.js";
+import { ingestNotificationIssues, issueReadIsObserved, notificationCounts, notificationIssueCoverage, notificationReadSummary } from "./issue-groups.js";
+import { issueOccurrenceHash, pruneIssueReceipts } from "./issue-receipts.js";
 import {
   compareNotificationsNewestFirst,
   decodeNotificationCursor,
@@ -32,7 +37,7 @@ import {
   type NotificationStoreState,
 } from "./storage-schema.js";
 
-export type NotificationStoreOptions = { now?: () => number; onPruned?: () => void };
+export type NotificationStoreOptions = { now?: () => number; onPruned?: () => void; onSaved?: (bytes: number) => void };
 
 const pendingTransactions = new Map<string, Promise<unknown>>();
 
@@ -56,10 +61,6 @@ function isMissingNotificationFile(error: unknown): boolean {
   return error.code === "ENOENT";
 }
 
-function countUnreadNotifications(state: NotificationStoreState): number {
-  return state.items.filter((item) => item.readAt === null).length;
-}
-
 function hasPendingNotificationDelivery(item: WebNotification): boolean {
   return item.delivery.status === "pending";
 }
@@ -69,6 +70,7 @@ function needsNotificationReadChange(
   change: NotificationReadChange,
 ): boolean {
   if ("ids" in change && !change.ids.includes(item.id)) return false;
+  if (!issueReadIsObserved(item, change)) return false;
   return (item.readAt !== null) !== change.read;
 }
 
@@ -112,12 +114,14 @@ export class WebNotificationStore {
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporary, JSON.stringify(state), {
+      const serialized = JSON.stringify(state);
+      await writeFile(temporary, serialized, {
         encoding: "utf8",
         mode: 0o600,
         flag: "wx",
       });
       await rename(temporary, this.path);
+      this.options.onSaved?.(Buffer.byteLength(serialized));
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => undefined);
       throw error;
@@ -144,6 +148,7 @@ export class WebNotificationStore {
         const now = this.now();
         if (!isNotificationTimestamp(now)) throw new NotificationInputError("Invalid notification time.");
         applyNotificationRetention(state, now);
+        if (state.issues) pruneIssueReceipts(state.issues, now);
         initializeNotificationReadSynchronization(state);
         const result = operation(state, now);
         if (!existing || before !== JSON.stringify(state)) await this.save(state);
@@ -207,13 +212,26 @@ export class WebNotificationStore {
       const hasOlderItems = ordered.length > limit;
       return {
         items,
-        unreadCount: countUnreadNotifications(state),
+        ...notificationCounts(state),
+        issueCoverage: notificationIssueCoverage(state),
         nextCursor: hasOlderItems
           ? encodeNotificationCursor(items[items.length - 1])
           : null,
         preferences: state.preferences,
       };
     });
+  }
+
+  ingestIssues(occurrences: readonly NotificationIssueOccurrence[]): Promise<{ accepted: number; rejected: number; duplicate: number }> {
+    if (occurrences.length > 10_000 || !occurrences.every((item) => isNotificationIssueOccurrence(item, this.environmentId)))
+      throw new NotificationInputError("Invalid notification issue occurrences.");
+    const input = structuredClone(occurrences);
+    return this.transaction((state, now) => input.length ? ingestNotificationIssues(state, input, now) : { accepted: 0, rejected: 0, duplicate: 0 });
+  }
+
+  hasIssueOccurrence(namespace: string, occurrenceId: string): Promise<boolean> {
+    const hash = issueOccurrenceHash(namespace, occurrenceId);
+    return this.transaction((state) => state.issues?.receipts.some((receipt) => receipt.hash === hash) ?? false);
   }
 
   updateDelivery(id: string, delivery: NotificationDelivery): Promise<boolean> {
@@ -225,6 +243,7 @@ export class WebNotificationStore {
     return this.transaction((state) => {
       const item = state.items.find((candidate) => candidate.id === id);
       if (!item) return false;
+      if (item.channel === "in-app") return false;
       item.delivery = receipt;
       return true;
     });
@@ -238,14 +257,18 @@ export class WebNotificationStore {
     if (!isNotificationTimestamp(now))
       throw new NotificationInputError("Invalid notification read time.");
     return this.transaction((state) => {
-      applyExplicitNotificationReadOverride(state, selection);
+      if ("all" in selection && selection.issueReadBoundary !== undefined && selection.issueReadBoundary > (state.issues?.sequence ?? 0))
+        throw new NotificationInputError("The notification issue read boundary is newer than this history.");
+      const observedIds = state.items.filter((item) => issueReadIsObserved(item, selection) &&
+        (!("ids" in selection) || selection.ids.includes(item.id))).map((item) => item.id);
+      applyExplicitNotificationReadOverride(state, { ids: observedIds, read: selection.read });
       let updated = 0;
       for (const item of state.items) {
         if (!needsNotificationReadChange(item, selection)) continue;
         item.readAt = selection.read ? now : null;
         updated += 1;
       }
-      return { updated, unreadCount: countUnreadNotifications(state) };
+      return notificationReadSummary(state, updated);
     });
   }
 
@@ -266,13 +289,28 @@ export class WebNotificationStore {
         updated += 1;
       }
       applyNotificationRetention(state, transactionTime);
-      return { updated, unreadCount: countUnreadNotifications(state) };
+      return notificationReadSummary(state, updated);
     });
   }
 
   get(id: string): Promise<WebNotification | null> {
     if (!isNotificationIdentifier(id)) throw new NotificationInputError("Invalid notification identity.");
     return this.transaction((state) => state.items.find((item) => item.id === id) ?? null);
+  }
+
+  forgetAgentReplies(agentId: string): Promise<void> {
+    return this.transaction((state, now) => {
+      const removed = state.items.filter(item => item.agentSource?.agentId === agentId);
+      if (!removed.length) return;
+      const ids = new Set(removed.map(item => item.id));
+      if (state.sourceReads) state.sourceReads = state.sourceReads.filter(receipt => !ids.has(receipt.id));
+      retireNotifications(state, removed, now);
+    });
+  }
+
+  getUnreadAgentReplies(): Promise<AgentReplyNotification[]> {
+    return this.transaction((state) => state.items.filter((item): item is AgentReplyNotification =>
+      Boolean(item.agentSource) && item.readAt === null));
   }
 
   getUnreadReplies(sessionId?: string): Promise<WebNotification[]> {
@@ -296,7 +334,7 @@ export class WebNotificationStore {
         item.readAt = now;
         updated += 1;
       }
-      return { updated, unreadCount: countUnreadNotifications(state) };
+      return notificationReadSummary(state, updated);
     });
   }
 

@@ -8,6 +8,7 @@ export function createRequestModelPolicy(params: {
   const platformDefaults = params.platformPolicy?.defaults;
 
   return {
+    outputSafetyReserveTokens: params.runnerConfig.context.safetyReserveTokens,
     ...(params.platformPolicy?.parameterProfiles
       ? { parameterProfiles: params.platformPolicy.parameterProfiles }
       : {}),

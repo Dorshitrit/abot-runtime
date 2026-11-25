@@ -13,9 +13,10 @@ export function supervisorFormatName(input: ModelInput): string | undefined {
 export function defaultSupervisorPresentation(input: ModelInput, acknowledgement = "I understand the requested outcome and am starting now.") {
   if (typeof input.format !== "object" || input.format === null) throw new Error("presentation_format_missing");
   const schema = input.format.schema as {
-    properties?: { decision?: { required?: readonly string[] } };
+    properties?: { decision?: { required?: readonly string[]; anyOf?: readonly { required?: readonly string[] }[] } };
   };
-  const required = schema.properties?.decision?.required ?? [];
+  const decision = schema.properties?.decision;
+  const required = decision?.required ?? decision?.anyOf?.[0]?.required ?? [];
   return {
     ...(required.includes("acknowledgement") ? { acknowledgement } : {}),
     ...(required.includes("title") ? { title: "Handle the request" } : {}),
@@ -30,15 +31,59 @@ export function withSupervisorPreparation(
     selectSkills?: SupervisorPhaseDecision;
     classifyProcedure?: SupervisorPhaseDecision;
     delegate?: SupervisorPhaseDecision;
+    workingDirectories?: Readonly<{ planner: string; worker: string }>;
   }> = {},
 ): ModelGatewayClient["invoke"] {
-  // Legacy scripts express one semantic proposal. Translate its protocol into
-  // the two calls without inventing the model's input or invoking the script
-  // twice. Context-sensitive tests should supply explicit phase callbacks;
-  // procedure orchestration tests use a direct gateway without this adapter.
+  // Translate legacy semantic proposals while exposing the actual fused input.
+  // Context-sensitive orchestration tests use a direct gateway.
   let legacyDelegation: ModelResponse | undefined;
   return async (input) => {
     const phase = supervisorFormatName(input);
+    if (phase === "supervisor_fused_entry" || phase === "supervisor_fused_entry_with_memory_candidates") {
+      legacyDelegation = undefined;
+      const presentation = await (options.present ?? defaultSupervisorPresentation)(input);
+      if (options.selectSkills && JSON.stringify(input.format).includes('"read_skills"')) {
+        const selection = await options.selectSkills(input);
+        if (typeof selection === "string") return phaseResponse(selection);
+        if (typeof selection === "object" && selection !== null && "action" in selection && selection.action === "read_skills")
+          return phaseResponse({ ...selection, ...presentation as object });
+      }
+      if (options.classifyProcedure)
+        return phaseResponse({ ...await options.classifyProcedure(input) as object, ...presentation as object });
+      const response = await invoke(input);
+      const decision = readDecision(response);
+      if (typeof decision?.requiresProcedure === "boolean")
+        return phaseResponse({ ...presentation as object, ...decision }, response);
+      if (decision?.action === "respond") return phaseResponse({
+        requiresProcedure: false,
+        ...(Object.hasOwn(decision, "responseRecommendation") ? { responseRecommendation: decision.responseRecommendation } : {}),
+        ...(phase === "supervisor_fused_entry_with_memory_candidates" && Object.hasOwn(decision, "memoryCandidates")
+          ? { memoryCandidates: decision.memoryCandidates } : {}),
+        ...presentation as object,
+      }, response);
+      if (isLegacyProcedureProposal(decision)) {
+        legacyDelegation = response;
+        return phaseResponse({ requiresProcedure: true, ...presentation as object }, response);
+      }
+      return response;
+    }
+    if (phase === "supervisor_fused_routing") {
+      const response = options.delegate ? phaseResponse(await options.delegate(input)) : legacyDelegation ?? await invoke(input);
+      legacyDelegation = undefined;
+      const decision = readDecision(response);
+      if (!decision) return response;
+      const { acknowledgement, title, ...routing } = decision;
+      const presentation = defaultSupervisorPresentation(input);
+      const assignment: Record<string, unknown> = { ...routing, ...presentation,
+        ...(presentation.acknowledgement && acknowledgement ? { acknowledgement } : {}),
+        ...(presentation.title && title ? { title } : {}),
+      };
+      if (assignment.action !== "invoke_role" || (assignment.roleId !== "worker" && assignment.roleId !== "planner"))
+        return phaseResponse(assignment, response);
+      return phaseResponse({ ...assignment,
+        workingDirectory: assignment.workingDirectory ?? options.workingDirectories?.[assignment.roleId] ?? ".",
+      }, response);
+    }
     if (phase === "supervisor_presentation") {
       const decision = await (options.present ?? defaultSupervisorPresentation)(input);
       return { text: typeof decision === "string" ? decision : JSON.stringify({ decision }), meta: {} };
@@ -71,11 +116,19 @@ export function withSupervisorPreparation(
       legacyDelegation = undefined;
       const decision = readDecision(response);
       if (!decision) return response;
-      const { acknowledgement: _ack, title: _title, workerCapabilityScope: _scope, ...assignment } = decision;
+      const { acknowledgement: _ack, title: _title, ...assignment } = decision;
       return phaseResponse(assignment, response);
     }
+    if ((phase === "supervisor_resume_skill_routing" || phase === "supervisor_decision_with_memory_candidates") && options.selectSkills
+      && JSON.stringify(input.format).includes('"read_skills"')) {
+      const selection = await options.selectSkills(input);
+      if (typeof selection === "string") return phaseResponse(selection);
+      if (typeof selection === "object" && selection !== null && "action" in selection
+        && selection.action === "read_skills") return phaseResponse(selection);
+    }
     const response = await invoke(input);
-    if (phase !== "supervisor_decision") return response;
+    if (phase !== "supervisor_decision" && phase !== "supervisor_decision_with_memory_candidates"
+      && phase !== "supervisor_resume_skill_routing") return response;
     let decoded: { decision?: Record<string, unknown> };
     try { decoded = JSON.parse(response.text); }
     catch { return response; }

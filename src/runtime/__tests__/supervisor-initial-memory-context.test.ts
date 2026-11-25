@@ -42,7 +42,7 @@ test("session compaction retains initial memory in response authoring after the 
   const original = f.invoke.getMockImplementation()!;
   f.invoke.mockImplementation(withSupervisorPreparation(async input => {
     if (input.modelStep === "context.compact" || input.modelStep?.startsWith("super.compact.")) return original(input);
-    if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+    if (supervisorFormatName(input) === "supervisor_fused_entry") {
       expect(modelMessages(input)).not.toContainEqual(message);
       expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
       expect(JSON.stringify(input.messages)).not.toContain(HISTORY_FACT);
@@ -68,14 +68,14 @@ test("session compaction retains initial memory in response authoring after the 
   }));
   await expect(runRequestRunner(request)).resolves.toMatchObject({ output: "A memory-informed answer." });
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "supervisor.decision", "supervisor.decision", "super.compact.coverage", "super.compact.content",
+    "supervisor.decision", "super.compact.coverage", "super.compact.content",
     "supervisor.response", "supervisor.response",
   ]);
   for (const [input] of f.invoke.mock.calls) {
     if (input.modelStep === "context.compact" || input.modelStep?.startsWith("super.compact.")) continue;
-    if (["supervisor_presentation", "supervisor_procedure_gate"].includes(supervisorFormatName(input) ?? "")) {
+    if (["supervisor_presentation", "supervisor_fused_entry"].includes(supervisorFormatName(input) ?? "")) {
       expect(modelMessages(input)).not.toContainEqual(message);
-      if (supervisorFormatName(input) === "supervisor_procedure_gate") expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
+      if (supervisorFormatName(input) === "supervisor_fused_entry") expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
       expect(JSON.stringify(input.messages)).not.toContain(HISTORY_FACT);
       continue;
     }

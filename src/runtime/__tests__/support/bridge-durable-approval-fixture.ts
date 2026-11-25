@@ -26,6 +26,7 @@ export type BridgeApprovalFrame = Record<string, unknown>;
 export async function createBridgeApprovalFixture(options: {
   legacyHandler?: boolean;
   grouped?: boolean;
+  managedTransport?: boolean;
 } = {}) {
   const base = await createSchedulerRuntimeFixture("execution-agent-v1");
   await base.application.stop();
@@ -95,6 +96,8 @@ export async function createBridgeApprovalFixture(options: {
     });
   }
 
+  const bundle = { runtimeId: base.config.runtimeId, agentBridgeUrl: url, runtimeToken: "z".repeat(43) };
+
   async function startBridge() {
     client = createLocalRuntimeApplication(base.config);
     const handleUpgrade = WebSocketServer.prototype.handleUpgrade;
@@ -110,6 +113,12 @@ export async function createBridgeApprovalFixture(options: {
       await client.start();
     } finally {
       capture.mockRestore();
+    }
+    if (options.managedTransport) {
+      const status = await client.socketConnection.status();
+      if (status.state === "not_configured") await client.socketConnection.import({ bundle, expectedRevision: status.revision });
+      await vi.waitFor(async () => expect((await client!.socketConnection.status()).state).toBe("connected"));
+      return;
     }
     const requestHandler = options.legacyHandler
       ? { handle: client.requests.handle, steer: client.requests.steer, cancel: client.requests.cancel }
@@ -218,5 +227,7 @@ export async function createBridgeApprovalFixture(options: {
     base, model, execute, frames, send, command, waitForFrame, restart, replaceRemoteSocket, dispose,
     sendLosingReply, disconnectLocalRpc,
     get owner() { return owner!; },
+    get management() { return client!.socketConnection; },
+    bundle,
   };
 }

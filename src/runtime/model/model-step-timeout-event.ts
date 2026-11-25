@@ -8,6 +8,7 @@ export const MODEL_STEP_TIMED_OUT_EVENT = "model.step.timed_out";
 export type ModelStepTimeoutIdentity = Readonly<{
   invocationId: string;
   profileId: string;
+  providerId?: string;
   provider: string;
   model: string;
 }>;
@@ -30,6 +31,8 @@ export function projectModelStepTimeoutEvent(params: Readonly<{
 
   const calibrationSlotId = resolveCalibrationSlot(params);
   return {
+    issueId: reason.issueId,
+    occurredAt: reason.occurredAt,
     requestId: params.requestId,
     ...params.identity,
     modelStep: params.modelStep,

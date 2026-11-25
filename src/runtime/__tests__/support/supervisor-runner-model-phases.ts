@@ -32,7 +32,7 @@ export function separateSupervisorRunnerModelPhases(
       };
     }
     return invoke(input);
-  });
+  }, { workingDirectories });
 }
 
 export const runnerConfig: RequestRunnerConfig = {

@@ -23,6 +23,26 @@ export function workerEvidenceReply(
   return { text: JSON.stringify({ decision: workerEvidenceDecision(input, requiresExecution, established, remaining) }), meta: {} };
 }
 
+/** Build one real fused call from the scenario's explicit selection and actual bound evidence. */
+export function workerFusedDecision(
+  input: EvidenceInput,
+  selection: Readonly<{ action: string; [key: string]: unknown }>,
+  established = "",
+  remaining = selection.action === "return_result" ? "" : "The assigned outcome still requires execution.",
+) {
+  if (input.modelStep !== "worker.decision" || typeof input.format !== "object" ||
+      input.format.name !== "worker_evidence_and_selection")
+    throw new Error("fixture_worker_fused_step_required");
+  return {
+    assessment: { requiresExecution: selection.action !== "return_result", established, remaining, evidenceRefs: evidenceReferences(input) },
+    selection,
+  };
+}
+
+export function workerFusedReply(...args: Parameters<typeof workerFusedDecision>) {
+  return { text: JSON.stringify({ decision: workerFusedDecision(...args) }), meta: {} };
+}
+
 function evidenceReferences(input: EvidenceInput): readonly string[] {
   for (const message of input.messages as readonly ChatMessage[]) {
     let value: unknown;

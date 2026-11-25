@@ -1,7 +1,9 @@
 import { createChatgptSetupBinding } from "./chatgpt-accounts/setup-binding.js";
+import { createManagedLlamaSetup } from "./runtime-setup/managed-llama-setup.js";
 import { runtimeSetupConnectionInput } from "./runtime-setup/connection-input.js";
 import { createConnectionInspection } from "./runtime-setup/connection-inspection.js";
 import { setupPromptCacheState } from "./runtime-setup/prompt-cache-fields.js";
+import { setupReasoningSummaryState, setupReasoningSummaryInput } from "./runtime-setup/reasoning-summary-fields.js";
 import { setupReasoningState } from "./runtime-setup/reasoning-fields.js";
 import { textOf } from "../lib/text-format.js";
 import { renderRuntimeSetup } from "./runtime-setup/rendering.js";
@@ -48,8 +50,10 @@ export function createRuntimeSetupGuide({
   loadSetup,
   inspectConnection,
   chatgptClient,
+  managedLlamaClient,
   saveSetup,
   applySetup,
+  onFirstModelReady,
   loadEmbeddingStatus,
   discoverEmbeddingModels,
   saveEmbedding,
@@ -68,6 +72,7 @@ export function createRuntimeSetupGuide({
   const state = {
     ...setupReasoningState(),
     ...setupPromptCacheState(),
+    ...setupReasoningSummaryState(),
     providers: [],
     provider: "",
     modelId: "",
@@ -91,6 +96,7 @@ export function createRuntimeSetupGuide({
   let bound = false;
   let onCheckAgain = () => {};
   let onApplied = () => {};
+  let newModelSaved = false;
   const viewState = createSetupViewState(container);
   const chatgpt = createChatgptSetupBinding({ state, client: chatgptClient, getEnvironmentId,
     getContainer: () => state.step === 1 ? container : null,
@@ -100,10 +106,23 @@ export function createRuntimeSetupGuide({
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
     loadEmbeddingStatus, discoverEmbeddingModels, saveEmbedding, loadPlugins,
+    loadManagedServer: managedLlamaClient?.getManagedLlamaServer ? () => managedLlamaClient.getManagedLlamaServer(getEnvironmentId()) : undefined,
     setPlugin, loadHostConnection, connectLocalHost, createHostPairing, requestHostStoreConnection, requestHostPermissions, downloadHostSetup, revokeHostConnection,
     onChange: paint, goToStep,
   });
   const { embedding, plugins, readyStep } = optionalSteps;
+
+  function managedAvailable() { return state.provider === "llamacpp" && canEditSetupConnection(state) && guideShouldBeVisible(); }
+  const { binding: managed, invalidate: invalidateManaged, reset: resetManaged,
+    blocked: managedBlocked, gate: managedGate, mount: mountManaged,
+    change: managedChange, click: managedClick } = createManagedLlamaSetup({
+    container, state, client: managedLlamaClient, getEnvironmentId,
+    isAvailable: managedAvailable,
+    isHostBusy: () => state.loading || state.saving || state.applying || state.checkingConnection,
+    isForward: control => control.type === "submit" && state.step === 1,
+    modelField: "modelId", idPrefix: "runtimeSetupManaged",
+    onReady: () => { clearSecret(); paint(); },
+  });
 
   function goToStep(step) {
     clearSetupContextWindowFeedback(state, container);
@@ -119,6 +138,8 @@ export function createRuntimeSetupGuide({
   }
 
   function reset() {
+    resetManaged();
+    newModelSaved = false;
     chatgpt.reset();
     connectionInspection.reset();
     clearSetupContextWindowFeedback(state, container);
@@ -129,6 +150,7 @@ export function createRuntimeSetupGuide({
     Object.assign(state, {
       ...setupReasoningState(),
     ...setupPromptCacheState(),
+    ...setupReasoningSummaryState(),
     providers: [],
       provider: "",
       modelId: "",
@@ -172,6 +194,7 @@ export function createRuntimeSetupGuide({
     const optional = optionalSteps.projection(state.step);
     container.innerHTML = renderRuntimeSetup(state, availability, optional);
     chatgpt.mount();
+    mountManaged();
     optionalSteps.afterPaint(state.step, { restoreFocus: viewState.canRestoreFocus() });
     viewState.restore({ focus, busy: controlsAreBusy() });
   }
@@ -217,8 +240,14 @@ export function createRuntimeSetupGuide({
   const connectionInput = () => runtimeSetupConnectionInput(state, container, fieldError);
 
   async function submitConnection() {
+    if (managed.isBusy() || managedBlocked()) return;
     const input = connectionInput();
     if (!input) return;
+    if (state.managedLlama && managedAvailable() && managed.state.mode === "managed") {
+      input.managedLlama = true;
+      if (state.managedLlamaRevision) input.managedLlamaRevision = state.managedLlamaRevision;
+      delete input.apiKey;
+    }
     clearSetupContextWindowFeedback(state, container);
     const connectionChanged = hasSetupConnectionChanges(state);
     const operationRevision = ++revision;
@@ -235,6 +264,7 @@ export function createRuntimeSetupGuide({
       ) {
         throw new Error("Setup activation unavailable");
       }
+      newModelSaved ||= !state.existingModel;
       state.activation = payload.activation;
       state.providers = payload.setup?.providers || state.providers;
       state.editableConnection = payload.setup?.editableConnection || null;
@@ -243,6 +273,7 @@ export function createRuntimeSetupGuide({
         model: state.modelId,
         contextWindowTokens: Number(state.contextWindowTokens),
         baseUrl: state.baseUrl,
+        ...setupReasoningSummaryInput(state.provider, state.reasoningSummary),
       };
       if (connectionChanged || payload.embeddingInvalidated)
         embedding.invalidateConnection();
@@ -283,6 +314,11 @@ export function createRuntimeSetupGuide({
       state.step = readyStep;
       if (state.activation.status === "ready") {
         activated = true;
+        if (newModelSaved && onFirstModelReady) {
+          newModelSaved = false;
+          const proceed = await onFirstModelReady(operationEnvironment);
+          if (proceed === false || !operationIsCurrent(operationRevision, operationEnvironment)) return;
+        }
         await onApplied();
       }
     } catch {
@@ -300,6 +336,7 @@ export function createRuntimeSetupGuide({
 
   function controlsAreBusy(includeConnectionInspection = true) {
     if (requiresConfigurationRecovery(availability)) return true;
+    if (managed.isBusy()) return true;
     if (
       (includeConnectionInspection && state.checkingConnection) ||
       state.loading ||
@@ -323,8 +360,9 @@ export function createRuntimeSetupGuide({
       return;
     }
     if (state.step === 1) {
+      if (managedBlocked()) return;
       const replacementKey = readConnectionSecret(container);
-      if (canContinueSavedConnection(state, replacementKey)) goToStep(2);
+      if (!state.managedLlama && canContinueSavedConnection(state, replacementKey)) goToStep(2);
       else void submitConnection();
       return;
     }
@@ -340,6 +378,7 @@ export function createRuntimeSetupGuide({
   }
 
   function click(event) {
+    if (managedClick(event)) return;
     const action = event.target.closest?.("[data-runtime-setup-action]")
       ?.dataset.runtimeSetupAction;
     if (requiresConfigurationRecovery(availability)) {
@@ -392,8 +431,10 @@ export function createRuntimeSetupGuide({
 
   function input(event) {
     if (controlsAreBusy(false)) return;
+    if (event.target.dataset?.managedLlamaField) { invalidateManaged(); managedGate(); return; }
     const field = event.target.closest?.("[data-runtime-setup-field]");
     if (!field) return;
+    if (state.step === 1) { invalidateManaged(); managedGate(); }
     if (["ollama-base-url", "llamacpp-base-url", "api-key"].includes(field.dataset.runtimeSetupField)) connectionInspection.reset();
     if (state.step === 2) {
       embedding.input(field.dataset.runtimeSetupField, textOf(field.value));
@@ -424,6 +465,7 @@ export function createRuntimeSetupGuide({
   }
 
   function change(event) {
+    if (managedChange(event)) return;
     if (controlsAreBusy()) return;
     const field = event.target.closest?.("[data-runtime-setup-field]");
     if (state.step === 2) {
@@ -436,6 +478,7 @@ export function createRuntimeSetupGuide({
     )
       return;
     clearSetupContextWindowFeedback(state, container);
+    if (state.provider !== field.value) resetManaged();
     selectSetupProvider(state, field.value);
     connectionInspection.reset();
     state.error = "";

@@ -1,3 +1,4 @@
+import { assertOrdinaryWebSession } from "../../runtime/agents/session-association.js";
 import { historyPageOptions, publicHistorySnapshot } from "./history-pagination.js";
 import type { ServerResponse } from "node:http";
 import type { RuntimeEnvironment, JsonObject } from "./contracts.js";
@@ -55,6 +56,12 @@ export class WebSessionRoutes {
       return true;
     }
     if (!sessionId) return false;
+    try { await assertOrdinaryWebSession(environment.services.config.paths.runtimeDir, sessionId); }
+    catch (error) {
+      const code = error instanceof Error ? error.message : "agent_session_index_unavailable";
+      sendJson(response, code === "agent_session_requires_agents_workspace" ? 409 : 503, { ok: false, error: code });
+      return true;
+    }
     const sessions = environment.services.sessions;
     if (method === "GET" && action === "messages") {
       let snapshot;

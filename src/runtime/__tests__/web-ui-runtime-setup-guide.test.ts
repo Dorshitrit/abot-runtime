@@ -80,6 +80,7 @@ describe("runtime setup wizard", () => {
         model: "gpt-test",
         apiKey: "synthetic-secret",
         contextWindowTokens: 32768,
+        reasoningSummary: null,
         deferActivation: true,
       },
     ]);
@@ -116,6 +117,7 @@ describe("runtime setup wizard", () => {
       provider: "openai",
       model: "gpt-test",
       contextWindowTokens: 32768,
+      reasoningSummary: null,
       deferActivation: true,
     });
   });
@@ -253,8 +255,10 @@ describe("runtime setup wizard", () => {
         },
       })
       .mockResolvedValueOnce({ activation: { status: "ready" } });
+    const offered = deferred<boolean>();
+    const onFirstModelReady = vi.fn(() => offered.promise);
     const harness = createGuideHarness({
-      applySetup,
+      applySetup, onFirstModelReady, getEnvironmentId: () => "local",
       saveSetup: async () => ({
         setup: setupSnapshot,
         activation: { status: "restart_required" },
@@ -274,7 +278,11 @@ describe("runtime setup wizard", () => {
       expect(harness.container.innerHTML).toContain("The agent is working."),
     );
     expect(onCheckAgain).not.toHaveBeenCalled();
+    expect(onFirstModelReady).not.toHaveBeenCalled();
     harness.click("apply");
+    await vi.waitFor(() => expect(onFirstModelReady).toHaveBeenCalledExactlyOnceWith("local"));
+    expect(onCheckAgain).not.toHaveBeenCalled();
+    offered.resolve(true);
     await vi.waitFor(() => expect(onCheckAgain).toHaveBeenCalledOnce());
     expect(applySetup).toHaveBeenCalledTimes(2);
   });
@@ -285,13 +293,19 @@ describe("runtime setup wizard", () => {
       status: "ready" as const,
       existingModel: { provider: "openai" as const, model: "saved-model" },
     };
+    const onFirstModelReady = vi.fn(async () => true);
     const harness = createGuideHarness({
-      loadSetup: async () => ({ setup: saved }),
+      onFirstModelReady, loadSetup: async () => ({ setup: saved }),
     });
     await harness.open();
     expect(harness.container.innerHTML).toContain("Add embedding");
     await harness.skipToReview();
     expect(harness.container.innerHTML).toContain("saved-model");
+    const finished = vi.fn();
+    harness.guide.bind({ onApplied: finished });
+    harness.click("apply");
+    await vi.waitFor(() => expect(finished).toHaveBeenCalledOnce());
+    expect(onFirstModelReady).not.toHaveBeenCalled();
     expect(harness.container.innerHTML).not.toContain('type="password"');
   });
 });

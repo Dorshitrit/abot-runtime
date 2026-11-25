@@ -54,7 +54,7 @@ export function resolveExactTargetOperation(
     };
   }
   const matches = registration.contract.operations.filter((operation) =>
-    matchesMaterializedCall(operation, call.params),
+    matchesMaterializedCall(operation, call, registration.adapter),
   );
   if (matches.length !== 1) {
     return {
@@ -156,10 +156,30 @@ export function validateCompleteCall(params: {
   }
 }
 
+/** Limits describe content. Trusted adapters verify and unwrap host envelopes;
+ * tools without an envelope keep ordinary raw-byte validation. */
+export function validateInvocationPayload(
+  operation: ToolNormalInvocationOperation,
+  adapter: ToolCallAdapter | undefined,
+  call: ToolCall,
+  raw: unknown = operation.payload ? call.params[operation.payload.param] : undefined,
+): string | undefined {
+  if (!operation.payload || !adapter?.payloadContent || typeof raw !== "string") {
+    return validateToolNormalInvocationPayload(operation, raw);
+  }
+  try {
+    return validateToolNormalInvocationPayload(operation, adapter.payloadContent(call));
+  } catch {
+    return "payload content could not be verified";
+  }
+}
+
 function matchesMaterializedCall(
   operation: ToolNormalInvocationOperation,
-  params: Record<string, unknown>,
+  call: ToolCall,
+  adapter: ToolCallAdapter | undefined,
 ): boolean {
+  const params = call.params;
   const publicNames = Object.keys(operation.input.properties);
   const fixedNames = Object.keys(operation.fixedParams ?? {});
   const payloadName = operation.payload?.param;
@@ -180,6 +200,5 @@ function matchesMaterializedCall(
   if (!validateToolNormalInvocationInput(operation, publicInput).ok) {
     return false;
   }
-  const payload = payloadName ? params[payloadName] : undefined;
-  return validateToolNormalInvocationPayload(operation, payload) === undefined;
+  return validateInvocationPayload(operation, adapter, call) === undefined;
 }

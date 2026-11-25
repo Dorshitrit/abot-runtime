@@ -8,6 +8,7 @@ import { createComputerAccessFeature } from "../../web-ui/app/computer-access-fe
 // @ts-expect-error Browser composition module.
 import { createAppEventBindings } from "../../web-ui/app/controllers/app-event-bindings.js";
 import { createWorkspaceShellHarness } from "./support/workspace-shell-harness.js";
+import { createHomeWidgetsHarness } from "./support/home-widgets-harness.js";
 
 const capture = vi.hoisted(() => ({ manager: null as any, guide: null as any }));
 vi.mock("../../web-ui/app/components/system-host/manager.js", () => ({
@@ -38,12 +39,15 @@ function fixture() {
   const workspace = createWorkspaceShellHarness();
   const shell = createWorkspaceShell(workspace);
   const environmentSelect = Object.assign(new EventTarget(), { value: "env-a" });
-  const card = { hidden: false, setAttribute: vi.fn(), focus: vi.fn(), remove: vi.fn() };
-  const documentRoot = { createElement: vi.fn(() => card) };
+  const home = createHomeWidgetsHarness();
+  const { documentRoot } = home;
+  const card = home.createElement("section");
+  card.setAttribute("data-home-computer", "");
+  home.root.append(card);
   const dom = {
     ...workspace.dom, environmentSelect, sessionTitle: { textContent: "" },
     runtimeSetupGuide: { hidden: true }, messagesList: { hidden: false },
-    homeDashboardRoot: { ownerDocument: documentRoot, parentElement: { insertBefore: vi.fn() } },
+    homeDashboardRoot: home.root,
   };
   const state = {
     config: null as Record<string, unknown> | null,

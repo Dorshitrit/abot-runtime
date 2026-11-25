@@ -47,6 +47,7 @@ import {
 } from "./record/rules.js";
 import {
   deleteSessionFile,
+  purgeDeletedSessionSidecars,
   ensureSessionsDir,
   loadAllSessionFiles,
   loadSessionFile,
@@ -257,6 +258,11 @@ export class SessionService {
         deletedRequests: deleted ? (session?.requests?.length ?? 0) : 0,
       };
     });
+  }
+
+  async purgeDeletedSessionSidecars(sessionId: string): Promise<void> {
+    assertValidSessionId(sessionId);
+    return this.runSessionMutation(sessionId, () => purgeDeletedSessionSidecars(this.sessionsDir, sessionId));
   }
 
   async resetSession(sessionId: string): Promise<SessionRecord | null> {

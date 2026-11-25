@@ -25,7 +25,9 @@ function isRetainedTombstone(item: NotificationTombstone, retainedIds: Set<strin
   return item.retiredAt > now - NOTIFICATION_RETENTION_MS;
 }
 
-function retainBoundedMetadata(state: NotificationStoreState, removed: WebNotification[], now: number): void {
+export function retireNotifications(state: NotificationStoreState, removed: WebNotification[], now: number): void {
+  const removedIds = new Set(removed.map(item => item.id));
+  state.items = state.items.filter(item => !removedIds.has(item.id));
   if (state.sourceReads !== undefined) {
     state.sourceReads = state.sourceReads
       .filter((item) => item.readAt > now - NOTIFICATION_RETENTION_MS)
@@ -54,7 +56,5 @@ export function applyNotificationRetention(state: NotificationStoreState, now: n
   const live = state.items.filter((item) => !isExpiredNotification(item, now));
   const overflow = Math.max(0, live.length - NOTIFICATION_HISTORY_LIMIT);
   const removed = [...expired, ...[...live].sort(compareEvictionOrder).slice(0, overflow)];
-  const removedIds = new Set(removed.map((item) => item.id));
-  state.items = live.filter((item) => !removedIds.has(item.id));
-  retainBoundedMetadata(state, removed, now);
+  retireNotifications(state, removed, now);
 }

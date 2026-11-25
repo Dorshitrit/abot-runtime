@@ -116,10 +116,11 @@ test.each(["supervisor-worker-v1"] as const)(
       .map(([input]) => input)
       .filter(
         ({ modelStep }) =>
-          modelStep === "execution.decision" || modelStep === "worker.evidence",
+          modelStep === "execution.decision" || modelStep === "worker.decision",
       )
       .at(-1)!;
     expect(JSON.stringify(lastDecision.messages)).toContain("y target two");
+    expect(model.invoke.mock.calls.some(([input]) => input.modelStep === "worker.result")).toBe(false);
     expect(await readFile(file, "utf8")).toBe(content);
     expect(
       (await sessions.getSessionById(sessionId))?.messages.at(-1)?.content,

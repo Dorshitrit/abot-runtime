@@ -556,6 +556,19 @@ function diffExecFilesystemSnapshots(before, after) {
   });
 }
 
+// plugins/exec/source/filesystem-summary.ts
+function summarizeExecFilesystemObservation(delta, logicalRoot) {
+  const scope = `under CWD (${logicalRoot})`;
+  if (!delta) {
+    return `Filesystem observation unavailable ${scope}; changes are unknown.`;
+  }
+  const coverage = delta.observation.complete ? "complete" : "incomplete; changes may be unobserved";
+  if (delta.observedStateChange) {
+    return `Filesystem changes observed: ${delta.changedEntryCount} ${scope}; observation ${coverage}.`;
+  }
+  return `No filesystem changes observed ${scope}; observation ${coverage}.`;
+}
+
 // plugins/exec/source/result-presentation.ts
 var EXEC_CONTEXT_TEXT_FIELDS = Object.freeze(["stdout", "stderr"]);
 function streamReceipt(snapshot, field) {
@@ -638,7 +651,6 @@ function projectExecFilesystemEvidence(delta, logicalRoot) {
   );
   const omittedEffectLine = omittedEffectCount > 0 ? `- ${omittedEffectCount} additional changed ${omittedEffectCount === 1 ? "entry" : "entries"} omitted by the ${delta.observation.actionLimit}-effect projection limit.` : void 0;
   const outputLines = Object.freeze([
-    `Filesystem changes observed: ${delta.changedEntryCount}${delta.observation.complete ? "" : " (bounded observation)"}`,
     "Filesystem effects observed:",
     ...effects,
     ...omittedEffectLine ? [omittedEffectLine] : []
@@ -668,6 +680,10 @@ async function finalizeExecResult(params) {
   const exitCode = snapshot.exitCode ?? -1;
   const cancellationIsSuccess = params.cancellationIsSuccess === true && snapshot.terminationReason === "cancelled";
   const filesystemDelta = await captureFilesystemDelta(execution);
+  const filesystemSummary = summarizeExecFilesystemObservation(
+    filesystemDelta,
+    execution.cwd.logicalPath
+  );
   const observedStateChange = filesystemDelta?.observedStateChange === true;
   const filesystemEvidence = observedStateChange && filesystemDelta ? projectExecFilesystemEvidence(
     filesystemDelta,
@@ -686,6 +702,7 @@ async function finalizeExecResult(params) {
       `Process ID: ${snapshot.processId}`,
       `Process status: ${snapshot.terminationReason ?? "completed"}`,
       `Exit code: ${exitCode}`,
+      filesystemSummary,
       ...filesystemEvidence ? filesystemEvidence.outputLines : [],
       "STDOUT:",
       streamReceipt(snapshot.stdout, "stdout"),
@@ -726,7 +743,7 @@ async function finalizeExecResult(params) {
   return deliverPluginTextResult({
     ok: false,
     ...common,
-    error,
+    error: `${error} ${filesystemSummary} Process exit status does not establish that earlier effects were undone.`,
     errorCode
   }, EXEC_CONTEXT_TEXT_FIELDS, params.resultBudget);
 }

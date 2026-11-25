@@ -1,4 +1,4 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
+import { workerFusedDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -104,13 +104,13 @@ test("SUPER reads multiple supplied Skills directly without LIST, waking Worker 
       }
       return { action: "read_skills", skillIds: documents.map(({ skillId }) => skillId) };
     },
-    classifyProcedure(input) {
+    delegate(input) {
       assertSkillSnapshot(input, {
         readId: "skill-read-1", skillIds: documents.map(({ skillId }) => skillId),
         documents: documents.map(({ content }) => content),
       });
       expect(skillActionIndexes(input)).toEqual([]);
-      return { requiresProcedure: false, responseRecommendation };
+      return { action: "respond", responseRecommendation };
     },
     onInput(input) {
       expect(input.modelStep).toBe("supervisor.response");
@@ -133,7 +133,7 @@ test("SUPER reads multiple supplied Skills directly without LIST, waking Worker 
   const formats = harness.gatewayInvoke.mock.calls.map(([input]) =>
     typeof input.format === "object" && input.format !== null ? input.format.name : input.modelStep);
   expect(formats).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
+    "supervisor_fused_entry", "supervisor_fused_routing", "supervisor.response",
   ]);
   for (const [input] of harness.gatewayInvoke.mock.calls) {
     expect(
@@ -160,9 +160,9 @@ test("a failed core read returns an explicit failure to SUPER without claiming g
       selections += 1;
       return { action: "read_skills", skillIds: ["missing"] };
     },
-    classifyProcedure(input) {
+    delegate(input) {
       assertNoSkillGuidance(input, [document]);
-      return { requiresProcedure: false, responseRecommendation };
+      return { action: "respond", responseRecommendation };
     },
     onInput(input) {
       expect(input.modelStep).toBe("supervisor.response");
@@ -232,7 +232,7 @@ test("hands the read snapshot to Planner and its Worker without objective copies
         };
         return { action: "return_result", result: "The requested distinction was explained." };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
+      if (input.modelStep === "worker.decision") return workerFusedDecision(input, { action: "return_result" });
       expect(input.modelStep).toBe("worker.result");
       return "The owner controls state and the adapter executes effects.";
     },
@@ -241,7 +241,7 @@ test("hands the read snapshot to Planner and its Worker without objective copies
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
   expect(selection).toBe(1);
   expect(harness.request.onAcknowledgement).toHaveBeenCalledOnce();
-  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
+  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
   for (const [input] of harness.gatewayInvoke.mock.calls) {
     const assignments = jsonMessages(input).filter(({ kind }) => String(kind).includes("assignment"));
     for (const assignment of assignments) expect(assignment.objective).toBe(objective);

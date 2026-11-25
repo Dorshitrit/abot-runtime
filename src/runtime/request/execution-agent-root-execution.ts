@@ -10,6 +10,7 @@ import {
 } from "../steps/execution-agent/index.js";
 import { encodeExecutionAgentAuditObjective } from "../steps/auditor-decision/index.js";
 import { bindExecutionAgentPlanUpdate } from "./execution-agent-plan-update.js";
+import { resumeFilePayloadAuthoring } from "./execution-file-payload/resume.js";
 import {
   projectRequestSteeringSnapshot,
   resolveRequestSteeringInbox,
@@ -32,7 +33,10 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
       const requestSteering = resolveRequestSteeringInbox(
         request.requestSteering,
       );
-      const outcome = await runExecutionAgentDecision(request, {
+      const continuation = await resumeFilePayloadAuthoring(request, {
+        head: options.head, call: options.callFrame, steeringSnapshot: requestSteering.snapshot(),
+      });
+      const outcome = continuation ?? await runExecutionAgentDecision(request, {
         head: options.head,
         call: options.callFrame,
         steeringSnapshot: requestSteering.snapshot(),

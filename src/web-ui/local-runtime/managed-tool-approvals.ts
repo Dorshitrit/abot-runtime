@@ -1,3 +1,4 @@
+import { assertOrdinaryWebSession, readAgentSessionIds } from "../../runtime/agents/session-association.js";
 import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
 import type { JsonObject, RuntimeEnvironment } from "./contracts.js";
 import type { LocalRequestExecution } from "./request-execution.js";
@@ -37,8 +38,10 @@ export class ManagedWebToolApprovals {
   async list(environmentId: string): Promise<PendingWebToolApproval[]> {
     const environment = this.environment(environmentId);
     const pending = await environment.approvals.list();
+    const agentSessions = await readAgentSessionIds(environment.services.config.paths.runtimeDir);
     const approvals: PendingWebToolApproval[] = [];
     for (const entry of pending) {
+      if (agentSessions.has(entry.sessionId)) continue;
       const events = await this.events(environmentId, environment, entry);
       const event = events.find((value) =>
         isApprovalRequiredEvent(value, entry.request.approvalId),
@@ -58,6 +61,7 @@ export class ManagedWebToolApprovals {
 
   async decide(decision: WebToolApprovalDecision): Promise<boolean> {
     const environment = this.environment(decision.environmentId);
+    await assertOrdinaryWebSession(environment.services.config.paths.runtimeDir, decision.sessionId);
     const pending = await environment.approvals.list(decision.sessionId);
     const entry = pending.find((value) =>
       matchesApprovalScope(value, decision),
@@ -93,6 +97,7 @@ export class ManagedWebToolApprovals {
     const entry = pending.find(
       (value) => value.request.requestId === requestId,
     );
+    if (entry) await assertOrdinaryWebSession(environment.services.config.paths.runtimeDir, entry.sessionId);
     if (entry && !entry.wait)
       await this.attach(environmentId, environment, entry);
   }

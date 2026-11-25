@@ -1,4 +1,5 @@
 import type { ChatgptAccountRequests } from "../../services/runtime-web-client/chatgpt-accounts.js";
+import type { ManagedLlamaClient, ManagedLlamaServerClient } from "../../services/runtime-web-client/managed-llama.js";
 import type { ModelSetupInput } from "../../../local-runtime/model-setup-input.js";
 
 export type AddedModelIdentity = Readonly<{
@@ -20,6 +21,7 @@ export interface ModelSetupWizardDependencies {
   root: HTMLElement;
   getEnvironmentId?: () => string;
   chatgptClient?: ChatgptAccountRequests;
+  managedLlamaClient?: ManagedLlamaClient & Partial<ManagedLlamaServerClient>;
   inspectConnection?: (input: Record<string, unknown>) => Promise<{ connection: { models: readonly string[] } }>;
   loadSetup: () => Promise<{
     providers: readonly ModelSetupProvider[];

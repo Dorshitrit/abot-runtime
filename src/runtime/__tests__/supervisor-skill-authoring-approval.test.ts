@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createLocalRuntimeOwner } from "../local-host/app-owner.js";
 import type { LocalPendingToolApproval } from "../local-host/request-approval-contracts.js";
@@ -85,23 +85,18 @@ test.each(scenarios)("SUPER restores $label without selection, reads or reauthor
           expect(JSON.stringify(result)).toContain("knowledge_skill_revision_conflict");
         return { text: answer, meta: {} };
       }
-      if (input.modelStep === "worker.evidence")
-        return workerEvidenceReply(input, false);
+      if (input.modelStep === "worker.decision")
+        return workerFusedReply(input, { action: "return_result" });
       if (input.modelStep === "worker.result")
         return { text: "The personal Skill request is ready for the root's authoring operation.", meta: {} };
       expect(input.modelStep).toBe("supervisor.decision");
       const phase = supervisorFormatName(input);
-      if (phase === "supervisor_presentation")
-        return { text: decision(defaultSupervisorPresentation(input)), meta: {} };
-      if (phase === "supervisor_procedure_gate")
-        return { text: decision({ requiresProcedure: true }), meta: {} };
-      if (phase === "supervisor_delegation") {
+      if (phase === "supervisor_fused_routing") {
         expect(JSON.stringify(input.format)).not.toContain('"author_skill"');
-        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change." }), meta: {} };
+        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change.", workingDirectory: ".", workerCapabilityScope: { catalogGroupIds: ["knowledge"] } }), meta: {} };
       }
-      if (phase === "supervisor_working_directory")
-        return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
-      if (phase === "supervisor_decision") {
+      if (phase === "supervisor_decision" || phase === "supervisor_resume_skill_routing") {
+        if (phase === "supervisor_resume_skill_routing") selectionCalls += 1;
         expect(++routeCalls).toBe(1);
         expect(capsules(input, "runtime_child_result")).toContainEqual(expect.objectContaining({ roleId: "worker" }));
         expect(capsules(input, "runtime_core_skill_read_v1")).toContainEqual(expect.objectContaining({
@@ -117,12 +112,12 @@ test.each(scenarios)("SUPER restores $label without selection, reads or reauthor
           ? { action: "update_skill", skillId: original.skillId }
           : { action: "create_skill", name, description }), meta: {} };
       }
-      expect(phase).toBe("supervisor_skill_selection");
+      expect(phase).toBe(selectionCalls === 0 ? "supervisor_fused_entry" : "supervisor_skill_selection");
       selectionCalls += 1;
       if (selectionCalls === 2) return { text: decision({ action: "continue" }), meta: {} };
       expect(selectionCalls).toBe(1);
       expect(JSON.stringify(input.format)).not.toContain('"create_skill"');
-      return { text: decision({ action: "read_skills", skillIds: [SKILL_CREATOR.skillId] }), meta: {} };
+      return { text: decision({ ...defaultSupervisorPresentation(input), action: "read_skills", skillIds: [SKILL_CREATOR.skillId] }), meta: {} };
     } catch (error) { assertion ??= error; throw error; }
   });
   const events: Record<string, unknown>[] = [];

@@ -1,7 +1,7 @@
 import { requiresConfigurationRecovery } from "./runtime-setup/configuration-recovery.js";
 
 const navigation = Object.freeze({
-  home: "homeWorkspaceButton", chat: "chatWorkspaceButton", learning: "learningWorkspaceButton",
+  agents: "agentsWorkspaceButton", home: "homeWorkspaceButton", chat: "chatWorkspaceButton", learning: "learningWorkspaceButton",
   resources: "resourcesWorkspaceButton",
   skills: "skillsWorkspaceButton", memory: "memoryWorkspaceButton", schedules: "schedulesWorkspaceButton", automations: "automationsWorkspaceButton", models: "modelsWorkspaceButton",
   plugins: "pluginsWorkspaceButton", notifications: "notificationsWorkspaceButton", config: "configWorkspaceButton",

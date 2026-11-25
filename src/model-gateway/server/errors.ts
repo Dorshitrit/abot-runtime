@@ -1,4 +1,5 @@
 import { isProviderContextOverflowError, PROVIDER_CONTEXT_OVERFLOW, PROVIDER_CONTEXT_OVERFLOW_HEADER } from "../protocol/provider-context-overflow.js";
+import { isProviderStreamDisconnectionError, PROVIDER_STREAM_DISCONNECTION, PROVIDER_STREAM_DISCONNECTION_HEADER } from "../protocol/provider-stream-disconnection.js";
 import { ModelInvocationResolutionError } from "../policy/invocation-policy.js";
 import { EmbeddingProviderRequestError } from "../embeddings/execution.js";
 import { EmbeddingProfileResolutionError } from "../embeddings/profile.js";
@@ -123,6 +124,9 @@ export function respondToGatewayHandlerError(params: {
   }
   if (isProviderContextOverflowError(params.error)) {
     params.response.setHeader(PROVIDER_CONTEXT_OVERFLOW_HEADER, PROVIDER_CONTEXT_OVERFLOW);
+  }
+  if (isProviderStreamDisconnectionError(params.error)) {
+    params.response.setHeader(PROVIDER_STREAM_DISCONNECTION_HEADER, PROVIDER_STREAM_DISCONNECTION);
   }
   console.error(params.error);
   sendText(params.response, 500, "server error");

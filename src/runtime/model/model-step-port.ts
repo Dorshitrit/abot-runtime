@@ -34,6 +34,8 @@ export type ModelStepInvocationInput<T> = Readonly<{
   messages: ChatMessage[];
   /** Invocation-local exact reference; never serialized with message or session state. */
   promptCacheBoundaryBeforeMessage?: ChatMessage;
+  /** Captured once per logical attempt, measured and sent last; never given to compaction or persisted. */
+  createInvocationTailMessages?: () => readonly ChatMessage[];
   timeoutReason: string;
   /** Optional tighter parent deadline for nested work, without replacing request cancellation. */
   abortSignal?: AbortSignal;

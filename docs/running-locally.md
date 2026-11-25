@@ -9,14 +9,66 @@ source-checkout setup usually has:
 - optionally the local web UI proxy
 
 When `@abot-ai/runtime` is installed from npm, the packaged CLI starts the model
-gateway and Web UI together:
+gateway and Web UI together. When Socket credentials are configured, the same
+command also connects the local runtime, including Agents, to ABot Socket:
 
 ```bash
 npx abot start
 ```
 
+To connect the ABot app, first obtain `runtime-connection.json` from your
+ABot Socket server's setup. After configuring your first model, the local Web
+UI offers this optional connection step; you can also open **ABot Socket** on
+Home later. Import the file, or choose **Enter manually** to enter the Socket
+URL, runtime ID and private token from setup. Both options show the same server
+and local/remote environment binding for review before **Connect**. Phone pairing is a separate step in the
+Socket installation. A Socket URL by itself is not a credential.
+
+You can also import and manage the same connection from the installed CLI:
+
+```bash
+npx abot socket connect --file /path/to/runtime-connection.json --environment prod
+npx abot socket status --environment prod
+npx abot socket pause --environment prod
+npx abot socket resume --environment prod
+npx abot socket forget --environment prod
+```
+
+`connect` and `forget` ask for confirmation; pass `--yes` only when intentionally
+confirming those actions without an interactive terminal. No credential belongs
+in command-line arguments. On Unix, the supplied file must be owned by the
+current user, private to that user, and not a symbolic link. Import copies the
+connection into the Runtime's private state, so the original file is not needed
+for later starts. CLI management while the Runtime is stopped saves intent
+without starting background work; the next `npx abot start` uses that intent.
+
+Pause disconnects remote access and stays paused across restarts. Resume connects
+again. Forget removes the locally saved credential and prevents fallback to an
+older environment/file configuration; it does not revoke access at the Socket
+server, delete sessions or unpair your phone. Finish active remote requests before
+pausing, forgetting or replacing their connection. The Web UI displays Connected
+only after the server acknowledges registration. Management is local to the
+Runtime computer, including when the phone is offline.
+
+If the remote runtime ID differs from the local environment, the confirmation
+shows both identities. The binding preserves local environment names and data.
+The Runtime owns one connection per environment, reconnects after interruption,
+and closes it on shutdown; other local clients share that owner. A separate
+bridge process or mobile build flag is unnecessary.
+
+Existing `agentBridgeUrl` plus `AGENT_BRIDGE_TOKEN` settings remain supported for
+the default environment. Alternatively, `AGENT_BRIDGE_CONNECTION_FILE` may name
+an explicitly supplied setup bundle (`runtimeId`, `agentBridgeUrl`, `runtimeToken`)
+or legacy personal pairing file (`runtimeId`, `endpoint`, `token`). Relative paths
+resolve from the working directory. This legacy startup path selects the matching
+configured environment; use the import flow above for an explicit different-ID
+binding. No machine-specific credential path is searched automatically. Invalid
+explicit startup configuration produces a sanitized warning and leaves the local
+Web UI available. Saved managed settings take precedence over legacy settings.
+
 The remaining commands in this guide are the equivalent source-checkout
-workflow for contributors.
+workflow for contributors; do not also start a separate bridge worker when
+using `npx abot start`.
 
 ## 1. Prepare Config
 
@@ -144,8 +196,11 @@ In another terminal:
 npm run dev
 ```
 
-This starts the runtime host from `index.ts` and connects to
-`agentBridgeUrl` from the active config.
+This starts the managed runtime from `index.ts` and requests the same
+owner-managed Socket connection as `npx abot start`, using the active config
+or explicitly supplied connection file. Use this entry for a bridge-only
+source workflow; it does not start another transport when that owner already
+has the same connection.
 
 If you do not have a bridge server running, the process can start but cannot
 serve app requests. In that case, use the library APIs directly or run your

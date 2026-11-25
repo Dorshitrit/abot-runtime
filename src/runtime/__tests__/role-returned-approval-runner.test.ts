@@ -64,10 +64,7 @@ describe("Planner return events across saved approval continuation", () => {
       expect(beforeResume).toEqual([
         "supervisor.decision",
         "supervisor.decision",
-        "supervisor.decision",
-        "supervisor.decision",
         "planner.decision",
-        "worker.evidence",
         "worker.decision",
         "capability.controls",
       ]);
@@ -114,8 +111,7 @@ describe("Planner return events across saved approval continuation", () => {
           .slice(beforeResume.length)
           .map(([input]) => input.modelStep),
       ).toEqual([
-        "worker.evidence",
-        "worker.result",
+        "worker.decision",
         "planner.decision",
         "supervisor.decision",
         "supervisor.response",

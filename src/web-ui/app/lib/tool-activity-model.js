@@ -1,6 +1,7 @@
 import { titleCaseEventValue } from "./event-presentation.js";
 import { projectToolActivityEvent } from "./tool-activity-event.js";
 import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
+import { FILE_PAYLOAD_TOOL_REQUEST_LABEL, isFilePayloadToolRequest } from "./file-payload-handoff.js";
 
 const TITLES = Object.freeze({
   dev_view: "Read",
@@ -83,6 +84,11 @@ function completionStatus(evidence) {
 }
 
 function applyPhase(action, evidence) {
+  if (isFilePayloadToolRequest(evidence)) {
+    action.status = "tool_requested";
+    action.statusLabel = FILE_PAYLOAD_TOOL_REQUEST_LABEL;
+    return;
+  }
   const [, status, label] = PHASES[evidence.name];
   action.status = status;
   action.statusLabel = label;
@@ -112,8 +118,12 @@ function applyEvidence(action, evidence) {
     evidence.name === "tool.completed"
       ? mergeFields(evidence.sent, action.sent)
       : mergeFields(action.sent, evidence.sent);
-  action.received = mergeFields(action.received, evidence.received);
-  if (evidence.error) {
+  const handoff = isFilePayloadToolRequest(evidence);
+  const received = handoff
+    ? evidence.received.filter((field) => field.label !== "Error" || field.value !== evidence.error)
+    : evidence.received;
+  action.received = mergeFields(action.received, received);
+  if (evidence.error && !handoff) {
     action.received = mergeFields(action.received, [
       { label: "Error", value: evidence.error },
     ]);

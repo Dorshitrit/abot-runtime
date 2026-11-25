@@ -40,7 +40,7 @@ describe.each(scenarios)(
       const continuationStep =
         scenario.policy === "execution-agent-v1"
           ? "execution.decision"
-          : "worker.evidence";
+          : "worker.decision";
       const resumedDecision = f.model.invoke.mock.calls
         .slice(callsBeforeDecision)
         .map(([input]) => input)

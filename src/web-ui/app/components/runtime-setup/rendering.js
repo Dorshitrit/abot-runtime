@@ -1,5 +1,6 @@
 import { escapeHtml } from "../../lib/text-format.js";
 import { formatContextWindowTokens } from "./context-window.js";
+import { renderSetupReasoningSummaryReview } from "./reasoning-summary-fields.js";
 import {
   canEditSetupConnection,
   setupConnectionSubmitLabel,
@@ -27,6 +28,7 @@ function readyMarkup(state, optional) {
     <div><dt>Provider</dt><dd>${escapeHtml(state.providers.find((provider) => provider.id === state.provider)?.label || state.provider)}</dd></div>
     <div><dt>Model</dt><dd>${escapeHtml(state.modelId)}</dd></div>
     <div><dt>Context window</dt><dd>${escapeHtml(formatContextWindowTokens(state.contextWindowTokens))}</dd></div>
+    ${renderSetupReasoningSummaryReview(state.provider, state.reasoningSummary)}
     <div><dt>Embedding</dt><dd>${escapeHtml(optional.memory?.enabled ? optional.memory.model || "Configured" : "Set up later")}</dd></div>
     <div><dt>Plugins</dt><dd>${selectedPlugins} selected</dd></div>
   </dl></div>`;

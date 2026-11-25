@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { withModelIssues } from "./model-issues.js";
 
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { InputTokenCountDiagnostics } from "../observability/input-token-count-diagnostics.js";
@@ -109,6 +110,16 @@ export async function countModelGatewayInputTokensWithOptions(
   options: ModelGatewayClientOptions = {},
   cache?: InputTokenCountCache,
 ): Promise<ModelGatewayInputTokenCountResult | undefined> {
+  return withModelIssues(params.onIssue, params.abortSignal,
+    (issues) => countWithIssues(params, options, cache, issues));
+}
+
+async function countWithIssues(
+  params: ModelGatewayInputTokenCountParams,
+  options: ModelGatewayClientOptions,
+  cache: InputTokenCountCache | undefined,
+  issues: import("./model-issues.js").ClientModelIssues,
+): Promise<ModelGatewayInputTokenCountResult | undefined> {
   const clientOptions = resolveClientOptions(options);
   const provider = params.provider.trim();
   if (!clientOptions.inputTokenCountProviders.has(provider)) {
@@ -151,12 +162,13 @@ export async function countModelGatewayInputTokensWithOptions(
       body: JSON.stringify(requestBody),
     });
     statusCode = response.status;
+    issues.readHeader(response);
     diagnostics.setPhase("bridge_response");
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
-      throw new Error(
+      throw issues.bindFailure(new Error(
         `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", projection.messages)}`,
-      );
+      ));
     }
     diagnostics.setPhase("bridge_parse");
     result = parseInputTokenCountResult(

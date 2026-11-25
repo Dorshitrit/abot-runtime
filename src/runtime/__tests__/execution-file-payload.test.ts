@@ -4,6 +4,7 @@ import { routeFilePayloadAuthor } from "../request/execution-file-payload/author
 import { resolveRequestExecutionPolicy } from "../request/role-executor-composition.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { filePayloadFixture, filePayloadInput } from "./support/execution-file-payload-fixture.js";
+import { filePayloadOutput } from "./support/execution-file-output-fixture.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -11,13 +12,14 @@ afterEach(() => resetDebugLoggerConfig());
 test.each(["\uFEFFשלום\r\n", "", "  without newline  "])("isolated file author preserves exact output bytes with one invocation: %j", async (body) => {
   const f = await filePayloadFixture();
   const invoke = vi.fn(async (input: ModelStepInvocationInput<unknown>) =>
-    input.accept(body, { outputLength: body.length, providerCompletionReason: "stop" }, f.request.abortSignal));
+    input.accept(filePayloadOutput(input.messages, body), { outputLength: body.length, providerCompletionReason: "stop" }, f.request.abortSignal));
   const legacy = { author: vi.fn() };
   const author = routeFilePayloadAuthor({ ...f.request, modelSteps: { invoke } } as typeof f.request,
     legacy, resolveRequestExecutionPolicy("execution-agent-v1").authority);
   await expect(author.author(filePayloadInput())).resolves.toEqual({ status: "authored", body });
   expect(invoke).toHaveBeenCalledOnce();
   expect(invoke.mock.calls[0]![0]).toMatchObject({ modelStep: "execution.file_payload.raw", boundSteeringVersion: 0 });
+  expect(invoke.mock.calls[0]![0]).not.toHaveProperty("format");
   expect(invoke.mock.calls[0]![0]).not.toHaveProperty("contextRetention");
   expect(invoke.mock.calls[0]![0].contextCompaction).toBeDefined();
   expect(legacy.author).not.toHaveBeenCalled();
@@ -37,7 +39,7 @@ test("SUPER source-bound requests are rejected and ordinary legacy payloads pass
 
 test("invalid exact-edit output returns once without hidden model repair", async () => {
   const f = await filePayloadFixture();
-  f.invoke.mockResolvedValue({ text: '{"edits":[],"edits":[]}', meta: {} });
+  f.invoke.mockImplementation(async (input) => ({ text: filePayloadOutput(input.messages, '{"edits":[],"edits":[]}'), meta: {} }));
   const author = routeFilePayloadAuthor(f.request, { author: vi.fn() },
     resolveRequestExecutionPolicy("execution-agent-v1").authority);
   const input = filePayloadInput();
@@ -62,7 +64,7 @@ test.each([
 ])("$label fails once without a repair request", async ({ body, reason, maxBytes, code }) => {
   const f = await filePayloadFixture();
   const invoke = vi.fn(async (input: ModelStepInvocationInput<unknown>) =>
-    input.accept(body, { outputLength: body.length, providerCompletionReason: reason }, f.request.abortSignal));
+    input.accept(filePayloadOutput(input.messages, body), { outputLength: body.length, providerCompletionReason: reason }, f.request.abortSignal));
   const author = routeFilePayloadAuthor({ ...f.request, modelSteps: { invoke } } as typeof f.request,
     { author: vi.fn() }, resolveRequestExecutionPolicy("execution-agent-v1").authority);
   const input = filePayloadInput();

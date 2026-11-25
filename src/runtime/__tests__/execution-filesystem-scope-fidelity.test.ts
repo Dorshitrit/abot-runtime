@@ -20,6 +20,7 @@ import {
   type FilesystemModelInput,
 } from "./support/filesystem-scope-integration-fixture.js";
 import { selectedSystemModules } from "./support/system-request-plugin-fixture.js";
+import { filePayloadOutput } from "./support/execution-file-output-fixture.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -102,7 +103,7 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
             selectionControls: { path: "index.html" },
           }),
         },
-        { step: "execution.file_payload.raw", output: body },
+        { step: "execution.file_payload.raw", output: (input) => filePayloadOutput(input.messages, body) },
         { step: "execution.decision", output: decision({ action: "respond" }) },
         {
           step: "execution.response",

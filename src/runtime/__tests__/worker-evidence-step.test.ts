@@ -12,7 +12,6 @@ import { createSuperCompactionSourceFixture } from "./support/super-compaction-s
 const ESTABLISHED = "The first catalog window was observed.";
 const RAW_CONTEXT_MARKER = "RAW_EVIDENCE_CONTEXT_MUST_SURVIVE.txt";
 const REMAINING = "Observe the remaining requested range.";
-const RESULT = "The catalog evidence is available for the requested draft.";
 const descriptor = Object.freeze({
   capabilityId: "example.observe",
   summary: "Observe one requested range.",
@@ -30,12 +29,12 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 function assessment(requiresExecution: boolean) {
-  return JSON.stringify({ decision: {
+  return {
     requiresExecution,
     established: ESTABLISHED,
     remaining: requiresExecution ? REMAINING : "",
     evidenceRefs: ["capability-execution-1"],
-  } });
+  };
 }
 
 function decision(value: unknown) {
@@ -52,7 +51,6 @@ async function fixture(capabilitiesAvailable = true) {
       ...base.request.runnerConfig,
       steps: {
         ...base.request.runnerConfig.steps,
-        [MODEL_STEPS.WORKER_EVIDENCE]: { timeoutMs: 20_000 },
         [MODEL_STEPS.WORKER_DECISION]: { timeoutMs: 20_000 },
         [MODEL_STEPS.CAPABILITY_CONTROLS]: { timeoutMs: 20_000 },
         [MODEL_STEPS.WORKER_RESULT]: { timeoutMs: 20_000 },
@@ -104,24 +102,20 @@ function expectSharedContext(
   expect(JSON.stringify(messages)).toContain("Complete catalog evidence.");
 }
 
-test("assesses evidence once before selecting and refining execution for the remaining work", async () => {
+test("assesses evidence with selection once before refining execution for the remaining work", async () => {
   const f = await fixture();
   const original = originalMessages(f);
   f.invoke.mockImplementation(async (input) => {
     expectSharedContext(input, original);
-    if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) {
-      expect(JSON.stringify(input.messages)).toContain("Complete catalog evidence.");
-      return { text: assessment(true), meta: {} };
-    }
     if (input.modelStep === MODEL_STEPS.WORKER_DECISION) {
-      expect(JSON.stringify(input.messages)).toContain(REMAINING);
-      expect(JSON.stringify(input.format)).not.toContain('"return_result"');
-      return decision({
+      expect(input.format).toMatchObject({ name: "worker_evidence_and_selection" });
+      return decision({ assessment: assessment(true), selection: {
         action: "invoke_capability", capabilityId: descriptor.capabilityId,
         intent: "Observe the remaining range.",
-      });
+      } });
     }
     expect(input.modelStep).toBe(MODEL_STEPS.CAPABILITY_CONTROLS);
+    expect(JSON.stringify(input.messages)).toContain(REMAINING);
     return decision({ action: "invoke_capability", controls: { start: 10_000 } });
   });
 
@@ -130,68 +124,66 @@ test("assesses evidence once before selecting and refining execution for the rem
     controls: { start: 10_000 },
   });
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    MODEL_STEPS.WORKER_EVIDENCE, MODEL_STEPS.WORKER_DECISION, MODEL_STEPS.CAPABILITY_CONTROLS,
+    MODEL_STEPS.WORKER_DECISION, MODEL_STEPS.CAPABILITY_CONTROLS,
   ]);
 });
 
-test("authors a ready result from its accepted assessment without a selector or reassessment", async () => {
+test("reports a ready assessment and canonical evidence without another model call", async () => {
   const f = await fixture();
   const original = originalMessages(f);
   f.invoke.mockImplementation(async (input) => {
     expectSharedContext(input, original);
-    if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE)
-      return { text: assessment(false), meta: {} };
-    expect(input.modelStep).toBe(MODEL_STEPS.WORKER_RESULT);
-    expect(input).not.toHaveProperty("format");
-    const context = JSON.stringify(input.messages);
-    expect(context).toContain(ESTABLISHED);
-    expect(context).toContain("capability-execution-1");
-    expect(context).toContain(f.call.callId);
-    return { text: RESULT, meta: {} };
+    expect(input.modelStep).toBe(MODEL_STEPS.WORKER_DECISION);
+    return decision({ assessment: assessment(false), selection: { action: "return_result" } });
   });
 
-  await expect(runWorkerDecision(f.request, f.options)).resolves.toEqual({
-    action: "return_result", result: RESULT,
-  });
-  expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    MODEL_STEPS.WORKER_EVIDENCE, MODEL_STEPS.WORKER_RESULT,
-  ]);
+  const result = await runWorkerDecision(f.request, f.options);
+  expect(result.action).toBe("return_result");
+  if (result.action !== "return_result") throw new Error("expected Worker report");
+  const report = JSON.parse(result.result);
+  expect(report.assessment).toEqual({ authority: "accepted_model_judgment", ...assessment(false) });
+  expect(report.callId).toBe(f.call.callId);
+  expect(report.evidence.requestToolResults.results).toEqual([expect.objectContaining({
+    executionId: "capability-execution-1",
+    adapterResult: expect.objectContaining({ payload: { referenceData: "Complete catalog evidence." } }),
+  })]);
+  expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([MODEL_STEPS.WORKER_DECISION]);
+  expect(f.request.modelGatewayClient.invokeRaw).not.toHaveBeenCalled();
 });
 
 test("rejects an assessment whose canonical evidence head changed before downstream use", async () => {
   const f = await fixture();
   f.invoke.mockImplementation(async (input) => {
-    expect(input.modelStep).toBe(MODEL_STEPS.WORKER_EVIDENCE);
+    expect(input.modelStep).toBe(MODEL_STEPS.WORKER_DECISION);
     await f.commit({
       authority: "active_role", type: "begin_capability_execution",
       callId: f.call.callId, invocationAttempt: f.call.activationCount,
       capabilityId: descriptor.capabilityId, declaredEffect: "observation",
       intent: "Observe a newly available range.", controlsJson: '{"start":10000}',
     });
-    return { text: assessment(false), meta: {} };
+    return decision({ assessment: assessment(false), selection: { action: "return_result" } });
   });
 
   await expect(runWorkerDecision(f.request, f.options)).rejects.toThrow("worker_evidence_canonical_context_stale");
   expect(f.ledger.current()).not.toBe(f.head);
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    MODEL_STEPS.WORKER_EVIDENCE,
+    MODEL_STEPS.WORKER_DECISION,
   ]);
 });
 
 test("returns an unavailable-capability failure without authoring a result for missing evidence", async () => {
   const f = await fixture(false);
   f.invoke.mockImplementation(async (input) => {
-    if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE)
-      return { text: assessment(true), meta: {} };
     expect(input.modelStep).toBe(MODEL_STEPS.WORKER_DECISION);
-    expect(JSON.stringify(input.format)).not.toContain('"return_result"');
-    return decision({ action: "return_failure", reason: "No capability can observe the remaining range." });
+    return decision({ assessment: assessment(true), selection: {
+      action: "return_failure", reason: "No capability can observe the remaining range.",
+    } });
   });
 
   await expect(runWorkerDecision(f.request, f.options)).resolves.toEqual({
     action: "return_failure", reason: "No capability can observe the remaining range.",
   });
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    MODEL_STEPS.WORKER_EVIDENCE, MODEL_STEPS.WORKER_DECISION,
+    MODEL_STEPS.WORKER_DECISION,
   ]);
 });

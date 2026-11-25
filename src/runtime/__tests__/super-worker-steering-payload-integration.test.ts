@@ -9,7 +9,7 @@ import { resolveRequestExecutionPolicy } from "../request/role-executor-composit
 import { createRequestSteeringInbox, REQUEST_STEERING_MESSAGE_KIND } from "../request/request-steering.js";
 import { createTestRequestExecutionScopeWithCapabilities } from "./support/request-execution-scope.js";
 import { runnerConfig, modelPolicy, separateSupervisorRunnerModelPhases } from "./support/supervisor-runner-model-phases.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -83,13 +83,23 @@ test.each([
   let rootDecisions = 0;
   let plannerDecisions = 0;
   let workerDecisions = 0;
-  let workerResults = 0;
   const payloadContexts: Record<string, unknown>[] = [];
+  function assertReturnedEvidence(input: ModelInput) {
+    const child = capsules(input, "runtime_child_result").at(-1)!;
+    expect(child).toMatchObject({ childCallId: replacementCallId, outcome: "completed" });
+    const report = JSON.parse(child.summary as string);
+    expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+      executionOutcomes: [{ callId: replacementCallId, capabilityId: "search_articles", outcome: "succeeded" }],
+      evidence: { dependencyResults: [expect.objectContaining({ producerCallId: firstWorkerCallId, outcome: "yielded" })] } });
+    expect(report.evidence.requestToolResults.results.at(-1).adapterResult.result.output).toBe(finalOutput);
+    expect(JSON.stringify(report)).not.toContain("STALE_QUERY");
+  }
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (input.modelStep === "supervisor.decision") {
       rootDecisions += 1;
       if (rootDecisions === 1) return reply({
         action: "invoke_role", roleId: caller === "supervisor" ? "worker" : "planner", objective: originalObjective,
+        ...(caller === "supervisor" ? { workerCapabilityScope: { catalogGroupIds: ["read"] } } : {}),
       });
       if (caller === "supervisor" && rootDecisions === 2) {
         expect(capsules(input, "runtime_child_result")).toEqual([
@@ -101,6 +111,7 @@ test.each([
         return reply({ action: "invoke_role", roleId: "worker", objective: updatedObjective,
           workerCapabilityScope: { catalogGroupIds: ["read"] } });
       }
+      if (caller === "supervisor") assertReturnedEvidence(input);
       return reply({ action: "respond" });
     }
     if (input.modelStep === "planner.decision") {
@@ -123,15 +134,16 @@ test.each([
         });
       }
       expect(capsules(input, "runtime_child_result").map((child) => child.outcome)).toEqual(["yielded", "completed"]);
+      assertReturnedEvidence(input);
       return reply({ action: "return_result", result: finalOutput });
     }
-    if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, execute.mock.calls.length === 0);
     if (input.modelStep === "worker.decision") {
+      if (execute.mock.calls.length > 0) return workerFusedReply(input, { action: "return_result" });
       workerDecisions += 1;
       expect(workerDecisions).toBeLessThanOrEqual(2);
       expect(capsules(input, REQUEST_STEERING_MESSAGE_KIND)).toEqual([]);
       if (workerDecisions === 1) steering.append({ steerId: "include-gpt", text: update });
-      return reply({
+      return workerFusedReply(input, {
         action: "invoke_capability", capabilityId: "search_articles",
         intent: workerDecisions === 1 ? originalObjective : updatedObjective,
         authoringObjective: workerDecisions === 1 ? "STALE_QUERY" : "Author a technology and GPT article query.",
@@ -152,10 +164,6 @@ test.each([
       expect(JSON.stringify(input.messages)).not.toContain("STALE_QUERY");
       return { text: input.format ? JSON.stringify({ topic: "GPT" }) : "technology GPT articles", meta: {} };
     }
-    if (input.modelStep === "worker.result") {
-      workerResults += 1;
-      return { text: finalOutput, meta: {} };
-    }
     if (input.modelStep === "supervisor.response") return { text: finalOutput, meta: {} };
     throw new Error(`Unexpected model step ${input.modelStep}`);
   });
@@ -174,7 +182,7 @@ test.each([
 
   await expect(runRequestRunner(request)).resolves.toEqual({ output: finalOutput });
   expect(workerDecisions).toBe(2);
-  expect(workerResults).toBe(1);
+  expect(invoke.mock.calls.some(([input]) => input.modelStep === "worker.result")).toBe(false);
   expect(plannerDecisions).toBe(caller === "planner" ? 3 : 0);
   expect(rootDecisions).toBe(caller === "supervisor" ? 3 : 2);
   expect(payloadContexts).toHaveLength(staged ? 2 : 1);

@@ -10,6 +10,7 @@ import {
   isNotificationPreferences,
   isNotificationRecord,
 } from "./storage-schema.js";
+import { isIssueCounter } from "./issue-schema.js";
 
 export function parseNotificationEnvironment(value: unknown): string {
   if (!isNotificationIdentifier(value))
@@ -24,12 +25,12 @@ export function parseNotificationReadChange(
 ): NotificationReadChange {
   if (!isNotificationRecord(value))
     throw new NotificationInputError("Invalid notification read selection.");
-  if (!hasOnlyNotificationFields(value, ["all", "ids", "read"]))
+  if (!hasOnlyNotificationFields(value, ["all", "ids", "read", "observedIssues", "issueReadBoundary"]))
     throw new NotificationInputError("Invalid notification read selection.");
   if (typeof value.read !== "boolean")
     throw new NotificationInputError("A notification read state is required.");
   if (value.all === true) {
-    if (value.ids !== undefined)
+    if (value.ids !== undefined || value.observedIssues !== undefined)
       throw new NotificationInputError(
         "Choose all notifications or explicit identities.",
       );
@@ -37,7 +38,9 @@ export function parseNotificationReadChange(
       throw new NotificationInputError(
         "All notifications can only be marked read.",
       );
-    return { all: true, read: true };
+    if (value.issueReadBoundary !== undefined && !isIssueCounter(value.issueReadBoundary))
+      throw new NotificationInputError("Invalid notification issue read boundary.");
+    return { all: true, read: true, ...(value.issueReadBoundary === undefined ? {} : { issueReadBoundary: value.issueReadBoundary as number }) };
   }
   if (value.all !== undefined)
     throw new NotificationInputError("Invalid notification read selection.");
@@ -49,7 +52,19 @@ export function parseNotificationReadChange(
     throw new NotificationInputError("Too many notification identities.");
   if (!value.ids.every(isNotificationIdentifier))
     throw new NotificationInputError("Invalid notification identity.");
-  return { ids: [...new Set(value.ids)], read: value.read };
+  const ids = value.ids as string[];
+  if (value.issueReadBoundary !== undefined)
+    throw new NotificationInputError("Issue read boundaries require an all-notifications selection.");
+  const observedIssues = value.observedIssues;
+  if (observedIssues !== undefined) {
+    if (!value.read || !Array.isArray(observedIssues) || observedIssues.length > 1000 ||
+      !observedIssues.every((item) => isNotificationRecord(item) && hasOnlyNotificationFields(item, ["id", "occurrenceCount"]) &&
+        isNotificationIdentifier(item.id) && ids.includes(item.id) && isIssueCounter(item.occurrenceCount) && item.occurrenceCount > 0) ||
+      new Set(observedIssues.map((item) => item.id)).size !== observedIssues.length)
+      throw new NotificationInputError("Invalid observed notification issue counts.");
+  }
+  return { ids: [...new Set(ids)], read: value.read,
+    ...(observedIssues === undefined ? {} : { observedIssues: observedIssues as { id: string; occurrenceCount: number }[] }) };
 }
 
 export function parseNotificationReadBody(body: Record<string, unknown>): {

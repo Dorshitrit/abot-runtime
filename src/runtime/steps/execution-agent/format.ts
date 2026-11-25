@@ -1,3 +1,4 @@
+import { collectDecisionMaxLengthConstraints } from "../../model/decision-schema.js";
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { directResponseVariants } from "./direct-response-contract.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
@@ -185,7 +186,7 @@ export function createExecutionAgentDecisionFormat(
     type: "json_schema",
     name: "execution_agent_decision",
     strict: true,
-    postValidatedSchemaConstraints: collectMaxLengthConstraints(schema),
+    postValidatedSchemaConstraints: collectDecisionMaxLengthConstraints(schema),
     schema,
   };
 }
@@ -423,37 +424,4 @@ function boundedTextArray(
       ? enumeration(params.allowedValues)
       : boundedText(params.itemMaxLength),
   };
-}
-
-function collectMaxLengthConstraints(
-  value: unknown,
-  path = "",
-): Array<Readonly<{ keyword: "maxLength"; path: string }>> {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      collectMaxLengthConstraints(entry, `${path}/${index}`),
-    );
-  }
-  if (!isRecord(value)) return [];
-  return [
-    ...(Object.hasOwn(value, "maxLength")
-      ? [
-          {
-            keyword: "maxLength" as const,
-            path: `${path}/maxLength`,
-          },
-        ]
-      : []),
-    ...Object.entries(value).flatMap(([key, child]) =>
-      collectMaxLengthConstraints(child, `${path}/${escapeJsonPointer(key)}`),
-    ),
-  ];
-}
-
-function escapeJsonPointer(input: string): string {
-  return input.replace(/~/gu, "~0").replace(/\//gu, "~1");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

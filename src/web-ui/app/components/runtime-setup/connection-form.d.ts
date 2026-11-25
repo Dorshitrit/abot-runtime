@@ -1,5 +1,6 @@
 import type { SetupReasoningState } from "./reasoning-fields.js";
-type ConnectionState = SetupReasoningState & {
+import type { SetupReasoningSummaryState } from "./reasoning-summary-fields.js";
+type ConnectionState = SetupReasoningState & SetupReasoningSummaryState & {
   providers?: readonly { id: string; label?: string; description?: string; credentialConfigured?: boolean; requiresApiKey?: boolean }[];
   modelId?: string;
   contextWindowTokens?: string | number;

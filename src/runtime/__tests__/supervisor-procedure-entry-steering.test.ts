@@ -13,13 +13,10 @@ import { defaultSupervisorPresentation, supervisorFormatName } from "./support/s
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
 
-test.each([
-  ["found", "presentation"], ["found", "skill_selection"],
-  ["superseded", "presentation"], ["superseded", "skill_selection"],
-] as const)("canonical %s recall without an incoming capsule binds %s to its entry intent", async (outcome, stage) => {
+test.each(["found", "superseded"] as const)("canonical %s recall without an incoming capsule binds fused entry to its intent", async (outcome) => {
   let hasSteered = false;
   const nextQuery = "the updated preference";
-  const classifyProcedure = vi.fn(() => ({ requiresProcedure: true }));
+  const classifyProcedure = vi.fn((input: Parameters<typeof recallCapsules>[0]) => ({ requiresProcedure: true, ...defaultSupervisorPresentation(input) }));
   const delegate = vi.fn((input: Parameters<typeof recallCapsules>[0]) => {
     expect(JSON.stringify(input.format)).toContain('"recall_memory"');
     expect(recallCapsules(input)).toEqual([]);
@@ -33,10 +30,14 @@ test.each([
   }
   const f = createMemoryRecallHarness({
     policy: "supervisor-worker-v1", memoryRecallLimit: 2,
-    present(input) { if (stage === "presentation") steer(); return defaultSupervisorPresentation(input); },
-    selectSkills() { if (stage === "skill_selection") steer(); return { action: "continue" }; },
-    classifyProcedure, delegate,
-    decide: () => { throw new Error("Unexpected legacy routing or child"); },
+    decide(input) {
+      if (["supervisor_fused_entry", "supervisor_fused_entry_with_memory_candidates"].includes(supervisorFormatName(input) ?? "")) {
+        steer();
+        return classifyProcedure(input);
+      }
+      if (supervisorFormatName(input) === "supervisor_fused_routing") return delegate(input);
+      throw new Error("Unexpected legacy routing or child");
+    },
   });
   const skill = { skillId: "fixture-guide", name: "Fixture guide", description: "Guidance for this request.", content: "Keep the task bounded." };
   const request = createRequestExecutionScope({
@@ -66,16 +67,16 @@ test.each([
   const options = {
     call, skillReadHead: head, memoryRecallCount: head.state.memoryRecalls.length,
     toolResults: projectRequestToolResults({ ledger, head, callId: call.callId, modelStep: "supervisor.decision" }),
-    includeAcknowledgement: stage === "presentation", allowSkillReads: stage === "skill_selection",
+    includeAcknowledgement: true, allowSkillReads: true,
   };
   expect(options).not.toHaveProperty("memoryRecallMessage");
   const decision = runSupervisorDecision(request, options);
   await expect(decision).rejects.toBeInstanceOf(ModelStepSteeringSupersededError);
   await expect(decision).rejects.toMatchObject({ boundSteeringVersion: 0 });
-  expect(classifyProcedure).not.toHaveBeenCalled();
+  expect(classifyProcedure).toHaveBeenCalledOnce();
   expect(delegate).not.toHaveBeenCalled();
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-    stage === "presentation" ? "supervisor_presentation" : "supervisor_skill_selection",
+    outcome === "found" ? "supervisor_fused_entry" : "supervisor_fused_entry_with_memory_candidates",
   ]);
   expect(ledger.current()).toBe(head);
 
@@ -83,7 +84,7 @@ test.each([
   await expect(runSupervisorDecision(request, options)).resolves.toMatchObject({
     decision: { action: "recall_memory", query: nextQuery }, steeringVersion: 1,
   });
-  expect(classifyProcedure).toHaveBeenCalledOnce();
+  expect(classifyProcedure).toHaveBeenCalledTimes(2);
   expect(delegate).toHaveBeenCalledOnce();
   expect(f.memory.retrieve).not.toHaveBeenCalled();
   expect(ledger.current()).toBe(head);

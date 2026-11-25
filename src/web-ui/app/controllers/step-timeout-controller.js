@@ -57,18 +57,33 @@ export function createStepTimeoutController({ client, getScope, render, isReplay
     // A subsequent failure must not replace a save/restart already chosen by the user.
     if (current?.busy || current?.saved) return;
     const replay = contextReplayBinding(message);
-    const captured = { generation: ++generation, scopeKey, replay };
-    current = null;
-    render(null);
     try {
-      const result = await client.inspectStepTimeout(identity);
-      if (!ownsSuggestion(captured)) return;
-      if (!result?.suggestion) return;
-      current = { identity, replay, suggestion: result.suggestion, busy: false, saved: false, applied: false, message: "" };
-      render(current);
+      await inspect(identity, replay);
     } catch {
       // A missing/stale receipt must not add a second failure to the conversation.
     }
+  }
+
+  async function inspect(identity, replay = null) {
+    const captured = { generation: ++generation, scopeKey, replay };
+    current = null;
+    render(null);
+    const result = await client.inspectStepTimeout(identity);
+    if (!ownsSuggestion(captured)) return;
+    if (!result?.suggestion) throw new Error("This timeout can no longer be reviewed. Open model settings to check the current limit.");
+    current = { identity, replay, suggestion: result.suggestion, busy: false, saved: false, applied: false, message: "" };
+    render(current);
+  }
+
+  async function review(identity) {
+    syncScope();
+    const scope = getScope();
+    if (scope.backend !== "runtime" || scope.workspace !== "notifications") return;
+    if (identity?.environment !== scope.environment) return;
+    if (![identity.sessionId, identity.requestId, identity.invocationId].every((value) => typeof value === "string" && value)) return;
+    if (current?.busy || (current?.saved && !current.applied))
+      throw new Error("Finish the pending timeout update before reviewing another error.");
+    await inspect({ ...identity });
   }
 
   async function increase() {
@@ -115,5 +130,5 @@ export function createStepTimeoutController({ client, getScope, render, isReplay
     render(null);
   }
 
-  return { handle, syncScope, increase, dismiss };
+  return { handle, review, syncScope, increase, dismiss };
 }

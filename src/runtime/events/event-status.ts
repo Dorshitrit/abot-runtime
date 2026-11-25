@@ -3,6 +3,7 @@ import {
   formatPlannerPlanItemEventTitle,
   formatPlannerPlanTitle,
 } from "./planner-event-status.js";
+import { isFilePayloadToolRequest } from "./file-payload-handoff.js";
 
 type BridgeEventPayload = {
   type?: string;
@@ -287,6 +288,8 @@ export function enrichEventPayload(
   if (payload.type !== "event") {
     return payload;
   }
+  if (isFilePayloadToolRequest(payload))
+    return withStatus(payload, "Requested a tool before writing");
 
   const name = typeof payload.name === "string" ? payload.name : "";
   const tool = typeof payload.tool === "string" ? payload.tool : "";

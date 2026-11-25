@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
 import type { RequestSessionMemory } from "../context/session-memory/index.js";
@@ -163,11 +163,11 @@ test("actual Controls refinement rejects reused evidence beyond the hard budget"
 
 test.each([SOFT_EXCEEDED, HARD_EXCEEDED])("actual Worker decision checks reused mixed evidence at %i tokens", async (tokens) => {
   const f = await mixedWorkerFixture();
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => input.modelStep === "worker.evidence"
-    ? workerEvidenceReply(input, false, "Target evidence was read.")
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => input.modelStep === "worker.decision"
+    ? workerFusedReply(input, { action: "return_result" }, "Target evidence was read.")
     : { text: "Target evidence was read.", meta: {} });
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(
-    async (input) => measured(input.modelStep === "worker.evidence" ? tokens : 1000),
+    async (input) => measured(input.modelStep === "worker.decision" ? tokens : 1000),
   );
   const request = createTestRequestExecutionScope({
     requestId: f.head.state.requestId, sessionId: "mixed-admission", prompt: "Inspect the target.",
@@ -201,8 +201,13 @@ test.each([SOFT_EXCEEDED, HARD_EXCEEDED])("actual Worker decision checks reused 
     await expect(result).rejects.toThrow("context_compaction_projection_not_reduced");
     expect(invoke).not.toHaveBeenCalled();
   } else {
-    await expect(result).resolves.toMatchObject({ action: "return_result", result: "Target evidence was read." });
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", "worker.result"]);
+    const decision = await result;
+    expect(decision.action).toBe("return_result");
+    if (decision.action !== "return_result") throw new Error("expected_worker_result");
+    expect(JSON.parse(decision.result)).toMatchObject({
+      kind: "runtime_worker_execution_report_v1", assessment: { established: "Target evidence was read." },
+    });
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.decision"]);
     expect(JSON.stringify(invoke.mock.calls[0]![0].messages)).toContain("Preserved exact evidence.");
   }
 });

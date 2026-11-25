@@ -1,4 +1,9 @@
+import { AGENT_NOTIFICATIONS_FEATURE, createAgentNotificationDelivery } from "./agent-notification-delivery.js";
+import { createAgentNotificationJournal } from "./agent-notification-journal.js";
+import type { AgentNotificationSource } from "../runtime/agents/notification-attention.js";
 import WebSocket from "ws";
+import { bindBridgeAgentSessionAccess } from "./agent-session-access.js";
+import { AGENTS_REMOTE_FEATURE, connectBridgeAgentEvents, handleAgentsBridgeMessage, type BridgeAgentsAccess } from "./agents-access.js";
 import { assertInteractiveSession as assertGlobalInteractiveSession } from "../sessions/index.js";
 import { isAutomationSessionLockedError } from "../sessions/automation-session-origin.js";
 
@@ -32,9 +37,14 @@ import { handleSparkChatBridgeMessage, resolveBridgeSparkRequest } from "./spark
 
 export type AgentBridgeOptions = {
   runtimeConfig?: RuntimeConfig;
+  agents?: BridgeAgentsAccess;
+  agentNotifications?: AgentNotificationSource;
+  subscribeAgentEvents?: (listener: (revision: number) => void) => () => void;
   url?: string;
   token?: string;
   runtimeId?: string;
+  /** Exact, case-sensitive identity from an explicitly imported Socket grant. */
+  registrationRuntimeId?: string;
   eventSinkFactory?: EventSinkFactory;
   modelGatewayClient?: ModelGatewayClient;
   sessionStore?: SessionStore;
@@ -61,6 +71,7 @@ export type AgentBridgeConnectionStatus = {
   connectionId: number;
   state: "connecting" | "open" | "closed" | "stopped";
   registered: boolean;
+  connectionError?: "socket_connection_rejected" | "socket_connection_unreachable";
   reconnectAttempt: number;
   lastOpenAt?: string;
   lastRegisteredAt?: string;
@@ -152,7 +163,9 @@ export function startAgentBridge(
   const token = options.token || process.env.AGENT_BRIDGE_TOKEN;
   if (!token) throw new Error("AGENT_BRIDGE_TOKEN required");
 
-  const runtimeId = normalizeRuntimeId(
+  if (options.registrationRuntimeId !== undefined && (typeof options.registrationRuntimeId !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(options.registrationRuntimeId)))
+    throw new Error("runtime_bridge_connection_invalid");
+  const runtimeId = options.registrationRuntimeId ?? normalizeRuntimeId(
     options.runtimeId || options.runtimeConfig?.runtimeId || "",
   );
   const url =
@@ -186,6 +199,7 @@ export function startAgentBridge(
     options.lifecycleTraceEnabled ??
     readBooleanEnv(process.env.AGENT_BRIDGE_TRACE_LIFECYCLE) ??
     false;
+  const agentSessions = bindBridgeAgentSessionAccess(options);
   const modelCatalog = options.runtimeConfig
     ? {
         schemaVersion: 1 as const,
@@ -198,6 +212,7 @@ export function startAgentBridge(
   let ws: WebSocket | undefined;
   let stopped = false;
   let registered = false;
+  let connectionError: AgentBridgeConnectionStatus["connectionError"];
   let connectionId = 0;
   let reconnectAttempt = 0;
   let reconnectTimer: NodeJS.Timeout | undefined;
@@ -219,7 +234,16 @@ export function startAgentBridge(
         legacyController: () => createToolApprovalController(), steer: requestHandler.steer,
       })
     : undefined;
+  const unsubscribeAgents = connectBridgeAgentEvents(options.subscribeAgentEvents, () => registered && !stopped ? ws : undefined);
+  const agentNotifications = options.agentNotifications && options.runtimeConfig
+    ? createAgentNotificationDelivery({ source: options.agentNotifications,
+        journal: createAgentNotificationJournal(options.runtimeConfig.paths.runtimeDir, [url, runtimeId, token]),
+        subscribe: options.subscribeAgentEvents,
+        onError: () => console.error("Agent notification delivery needs attention."),
+      }) : undefined;
   const features = [REQUEST_STEERING_FEATURE,
+    ...(agentNotifications ? [AGENT_NOTIFICATIONS_FEATURE] : []),
+    ...(options.agents ? [AGENTS_REMOTE_FEATURE] : []),
     ...(approvalAccess ? [REQUEST_APPROVALS_FEATURE] : []),
     ...(requestHandler.sparkChat ? [SPARK_CHAT_FEATURE] : [])];
 
@@ -236,6 +260,7 @@ export function startAgentBridge(
             ? "connecting"
             : "closed",
       registered,
+      ...(connectionError && { connectionError }),
       reconnectAttempt,
       lastOpenAt: toIso(lastOpenAt),
       lastRegisteredAt: toIso(lastRegisteredAt),
@@ -453,15 +478,25 @@ export function startAgentBridge(
     const messageType = typeof msg.type === "string" ? msg.type : "";
 
     if (messageType === "registered") {
+      if (msg.ok === false || (options.registrationRuntimeId !== undefined && (msg.ok !== true || msg.agentId !== runtimeId))) {
+        connectionError = "socket_connection_rejected";
+        currentWs.close();
+        return;
+      }
+      connectionError = undefined;
       registered = true;
       reconnectAttempt = 0;
       lastRegisteredAt = Date.now();
       traceLifecycle("registered", { connectionId: currentConnectionId });
       logStatus("registered");
+      agentNotifications?.registered(currentWs, msg);
       return;
     }
 
     try {
+      if (agentNotifications?.receive(currentWs, msg)) return;
+      if (await handleAgentsBridgeMessage(currentWs, msg, options.agents)) return;
+      if (await agentSessions?.handle(currentWs, msg)) return;
       if (await handleSparkChatBridgeMessage(currentWs, msg, requestHandler.sparkChat)) return;
       if (refuseUnsupportedApprovalMessage(currentWs, msg, Boolean(approvalAccess))) return;
       if (await approvalAccess?.handleMessage(currentWs, msg)) return;
@@ -607,6 +642,8 @@ export function startAgentBridge(
     });
 
     currentWs.on("error", (error) => {
+      if (ws === currentWs && !stopped) connectionError = /^Unexpected server response: (401|403)$/.test(error.message)
+        ? "socket_connection_rejected" : "socket_connection_unreachable";
       trace("socket.error", {
         connectionId: currentConnectionId,
         error: error.message,
@@ -614,12 +651,14 @@ export function startAgentBridge(
     });
 
     currentWs.on("close", (code, reasonBuffer) => {
+      agentNotifications?.disconnect(currentWs);
       approvalAccess?.disconnect(currentWs);
       if (ws !== currentWs) {
         return;
       }
       clearHeartbeatTimer();
       registered = false;
+      if (!stopped && code === 1008) connectionError = "socket_connection_rejected";
       const closeData = {
         connectionId: currentConnectionId,
         code,
@@ -648,6 +687,8 @@ export function startAgentBridge(
     getStatus,
     stop: async () => {
       stopped = true;
+      unsubscribeAgents();
+      await agentNotifications?.stop();
       approvalAccess?.stop();
       clearReconnectTimer();
       clearHeartbeatTimer();

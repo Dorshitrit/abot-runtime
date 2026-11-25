@@ -164,9 +164,11 @@ test.each(["throw", "pending"] as const)(
       expect(restored).not.toBe(state.previousOwners[index]);
       expect(restored.services.config).toBe(state.previousConfig.get(id));
       expect(restored.start).toHaveBeenCalledOnce();
-      expect(restored.subscribeScheduledEvents).toHaveBeenCalledWith(
-        state.publish,
-      );
+      const subscription = vi.mocked(restored.subscribeScheduledEvents);
+      expect(subscription).toHaveBeenCalledOnce();
+      const event = { type: "event", requestId: `restored-${id}` };
+      subscription.mock.calls[0]![0](event);
+      expect(state.publish).toHaveBeenNthCalledWith(index + 1, event, id);
       expect(createLocalRuntimeApplication).toHaveBeenCalledWith(
         state.previousConfig.get(id),
         { scheduledRequestOptions: state.requestOptions },

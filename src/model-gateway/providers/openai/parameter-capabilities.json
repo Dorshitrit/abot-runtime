@@ -1,9 +1,10 @@
 {
   "provider": "openai",
+  "modelOutputTokenLimits": { "gpt-6-luna": 128000 },
   "parameters": {
     "temperature": { "path": ["temperature"], "min": 0, "max": 2, "compatibility": { "key": "reasoning_effort", "values": ["none"], "allowMissing": true } },
     "top_p": { "path": ["top_p"], "min": 0, "max": 1, "compatibility": { "key": "reasoning_effort", "values": ["none"], "allowMissing": true } },
-    "max_output_tokens": { "path": ["max_output_tokens"], "min": 1 },
+    "max_output_tokens": { "path": ["max_output_tokens"], "min": 1, "computedDefault": "Calculated from a known model output ceiling and remaining context after input and safety reserve; otherwise uses the provider default." },
     "reasoning_effort": { "path": ["reasoning", "effort"] }
   }
 }

@@ -10,6 +10,7 @@ import {
 } from "../steps/worker-capability-scope-decision.js";
 import { parsePlannerDecisionOutput } from "../steps/planner-decision/parser.js";
 import { parseSupervisorDecisionOutput } from "../steps/supervisor-decision/parser.js";
+import { parseSupervisorDelegationOutput } from "../steps/supervisor-decision/delegation-contract.js";
 
 function catalog(ids: readonly string[]): readonly WorkerCapabilityCatalogGroup[] {
   return ids.map((groupId) => ({
@@ -173,5 +174,89 @@ test("a Planner plan with repeated group IDs retains its declaration and selecte
       workerCapabilityScope: normalizedScope,
       plannerPlan: { mode: "declare", plan: { items }, selectedItemIndexes: [0] },
     },
+  });
+});
+
+
+describe("all-groups selection clipping", () => {
+  const offered = catalog(["read", "write", "exec", "knowledge", "automations"]);
+  const allContract = createWorkerCapabilityScopeDecisionContract(offered);
+  const selected = ["exec", "knowledge", "write", "automations", "read"];
+  const clipped = { catalogGroupIds: ["exec", "knowledge", "write"] };
+
+  test("keeps the first three in model order, not catalog order, without mutation", () => {
+    const input = { catalogGroupIds: [...selected] };
+    const before = structuredClone(input);
+    const catalogBefore = structuredClone(offered);
+    const contractBefore = structuredClone(allContract);
+    const parsed = parseWorkerCapabilityScopeDecision(input, allContract);
+    expect(parsed).toEqual(clipped);
+    expect(parseRoleCallWorkerCapabilityScope(parsed)).toEqual(clipped);
+    expect(Object.isFrozen(parsed)).toBe(true);
+    expect(Object.isFrozen(parsed?.catalogGroupIds)).toBe(true);
+    expect(input).toEqual(before);
+    expect(offered).toEqual(catalogBefore);
+    expect(allContract).toEqual(contractBefore);
+  });
+
+  test("deduplicates before clipping and preserves first occurrences", () => {
+    expect(parseWorkerCapabilityScopeDecision({
+      catalogGroupIds: ["exec", "exec", "knowledge", "write", ...selected],
+    }, allContract)).toEqual(clipped);
+  });
+
+  test("does not clip a partial selection longer than three", () => {
+    const partial = { catalogGroupIds: selected.slice(0, 4) };
+    expect(parseWorkerCapabilityScopeDecision(partial, allContract)).toEqual(partial);
+  });
+
+  test.each([1, 2, 3])("preserves all selections from a catalog of %i groups", (size) => {
+    const ids = selected.slice(0, size);
+    const small = createWorkerCapabilityScopeDecisionContract(catalog(ids));
+    const input = { catalogGroupIds: [...ids].reverse() };
+    expect(parseWorkerCapabilityScopeDecision(input, small)).toEqual(input);
+  });
+
+  test.each([
+    { catalogGroupIds: ["exec", "knowledge", "write", "automations", "unknown"] },
+    { catalogGroupIds: ["exec", "knowledge", "write", "automations", null] },
+    { catalogGroupIds: ["exec", "knowledge", "write", "automations", " read"] },
+    { catalogGroupIds: selected, extra: true },
+  ])("validates the entire selection before clipping: %j", (input) => {
+    expect(parseWorkerCapabilityScopeDecision(input, allContract)).toBeUndefined();
+  });
+
+  test("does not rescue a full selection above the canonical limit", () => {
+    const ids = Array.from({ length: ROLE_CALL_WORKER_CAPABILITY_CATALOG_GROUP_LIMIT + 1 },
+      (_, index) => `group-${index}`);
+    expect(parseWorkerCapabilityScopeDecision({ catalogGroupIds: ids },
+      createWorkerCapabilityScopeDecisionContract(catalog(ids)))).toBeUndefined();
+  });
+
+  test.each(["planner", "supervisor"] as const)("clips through the %s decision parser", (role) => {
+    expect(parseRoleDecision(role, { catalogGroupIds: selected }, offered)).toMatchObject({
+      ok: true, decision: { workerCapabilityScope: clipped },
+    });
+    const partial = { catalogGroupIds: selected.slice(0, 4) };
+    expect(parseRoleDecision(role, partial, offered)).toMatchObject({
+      ok: true, decision: { workerCapabilityScope: partial },
+    });
+    expect(parseRoleDecision(role, {
+      catalogGroupIds: [...selected.slice(0, 4), "unknown"],
+    }, offered)).toMatchObject({ ok: false, stage: "domain_parser" });
+  });
+
+  test("clips initial Supervisor delegation using the same validated rule", () => {
+    const decision = {
+      action: "invoke_role", roleId: "worker", objective: "Create the requested artifact.",
+      workerCapabilityScope: { catalogGroupIds: selected },
+    };
+    const options = { allowedRoleIds: ["worker"] as const, availableWorkerCapabilityCatalog: offered };
+    expect(parseSupervisorDelegationOutput(JSON.stringify({ decision }), options)).toMatchObject({
+      ok: true, decision: { workerCapabilityScope: clipped },
+    });
+    expect(parseSupervisorDelegationOutput(JSON.stringify({ decision: {
+      ...decision, workerCapabilityScope: { catalogGroupIds: [...selected.slice(0, 4), "unknown"] },
+    } }), options)).toMatchObject({ ok: false, stage: "domain_parser" });
   });
 });

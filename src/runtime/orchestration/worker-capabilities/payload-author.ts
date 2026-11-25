@@ -1,4 +1,5 @@
 import { immutableSnapshot } from "./payload-context-snapshot.js";
+import { workerPayloadFailure as failure, payloadInvocationFailure } from "./payload-author-failure.js";
 import { projectWorkerPayloadCompactionInput } from "./payload-compaction-transport.js";
 import { isWorkerPayloadDependencyContextValid } from "./payload-dependency-validation.js";
 import {
@@ -14,7 +15,6 @@ import {
 import { normalizeCapabilityAdapterResult } from "../capability-adapters/result.js";
 import {
   traceWorkerCapabilityPayloadCompleted,
-  traceWorkerCapabilityPayloadFailed,
   traceWorkerCapabilityPayloadStarted,
   type WorkerCapabilityPayloadDiagnosticContext,
 } from "./payload-diagnostics.js";
@@ -25,7 +25,6 @@ import {
   WorkerCapabilityPayloadBudgetExceededError,
   WorkerCapabilityPayloadValidationError,
   type WorkerCapabilityPayloadAuthor,
-  type WorkerCapabilityPayloadAuthoringResult,
   type WorkerCapabilityPayloadContext,
   type WorkerCapabilityPayloadContextScope,
   type WorkerCapabilityPayloadModelPort,
@@ -202,7 +201,7 @@ export function createWorkerCapabilityPayloadAuthor(params: {
         if (error instanceof WorkerCapabilityPayloadValidationError) {
           return failure(diagnostic, error.code);
         }
-        return failure(diagnostic, "payload_model_invocation_failed", error);
+        return payloadInvocationFailure(diagnostic, error);
       }
       if (typeof output !== "string") {
         return failure(diagnostic, "payload_model_output_invalid");
@@ -774,18 +773,6 @@ function validCanonicalRootCall(call: RoleCallFrame): boolean {
     call.activationCount > 0 &&
     call.resultRef === null
   );
-}
-
-function failure(
-  diagnostic: WorkerCapabilityPayloadDiagnosticContext,
-  code: Extract<
-    WorkerCapabilityPayloadAuthoringResult,
-    { status: "failed" }
-  >["code"],
-  error?: unknown,
-): WorkerCapabilityPayloadAuthoringResult {
-  traceWorkerCapabilityPayloadFailed(diagnostic, code, error);
-  return Object.freeze({ status: "failed" as const, code });
 }
 
 function payloadAbort(reason: unknown): Error {

@@ -411,7 +411,9 @@ describe("proactive background work", () => {
     expect(await readFile(file, "utf8")).toBe(failedState);
 
     h.knowledge({ ...knowledge(), knowledgeRevision: 2 });
-    await vi.waitFor(() => expect(h.review).toHaveBeenCalledTimes(2));
+    await h.waitForScheduledReview();
+    await tick(h.agent, 1);
+    expect(h.review).toHaveBeenCalledTimes(2);
     await tick(h.agent);
     expect(h.review).toHaveBeenCalledTimes(2);
     await h.agent.stop();

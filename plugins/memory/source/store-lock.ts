@@ -15,6 +15,7 @@ import { MemoryStoreError } from "./types.js";
 import { openLockOwnerFile } from "./lock-owner-file.js";
 import { rethrowLockObservationError } from "./lock-path-observation.js";
 import { claimStoreLockDirectory } from "./lock-directory-claim.js";
+import { reportMemoryStorageFailure } from "./storage-diagnostics.js";
 
 const DEFAULT_WAIT_MS = 10_000;
 const DEFAULT_RETRY_MS = 10;
@@ -208,7 +209,9 @@ async function readLockSnapshot(
 ): Promise<LockSnapshot | undefined> {
   let lockInfo;
   try {
-    lockInfo = await lstat(lockPath);
+    lockInfo = await lstat(lockPath).catch(
+      (error) => rethrowLockObservationError(lockPath, error),
+    );
   } catch (error) {
     if (fileSystemErrorCode(error) === "ENOENT") return undefined;
     throw error;
@@ -253,7 +256,9 @@ async function readLockSnapshot(
   let leaseInfo;
   let leaseEntries;
   try {
-    leaseInfo = await lstat(leasePath);
+    leaseInfo = await lstat(leasePath).catch(
+      (error) => rethrowLockObservationError(leasePath, error),
+    );
     if (!leaseInfo.isDirectory()) {
       return Object.freeze({
         kind: "directory",
@@ -460,6 +465,7 @@ export async function acquireStoreLock(
       };
     } catch (error) {
       if (!isLockConflict(error)) {
+        reportMemoryStorageFailure("lock-install", error);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable.",
@@ -468,7 +474,8 @@ export async function acquireStoreLock(
       let removed = false;
       try {
         removed = await removeAbandonedLock(lockPath, processIsAlive);
-      } catch {
+      } catch (error) {
+        reportMemoryStorageFailure("lock-observe", error);
         throw new MemoryStoreError(
           "memory_store_unavailable",
           "Memory store is unavailable.",

@@ -240,6 +240,6 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const response = fixture.invoke.mock.calls.find(([input]) =>
       input.modelStep === "execution.response" || input.modelStep === "supervisor.response")?.[0];
     expect(response?.format).toMatchObject({ type: "json_schema", name: "automation_step_result" });
-    expect(fixture.invoke).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 3 : 2);
+    expect(fixture.invoke).toHaveBeenCalledTimes(2);
   },
 );

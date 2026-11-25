@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { modelIssueObserver } from "./model-issue-event.js";
 import type {
   ChatMessage,
   ModelGatewayFormat,
@@ -16,6 +18,7 @@ export async function countModelInputTokens(params: {
   promptCacheBoundaryBeforeMessage?: ChatMessage;
   format?: ModelGatewayFormat;
   abortSignal?: AbortSignal;
+  onEvent?: (name: string, extra?: Record<string, unknown>) => void;
 }): Promise<number | undefined> {
   const abortSignal = params.abortSignal ?? params.request.abortSignal;
   abortSignal.throwIfAborted();
@@ -24,6 +27,8 @@ export async function countModelInputTokens(params: {
     return undefined;
   }
   const result = await countInputTokens({
+    onIssue: modelIssueObserver({ requestId: params.request.requestId,
+      invocationId: randomUUID(), modelStep: params.modelStep, onEvent: params.onEvent }),
     provider: params.invocation.profile.provider,
     messages: params.messages,
     ...projectPromptCacheBoundary({ messages: params.messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
@@ -38,6 +43,7 @@ export async function countModelInputTokens(params: {
       : {}),
     abortSignal,
     debugRequestId: params.request.requestId,
+    ...(params.request.sessionId ? { promptCacheScope: params.request.sessionId } : {}),
     ...(params.format !== undefined ? { format: params.format } : {}),
   });
   abortSignal.throwIfAborted();

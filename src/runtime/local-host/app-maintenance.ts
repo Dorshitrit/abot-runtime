@@ -4,6 +4,7 @@ import type { LocalRuntimeOwnerActivity } from "./owner-activity.js";
 import type { RuntimeMaintenanceService, RuntimeSessionsResetResult } from "./maintenance-contracts.js";
 import { isSparkSession, SPARK_SESSION_ID } from "../../sessions/spark-session.js";
 import { processDebugLogger } from "../observability/debug-logger.js";
+import { assertCanResetAgentSessions } from "../agents/session-association.js";
 import { assertRuntimeMaintenanceScope } from "./maintenance-scope.js";
 
 export function isLocalMaintenanceMethod(method: string): boolean {
@@ -33,6 +34,7 @@ export function createLocalRuntimeMaintenance(options: {
   async function resetSessions(): Promise<RuntimeSessionsResetResult> {
     return runMaintenance(async () => {
       await verifyScope(services.config, "sessions");
+      await assertCanResetAgentSessions(services.config.paths.runtimeDir);
       const sessions = await services.sessions.getAllSessions();
       const waiting = await services.sessions.requestLifecycle?.listWaiting();
       if (waiting?.length) throw new Error("runtime_maintenance_pending_approvals");

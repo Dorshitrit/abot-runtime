@@ -1,4 +1,4 @@
-import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { workerFusedReply } from "./worker-evidence-script.js";
 import { semanticCompactionDigestSlots } from "./semantic-compaction-model-fixture.js";
 import { vi } from "vitest";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
@@ -156,10 +156,10 @@ export function supervisionStagedFixture(
         });
       return decision({ action: "return_result", result: STAGED_FACT });
     }
-    if (step === "worker.evidence") return workerEvidenceReply(input, workerTurns < 3, STAGED_FACT);
     if (step === "worker.decision") {
+      if (workerTurns === 3) return workerFusedReply(input, { action: "return_result" }, STAGED_FACT);
       workerTurns += 1;
-      return decision({
+      return workerFusedReply(input, {
           action: "invoke_capability",
           capabilityId: descriptor.capabilityId,
           intent: "Inspect the canonical target.",

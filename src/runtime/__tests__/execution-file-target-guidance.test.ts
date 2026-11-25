@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type WebSocket from "ws";
+import { filePayloadOutput } from "./support/execution-file-output-fixture.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -27,7 +28,7 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 test.each(["LUNA/index.html", "LUNA/README"])(
-  "projects the registered file summary once and writes %s directly through RAW",
+  "projects the registered file summary to EA and writes %s directly through RAW",
   async (path) => {
     const fixture = await filesystemScopeFixture("execution-agent-v1", 32_000, ["filesystem-ea.create_text"]);
     try {
@@ -53,7 +54,7 @@ test.each(["LUNA/index.html", "LUNA/README"])(
               workingDirectory: null,
             }),
           },
-          { step: "execution.file_payload.raw", output: body },
+          { step: "execution.file_payload.raw", output: (input) => filePayloadOutput(input.messages, body) },
           {
             step: "execution.decision",
             output: decision({ action: "respond" }),
@@ -126,6 +127,10 @@ test.each(["LUNA/index.html", "LUNA/README"])(
       const source = capsules(raw, "execution_file_source_v1");
       expect(source).toEqual([expect.objectContaining({ path, mode: "create" })]);
       expect(source[0]).not.toHaveProperty("sourceText");
+      expect(source[0]).not.toHaveProperty("selectedRangeContentVersion");
+      expect(source[0]).not.toHaveProperty("coverage");
+      // A mutation-only scope has no auxiliary observation catalog for RAW.
+      expect(capsules(raw, "execution_file_tools_v1")).toEqual([]);
       expect(occurrences(messages(raw), summary)).toBe(0);
       expect(
         await readFile(join(fixture.config.paths.agentWorkDir, path), "utf8"),

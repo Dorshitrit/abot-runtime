@@ -1,3 +1,5 @@
+import type { SocketConnectionPreview, SocketConnectionStatus, SocketConnectionChange, SocketConnectionImport } from "../../../runtime/socket-connection/contracts.js";
+import type { AgentRequests } from "./runtime-web-client/agents.js";
 import type { RuntimeMaintenanceClient } from "./runtime-web-client/runtime-maintenance.js";
 import type { ChatgptAccountRequests } from "./runtime-web-client/chatgpt-accounts.js";
 import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-embedding-connection-input.js";
@@ -92,7 +94,7 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
   onMemoryDeleted?: (environmentId: string, id: string) => Promise<unknown> | void;
-}): SparkHomeRequests & {
+}): SparkHomeRequests & AgentRequests & {
   supportsSparkChat: SparkChatRequests["supportsSparkChat"];
   loadSparkChat: SparkChatRequests["loadSparkChat"];
   configureSparkChat: SparkChatRequests["configureSparkChat"];
@@ -107,6 +109,9 @@ export declare function createRuntimeWebClient(options: {
   listToolApprovals: ToolApprovalRequests["listToolApprovals"];
   decideToolApproval: ToolApprovalRequests["decideToolApproval"];
   supportsSystemHostConnection(): boolean;
+  getSocketConnection(environmentId: string): Promise<{ connection: SocketConnectionStatus }>;
+  previewSocketConnection(bundle: unknown, environmentId: string): Promise<{ preview: SocketConnectionPreview }>;
+  changeSocketConnection(action: "connect" | "pause" | "resume" | "forget", input: SocketConnectionImport | SocketConnectionChange, environmentId: string): Promise<{ connection: SocketConnectionStatus }>;
   getSystemHostConnection(): Promise<Record<string, unknown>>;
   acceptSystemHostCollectionConsent(): Promise<Record<string, unknown>>;
   requestSystemHostPermissions(input: Record<string, unknown>): Promise<Record<string, unknown>>;

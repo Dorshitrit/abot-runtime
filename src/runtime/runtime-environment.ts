@@ -3,6 +3,7 @@ import { createInformationBasketService } from "./information-basket/service.js"
 import { canManageKnowledgeSkills } from "./knowledge-skills/personal-contracts.js";
 import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-store.js";
 import { createRuntimeProjectService } from "./projects/service.js";
+import { createRuntimeAgentServices } from "./agents/runtime-service.js";
 import { traceDebug } from "./observability/debug-logger.js";
 import { createRuntimePassiveLearning } from "./adapters/passive-learning-runtime.js";
 import { createSparkHomeRuntime } from "./spark-home/runtime.js";
@@ -288,6 +289,7 @@ export function createRuntimeEnvironment(
     config,
     sessions: sessionLifecycle.store,
     projects: createRuntimeProjectService(config, sessionLifecycle.store),
+    ...createRuntimeAgentServices(config),
     attachments,
     tools,
     knowledgeSkillStore,

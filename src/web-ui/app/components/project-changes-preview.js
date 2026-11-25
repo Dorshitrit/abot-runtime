@@ -99,9 +99,9 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
     const restoreComposerFocus = open && state.restoreFocus && panel.contains(documentRoot.activeElement);
     panel.hidden = !state.open;
     host.classList.toggle("has-project-changes-preview", state.open);
+    host.classList.toggle("has-file-preview", state.open || host.classList.contains("has-conversation-file-preview"));
     if (!state.open) {
       resizing.sync();
-      if (open) host.classList.remove("has-file-preview");
       open = false;
       focus.hide(state.restoreFocus);
       if (restoreComposerFocus) host.querySelector("#composerInput")?.focus({ preventScroll: true });
@@ -111,7 +111,6 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
       return;
     }
     open = true;
-    host.classList.add("has-file-preview");
     resizing.sync();
     focus.show(state.opener, { focusOnOpen: false });
     refresh.disabled = state.loading;
@@ -121,11 +120,15 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
       ? "Read only · Limited file list · Submodule contents excluded" : "Read only · Submodule contents excluded";
     if (state.changes?.base === "empty") subtitle.textContent += " · Initial repository";
     if (state.changes?.base === "head") subtitle.textContent += " · Compared with HEAD";
-    notice.textContent = state.loading ? "Checking current project changes…" : state.error;
-    if (state.changes?.status === "available") {
+    if (state.loading) {
+      notice.textContent = state.changes ? "Refreshing project changes… Showing previous data." : "Checking current project changes…";
+    } else if (state.error) {
+      notice.textContent = state.error;
+    } else if (state.changes?.status === "available") {
       notice.textContent = state.changes.totalFiles ? projectChangesCountLabel(state.changes) : "No current changes.";
+    } else {
+      notice.textContent = state.changes?.message || "Project changes are unavailable.";
     }
-    if (state.changes && state.changes.status !== "available") notice.textContent = state.changes.message || "Project changes are unavailable.";
     renderFileList(state);
     renderDiff(state);
   }

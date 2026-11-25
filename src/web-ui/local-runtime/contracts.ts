@@ -5,6 +5,8 @@ import type {
 } from "../runtime-setup-gateway.js";
 import type { WebUiEnvironmentConfig } from "../environment-config.js";
 import type { RuntimeSetupActivation } from "./runtime-setup-input.js";
+import type { RuntimeBridgeConnection } from "../../bridge/runtime-connection.js";
+import type { RuntimeConfig } from "../../runtime/ports.js";
 import type { LocalRuntimeApplication } from "../../runtime/local-application.js";
 import type { RequestSteeringInbox } from "../../runtime/request/request-steering.js";
 import type { ModelProviderAdapterRegistry } from "../../model-gateway/index.js";
@@ -13,9 +15,11 @@ export type JsonObject = Record<string, unknown>;
 
 export type LocalRuntimeBackendOptions = {
   chatGptAuthRoutes?: ChatGptAuthRoutes;
+  allowPublishedLoopback?: boolean;
   rootDir?: string;
   configPath?: string;
   defaultEnvironmentId: string;
+  runtimeBridge?: (config: RuntimeConfig, targetRuntimeId: string) => RuntimeBridgeConnection | undefined;
   resolveEnvironmentConfig?: (configPath?: string) => WebUiEnvironmentConfig;
   providerAdapters?: ModelProviderAdapterRegistry;
   captureRuntimeSetupConfiguration?: (configPath?: string) => string | null;

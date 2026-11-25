@@ -84,7 +84,6 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     fixture.invoke.mockImplementation(async (input) => {
       phases.push(input.modelStep!);
       const returnsEvidence =
-        input.modelStep === "worker.result" ||
         input.modelStep === "execution.response" ||
         input.modelStep === "supervisor.response";
       if (returnsEvidence) {
@@ -193,7 +192,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const resumedStep =
       policy === "execution-agent-v1"
         ? "execution.decision"
-        : "worker.evidence";
+        : "worker.decision";
     const resumed = modelCalls
       .filter((call) => call.modelStep === resumedStep)
       .at(-1)!;

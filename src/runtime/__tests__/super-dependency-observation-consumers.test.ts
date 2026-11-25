@@ -23,16 +23,16 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("selected canonical observations reach Worker evidence, decision, controls and RAW, but not the target-only selector", async () => {
+test("selected canonical observations reach fused Worker, controls and RAW, but not the target-only selector", async () => {
   const state = await dependencyObservationFixture();
   const consumer = await createDependencyObservationConsumer(root, state);
   expect(await consumer.run()).toMatchObject({ kind: "continue" });
   expect(consumer.execute).toHaveBeenCalledTimes(1);
   const inputs = consumer.invoke.mock.calls.map(([input]) => input);
   expect(inputs.map(input => input.modelStep)).toEqual([
-    "worker.evidence", "worker.decision", "capability.controls", "tool_payload.raw", "tool_payload.raw",
+    "worker.decision", "capability.controls", "tool_payload.raw", "tool_payload.raw",
   ]);
-  for (const index of [0, 1, 2, 4]) {
+  for (const index of [0, 1, 3]) {
     const input = inputs[index]!;
     const observations = observationValues(input);
     expect(observations.map(result => result.executionId)).toEqual([state.firstExecutionId, state.nestedExecutionId]);
@@ -42,14 +42,14 @@ test("selected canonical observations reach Worker evidence, decision, controls 
     for (const marker of ["SELECTED_TRANSITIVE_TOOL_ONLY", "NESTED_SELECTED_TOOL_ONLY"])
       expect(messageText(input).split(marker)).toHaveLength(2);
   }
-  const selector = inputs[3]!;
+  const selector = inputs[2]!;
   expect(selector.format).toBeDefined();
   expect(observationValues(selector)).toEqual([]);
   expect(messageText(selector)).not.toContain("SELECTED_TRANSITIVE_TOOL_ONLY");
   expect(messageText(selector)).not.toContain("NESTED_SELECTED_TOOL_ONLY");
   expect(messageText(selector)).toContain("selected current target");
   for (const input of inputs) expect(messageText(input)).not.toContain(UNSELECTED_SOURCE);
-  const raw = inputs[4]!;
+  const raw = inputs[3]!;
   expect(raw.format).toBeUndefined();
   const target = (raw.messages as ChatMessage[]).filter(message =>
     message.content.startsWith('{"kind":"runtime_payload_target_content_v1"'));
@@ -73,14 +73,14 @@ test("valid producer checkpoints replace selected raw observations in every cons
   const consumer = await createDependencyObservationConsumer(root, state, store);
   expect(await consumer.run()).toMatchObject({ kind: "continue" });
   const inputs = consumer.invoke.mock.calls.map(([input]) => input);
-  expect(inputs).toHaveLength(5);
+  expect(inputs).toHaveLength(4);
   for (const input of inputs) {
     expect(observationValues(input)).toEqual([]);
     expect(messageText(input)).not.toContain("SELECTED_TRANSITIVE_TOOL_ONLY");
     expect(messageText(input)).not.toContain("NESTED_SELECTED_TOOL_ONLY");
     expect(messageText(input)).not.toContain(UNSELECTED_SOURCE);
   }
-  for (const index of [0, 1, 2, 4]) for (const checkpoint of checkpoints) {
+  for (const index of [0, 1, 3]) for (const checkpoint of checkpoints) {
     for (const digest of checkpoint.sourceDigests) {
       expect(messageText(inputs[index]!).split(digest.digest)).toHaveLength(2);
     }
@@ -98,7 +98,7 @@ test("summary-only dependency consumers remain independent of observation enrich
   bypass.mockRestore();
   const actual = await createDependencyObservationConsumer(root, await dependencyObservationFixture(options));
   await actual.run();
-  expect(actual.invoke).toHaveBeenCalledTimes(5);
+  expect(actual.invoke).toHaveBeenCalledTimes(4);
   expect(JSON.stringify(actual.invoke.mock.calls.map(([input]) => input)))
     .toBe(JSON.stringify(baseline.invoke.mock.calls.map(([input]) => input)));
 });

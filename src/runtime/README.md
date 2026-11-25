@@ -50,6 +50,16 @@ The production path is:
    Both decisions bind to the current steering version. Once a child has been
    invoked, returned work and further memory recalls retain the existing
    evidence-aware routing, including completion and Reviewer decisions.
+   After a child return, compatible Supervisor decision/response model bindings
+   combine optional conversation-memory candidate authoring with the routing
+   decision. Only `respond` carries candidates; the final answer stays in its
+   separate RAW step. The full memory-authoring reference binds candidate targets
+   and evidence to that activation's steering version. Response methodology is
+   scoped to memory authoring in the combined call and remains unchanged in RAW.
+   Invalid optional candidates become an empty result without retrying routing;
+   superseded candidates are discarded. Different model/calibration bindings or
+   context pressure retain separate authoring. Candidates stay ephemeral until
+   the existing response persistence and background-memory finalization path.
 4. The role-executor registry mechanically opens the selected child, runs it,
    commits its result, and returns that result to the exact caller. A
    Supervisor or Planner that directly invokes a Worker may narrow that child
@@ -362,6 +372,17 @@ decision and author content once, with no location model or hidden repair.
 An exact edit uses file text already collected in canonical evidence, including
 multiple observed windows; preparing an edit never adds the whole file to model
 context. An explicitly selected revision-bound range supplies only that range.
+The file author may request auxiliary capabilities only when their declared
+effect is `observation`, within the already accepted capability scope and normal
+permissions. The same policy gates its offered catalog, parsed selection and
+saved handoff. After an observation settles, the accepted write resumes with
+that result. A required prerequisite mutation returns to EA through the existing
+decline path; the author cannot delegate another mutation or mixed-effect tool.
+An empty observation catalog still permits ordinary RAW writing or declining.
+Incompatible saved handoffs are rejected with their settled evidence retained.
+An active legacy approval chain that violates this policy is rejected before
+restoration or execution; the saved wait remains available for cancellation and
+the request must be submitted again, without migrating or replaying its effects.
 The file author preserves its accepted assignment while
 using the existing canonical result carrier, verified source digests, history
 reference memory and per-preparation compaction controller for passive evidence.
@@ -635,6 +656,10 @@ Dependency-observation scanning and checkpoint projection belong to
 sidecar. Without that binding, the controller uses the ordinary source scanner
 and checkpoint projector directly; Worker-shaped user JSON remains user data in
 EA, including during checkpoint restoration.
+Selected dependency summaries also have canonical compaction identities. A covered
+summary is projected as a checkpoint reference while its result identity and
+receipt remain exact; the stored role result is unchanged. Source restoration
+validates the original result bytes and the consuming Worker's selected dependency.
 
 Every tool and skill binding is declared once by a package under root
 `plugins/`. Runtime config applies `plugins.enabled`, `plugins.allow`,

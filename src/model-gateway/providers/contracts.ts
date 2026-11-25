@@ -9,6 +9,7 @@ import type {
 import type { ProviderContextOverflow } from "../protocol/provider-context-overflow.js";
 import type { ProviderUserErrorPresentation } from "../protocol/provider-user-error.js";
 import type { ProviderParameterCapabilities } from "./parameter-capabilities.js";
+import type { ModelIssueDiagnostic } from "../protocol/model-issue.js";
 
 export type ModelProviderEventSink = Readonly<{
   emit(event: ModelGatewayEvent): void;
@@ -89,6 +90,7 @@ export type ModelProviderEmbeddingModelCatalogResult =
   | (Omit<ModelProviderEmbeddingModelCatalog, "supported"> & Readonly<{ kind: "listed" }>);
 
 export type ModelProviderInvocationParams = Readonly<{
+  onIssue?: (issue: ModelIssueDiagnostic) => void;
   endpoint: "chat" | "raw";
   requestBody: ModelGatewayRequest;
   invocation: ResolvedModelInvocation;
@@ -99,6 +101,7 @@ export type ModelProviderInvocationParams = Readonly<{
 }>;
 
 export type ModelProviderInputTokenCountParams = Readonly<{
+  onIssue?: (issue: ModelIssueDiagnostic) => void;
   endpoint: "chat" | "raw";
   requestBody: ModelGatewayRequest;
   invocation: ResolvedModelInvocation;

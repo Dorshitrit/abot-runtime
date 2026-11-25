@@ -6,6 +6,7 @@ export interface WorkspaceRoute {
   category: string;
   tab: string;
   job: string;
+  agent?: string;
   automation: string;
   run: string;
   pluginSource?: string;

@@ -31,6 +31,7 @@ export function createGuideHarness(
 ) {
   const listeners = new Map<string, (event: any) => void>();
   const action = { focus: vi.fn() };
+  const submitAction = { focus: vi.fn(), textContent: "" };
   const title = { focus: vi.fn() };
   const fields = Object.fromEntries(
     [
@@ -38,6 +39,7 @@ export function createGuideHarness(
       "model-id",
       "context-window",
       "prompt-cache",
+      "reasoning-summary",
       "ollama-base-url",
       "api-key",
       "embedding-provider",
@@ -132,6 +134,7 @@ export function createGuideHarness(
     }),
     querySelector: vi.fn((selector: string) => {
       if (selector === '[data-runtime-setup-action="check"]') return action;
+      if (selector === '.runtime-setup-action[type="submit"]') return submitAction;
       if (selector === "[data-runtime-setup-title]") return title;
       if (selector === "#runtimeSetupError-context-window")
         return {
@@ -194,6 +197,7 @@ export function createGuideHarness(
 
   return {
     action,
+    submitAction,
     title,
     container,
     conversationRegion,
@@ -218,6 +222,8 @@ export function createGuideHarness(
     },
     inputModel: (value: string) =>
       dispatch("input", { runtimeSetupField: "model-id" }, value),
+    inputReasoningSummary: (value: string) =>
+      dispatch("input", { runtimeSetupField: "reasoning-summary" }, value),
     inputContextWindow: (value: string) =>
       dispatch("input", { runtimeSetupField: "context-window" }, value),
     inputBaseUrl: (value: string) =>

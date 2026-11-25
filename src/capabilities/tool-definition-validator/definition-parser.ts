@@ -1,4 +1,5 @@
 import { parseRequiredToolPermissionMode } from "../tool-permission-mode.js";
+import { isToolControlsRefinement } from "../controls-refinement.js";
 import { parseRequestExecutionPolicies } from "../../shared/request-execution-policy.js";
 import { parseRequestBindingRequirement } from "../tool-request-discovery.js";
 import type { ToolDefinition } from "../tool-types.js";
@@ -51,7 +52,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
   }
   if (
     controlsRefinement !== undefined &&
-    controlsRefinement !== "mechanical_when_complete"
+    !isToolControlsRefinement(controlsRefinement)
   ) {
     throw new Error(`Invalid tool definition for ${name} (controlsRefinement)`);
   }
@@ -99,7 +100,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
     ),
     ...(typeof description === "string" ? { description } : {}),
     routingCapability,
-    ...(controlsRefinement === "mechanical_when_complete"
+    ...(controlsRefinement !== undefined
       ? { controlsRefinement }
       : {}),
     catalogGroups: parseToolCatalogGroups(name, catalogGroups),

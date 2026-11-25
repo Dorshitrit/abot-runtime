@@ -19,6 +19,7 @@ export class SetupEmbeddingRoutes {
   constructor(
     private readonly service: EmbeddingConnectionService,
     private readonly route = "runtime/setup/embedding",
+    private readonly resolveInput: (body: Record<string, unknown>) => Record<string, unknown> = body => body,
   ) {}
 
   async handle(params: {
@@ -45,7 +46,7 @@ export class SetupEmbeddingRoutes {
         request: params.request,
         response: params.response,
         reason: "embedding_setup_aborted",
-        run: (signal) => this.service.enable(body, signal),
+        run: (signal) => this.service.enable(this.resolveInput(body), signal),
       });
       sendJson(params.response, 200, { ok: true, ...result });
     } catch (error) {

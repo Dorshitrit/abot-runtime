@@ -39,19 +39,26 @@ export const RUNTIME_TOOL_PATH_ERROR_CODES = Object.freeze({
 /** A stable machine-readable path-policy failure with a compatible message. */
 export class RuntimeToolPathError extends TypeError {
   readonly code: RuntimeToolPathErrorCode;
+  readonly filesystemFailure?: "access_denied";
 
-  constructor(code: RuntimeToolPathErrorCode, message: string = code) {
+  constructor(
+    code: RuntimeToolPathErrorCode,
+    message: string = code,
+    filesystemFailure?: "access_denied",
+  ) {
     super(message);
     this.name = "RuntimeToolPathError";
     this.code = code;
+    if (filesystemFailure !== undefined) this.filesystemFailure = filesystemFailure;
   }
 }
 
 function throwRuntimeToolPathError(
   code: RuntimeToolPathErrorCode,
   message: string = code,
+  filesystemFailure?: "access_denied",
 ): never {
-  throw new RuntimeToolPathError(code, message);
+  throw new RuntimeToolPathError(code, message, filesystemFailure);
 }
 
 function configuredRoot(value: string | undefined): string | undefined {
@@ -172,19 +179,23 @@ function resolveThroughExistingAncestor(target: string): string {
   while (true) {
     try {
       return resolve(realpathSync(cursor), ...missingSuffix);
-    } catch {
+    } catch (canonicalizationError: unknown) {
       try {
         lstatSync(cursor);
       } catch (error: unknown) {
         if (!isMissingPathError(error)) {
           throwRuntimeToolPathError(
             RUNTIME_TOOL_PATH_ERROR_CODES.CANONICALIZATION_FAILED,
+            undefined,
+            filesystemAccessFailure(error) ?? filesystemAccessFailure(canonicalizationError),
           );
         }
         const parent = dirname(cursor);
         if (parent === cursor) {
           throwRuntimeToolPathError(
             RUNTIME_TOOL_PATH_ERROR_CODES.CANONICALIZATION_FAILED,
+            undefined,
+            filesystemAccessFailure(canonicalizationError),
           );
         }
         missingSuffix.unshift(basename(cursor));
@@ -193,9 +204,19 @@ function resolveThroughExistingAncestor(target: string): string {
       }
       // The entry exists but cannot be canonicalized. This includes broken or
       // looping symlinks; never downgrade those cases to lexical containment.
-      throwRuntimeToolPathError(RUNTIME_TOOL_PATH_ERROR_CODES.SYMLINK_ESCAPE);
+      throwRuntimeToolPathError(
+        RUNTIME_TOOL_PATH_ERROR_CODES.SYMLINK_ESCAPE,
+        undefined,
+        filesystemAccessFailure(canonicalizationError),
+      );
     }
   }
+}
+
+function filesystemAccessFailure(error: unknown): "access_denied" | undefined {
+  if (!(error instanceof Error) || !("code" in error)) return undefined;
+  if (error.code === "EACCES" || error.code === "EPERM") return "access_denied";
+  return undefined;
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -249,6 +270,7 @@ function rethrowLegacyRuntimeTargetPathError(error: unknown): never {
   throw new RuntimeToolPathError(
     error.code,
     legacyMessage[error.code] ?? error.message,
+    error.filesystemFailure,
   );
 }
 

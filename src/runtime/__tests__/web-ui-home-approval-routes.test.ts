@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { SchedulerRun } from "../scheduler/contracts.js";
 import { LocalRequestExecution } from "../../web-ui/local-runtime/request-execution.js";
@@ -8,10 +11,12 @@ import { LocalRuntimeApiRouter } from "../../web-ui/local-runtime/api-router.js"
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
-  for (const close of cleanup.splice(0)) await close();
+  for (const close of cleanup.splice(0).reverse()) await close();
 });
 
 async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), "abot-home-approvals-"));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
   const requests = new LocalRequestExecution(new RealtimeClientHub());
   const router = new LocalRuntimeApiRouter(
     { defaultEnvironmentId: "prod", providerAdapters: {} as never },
@@ -42,7 +47,10 @@ async function fixture() {
             } as never),
           }),
         },
-        services: { sessions: { getRequestReplayById: async () => null } },
+        services: {
+          config: { paths: { runtimeDir: join(root, environmentId) } },
+          sessions: { getRequestReplayById: async () => null },
+        },
       }),
     } as never,
     requests,

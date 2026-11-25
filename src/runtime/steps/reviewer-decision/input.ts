@@ -1,3 +1,4 @@
+import { parseReviewerRoleResultContinuation, reviewerReferenceDataTokenCount } from "./role-result-continuation.js";
 import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import type {
   RequestContextBudget,
@@ -41,7 +42,6 @@ import {
   traceReviewerContextRejected,
 } from "./diagnostics.js";
 import {
-  estimateReferenceDataTokens,
   type ReviewerReferenceDataBudget,
 } from "./final-evidence.js";
 import { createReviewerDecisionInputParts } from "./model-context.js";
@@ -286,29 +286,11 @@ export function normalizeReviewerReviewSnapshot(
   }
   const subjectRefs = new Set(subjects.map(({ subjectRef }) => subjectRef));
   const evidence = parseEvidence(record.evidence, subjectRefs, issues);
-  if (
-    referenceDataBudget &&
-    evidence.reduce(
-      (total, { referenceData }) =>
-        total +
-        (referenceData
-          ? estimateReferenceDataTokens(
-              referenceData,
-              referenceDataBudget.tokenEstimation,
-            )
-          : 0),
-      0,
-    ) > referenceDataBudget.maxTokens
-  ) {
-    issues.push(
-      issue(
-        "reviewer_snapshot_reference_data_total_invalid",
-        "snapshot.evidence",
-      ),
-    );
-  }
   const evidenceRefs = new Set(evidence.map(({ evidenceRef }) => evidenceRef));
   const facts = parseFacts(record.facts, subjectRefs, evidenceRefs, issues);
+  if (referenceDataBudget && reviewerReferenceDataTokenCount(evidence, facts, referenceDataBudget) > referenceDataBudget.maxTokens) {
+    issues.push(issue("reviewer_snapshot_reference_data_total_invalid", "snapshot.evidence"));
+  }
 
   if (
     issues.length > 0 ||
@@ -550,7 +532,8 @@ function parseFacts(
     const path = `snapshot.facts[${index}]`;
     exactKeys(
       record,
-      ["factRef", "kind", "status", "subjectRefs", "evidenceRefs", "summary"],
+      ["factRef", "kind", "status", "subjectRefs", "evidenceRefs", "summary",
+        ...(record.summaryContinuation === undefined ? [] : ["summaryContinuation"])],
       path,
       issues,
     );
@@ -583,6 +566,7 @@ function parseFacts(
       issues,
     );
     const summary = parseSummary(record.summary, `${path}.summary`, issues);
+    const summaryContinuation = parseReviewerRoleResultContinuation(record.summaryContinuation, kind, `${path}.summaryContinuation`, issues);
     if (factRef && kind && status && summary) {
       facts.push({
         factRef,
@@ -591,6 +575,7 @@ function parseFacts(
         subjectRefs: linkedSubjects,
         evidenceRefs: linkedEvidence,
         summary,
+        ...(summaryContinuation === undefined ? {} : { summaryContinuation }),
       });
     }
   }

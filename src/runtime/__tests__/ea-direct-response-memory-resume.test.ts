@@ -84,6 +84,11 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("saved %s app
   const requestId = "saved-memory-request";
   const answer = "The requested action completed. I will keep this answer concise.";
   const content = "The user prefers concise explanations.";
+  const memoryCandidates = [{
+    content, tags: ["style"], target: "k1", score: 90,
+    reason: "The current user directly states this preference.",
+    reinforced: true, explicitRequestQuote: null,
+  }];
   const script = createExecApprovalScript(
     policy,
     [{ capabilityId: "record_approval_effect", controls: {} }],
@@ -92,7 +97,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("saved %s app
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     expect(scheduleCandidates).not.toHaveBeenCalled();
     expect(processor).not.toHaveBeenCalled();
-    const isPreparation = ["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"]
+    const isPreparation = ["supervisor_fused_entry", "supervisor_procedure_gate"]
       .includes(supervisorFormatName(input) ?? "");
     const rootStep = input.modelStep === "execution.decision" || input.modelStep === "execution.response"
       || (input.modelStep === "supervisor.decision" && !isPreparation) || input.modelStep === "supervisor.response";
@@ -107,13 +112,15 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("saved %s app
     if (input.modelStep === "execution.response" || input.modelStep === "supervisor.response")
       return { text: JSON.stringify({
         ...(input.modelStep === "execution.response" ? { finalResponse: answer } : {}),
-        memoryCandidates: [{
-          content, tags: ["style"], target: "k1", score: 90,
-          reason: "The current user directly states this preference.",
-          reinforced: true, explicitRequestQuote: null,
-        }],
+        memoryCandidates,
       }), meta: {} };
-    return script.invoke(input);
+    const response = await script.invoke(input);
+    if (supervisorFormatName(input) === "supervisor_decision_with_memory_candidates") {
+      const envelope = JSON.parse(response.text);
+      expect(envelope.decision.action).toBe("respond");
+      return { ...response, text: JSON.stringify({ decision: { ...envelope.decision, memoryCandidates } }) };
+    }
+    return response;
   });
   const execute = vi.fn(async () =>
     successResult({ output: "The approved fixture action completed." }),

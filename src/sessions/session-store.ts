@@ -1,5 +1,6 @@
 import {
   mkdir,
+  lstat,
   readdir,
   readFile,
   rm,
@@ -10,6 +11,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { SessionRecord } from "./types.js";
+import { assertValidSessionId } from "./record/rules.js";
+import { isMissingSessionFile } from "./metadata/publication.js";
 import { replacePreparedSessionFile } from "./prepared-session-replacement.js";
 import {
   saveDurableSessionFile,
@@ -84,6 +87,23 @@ export async function deleteSessionFile(
     }
     throw error;
   }
+}
+
+/** Called under the session mutation queue after a confirmed transcript deletion. */
+export async function purgeDeletedSessionSidecars(sessionsDir: string, sessionId: string): Promise<void> {
+  assertValidSessionId(sessionId);
+  if (sessionId === ".") throw new Error("invalid sessionId");
+  const entry = (path: string) => lstat(path).catch((error: unknown) => {
+    if (isMissingSessionFile(error)) return null;
+    throw error;
+  });
+  if (await entry(getSessionFilePath(sessionsDir, sessionId))) throw new Error("session_still_exists");
+  for (const name of [".metadata", ".request-continuations"]) {
+    const directory = await entry(join(sessionsDir, name));
+    if (directory && !directory.isDirectory()) throw new Error("invalid_session_sidecar_directory");
+  }
+  await deleteSessionMetadata(sessionsDir, sessionId, true);
+  await cleanupSessionContinuations(sessionsDir, sessionId, true);
 }
 
 export async function loadAllSessionFiles(

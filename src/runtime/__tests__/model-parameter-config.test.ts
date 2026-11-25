@@ -169,6 +169,7 @@ describe("parameter catalog request continuity", () => {
     });
     const runnerConfig = {
       models: { defaults: { profileId: "custom", steps: {} } },
+      context: { outputReserveTokens: 1024, safetyReserveTokens: 256, attachmentReserveTokens: 128 },
     } as Parameters<typeof createRequestModelPolicy>[0]["runnerConfig"];
     const requestPolicy = createRequestModelPolicy({
       platformPolicy: built.modelPolicy,

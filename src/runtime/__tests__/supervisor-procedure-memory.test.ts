@@ -1,4 +1,3 @@
-import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ChatTextMessage } from "../../model-gateway/types.js";
 import { projectLongTermMemoryMessage } from "../long-term-memory/projection.js";
@@ -7,7 +6,6 @@ import { runRequestRunner } from "../request/runner.js";
 import { buildSupervisorProcedureGateInput } from "../steps/supervisor-decision/procedure-gate.js";
 import { projectSupervisorProcedureMemory } from "../steps/supervisor-decision/procedure-memory.js";
 import { createMemoryRecallHarness, FINAL_RESPONSE, MEMORY_RECORD, modelMessages } from "./support/memory-recall-runner.js";
-import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
@@ -116,21 +114,22 @@ test("disabled or oversized memory leaves the complete gate input unchanged", ()
   }
 });
 
-test("a memory-informed false gate goes straight to response with the original full capsule", async () => {
+test("a memory-informed fused entry preserves the full capsule for memory authoring and RAW response", async () => {
   const f = createMemoryRecallHarness({
     policy: "supervisor-worker-v1",
     retrieve: async () => ({ available: true, records: [MEMORY_RECORD], message }),
     classifyProcedure(input) {
-      expect(modelMessages(input)).toContainEqual(projectSupervisorProcedureMemory(message)!.message);
-      expect(modelMessages(input)).not.toContainEqual(message);
-      return responseDecision;
+      expect(input.format).toMatchObject({ name: "supervisor_fused_entry_with_memory_candidates" });
+      expect(modelMessages(input)).toContainEqual(message);
+      expect(modelMessages(input)).not.toContainEqual(projectSupervisorProcedureMemory(message)!.message);
+      return { ...responseDecision, memoryCandidates: [] };
     },
     decide: () => { throw new Error("Unexpected child or delegation"); },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(f.memory.retrieve).toHaveBeenCalledOnce();
   const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
-  expect(calls.some(input => input.modelStep === "worker.evidence")).toBe(false);
+  expect(calls.some(input => input.modelStep === "worker.decision")).toBe(false);
   const response = calls.find(input => input.modelStep === "supervisor.response")!;
   expect(modelMessages(response)).toContainEqual(message);
   expect(modelMessages(response)).not.toContainEqual(projectSupervisorProcedureMemory(message)!.message);
@@ -147,16 +146,15 @@ test("memory does not override a true gate or alter delegation and Worker contex
       return { action: "invoke_role", roleId: "worker", objective: "Observe the requested current state." };
     },
     decide(input) {
-      if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.evidence") {
+      if (input.modelStep === "worker.decision") {
         expect(JSON.stringify(input.messages)).not.toContain(fact);
-        return workerEvidenceDecision(input, false);
+        return { assessment: { requiresExecution: false, established: "", remaining: "", evidenceRefs: [] }, selection: { action: "return_result" } };
       }
       if (input.modelStep === "worker.result") return "The assigned observation could not be performed.";
       return { action: "respond" };
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(true);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(true);
   expect(f.memory.retrieve).toHaveBeenCalledOnce();
 });

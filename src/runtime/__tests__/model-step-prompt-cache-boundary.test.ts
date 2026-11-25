@@ -77,7 +77,7 @@ test("an optional projection that removes the anchor never resurrects or rebinds
   expect(dispatched).not.toHaveProperty("promptCacheBoundaryBeforeMessageIndex");
 });
 
-test("structured output repairs retain the same anchor after insertion of opening guidance", async () => {
+test("structured output repairs retain the same prefix and anchor before appended guidance", async () => {
   const f = await createControlsEvidenceFixture({ modelPolicy: executionPrefixCachePolicy });
   let attempts = 0;
   await invokeStructuredModelStep({ request: f.request, modelStep: "execution.decision",
@@ -89,9 +89,9 @@ test("structured output repairs retain the same anchor after insertion of openin
       : { ok: true, decision: "accepted" },
   });
   expect(f.invoke).toHaveBeenCalledTimes(2);
-  expect(f.invoke.mock.calls.map(([input]) => input.promptCacheBoundaryBeforeMessageIndex)).toEqual([1, 2]);
+  expect(f.invoke.mock.calls.map(([input]) => input.promptCacheBoundaryBeforeMessageIndex)).toEqual([1, 1]);
   const repaired = f.invoke.mock.calls[1]![0].messages as ChatMessage[];
-  expect(repaired[2]).toBe(activation);
+  expect(repaired[1]).toBe(activation);
   expect(f.countInputTokens.mock.calls[1]![0].messages).toEqual(repaired);
   expect(repaired.length).toBeGreaterThan(2);
 });

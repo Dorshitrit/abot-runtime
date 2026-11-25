@@ -5,6 +5,8 @@ export function findAppDom(documentRoot = document) {
     homeWorkspaceButton: documentRoot.getElementById("homeWorkspaceButton"),
     homeWorkspacePanel: documentRoot.getElementById("homeWorkspacePanel"),
     homeDashboardRoot: documentRoot.getElementById("homeDashboardRoot"),
+    agentsWorkspaceButton: documentRoot.getElementById("agentsWorkspaceButton"),
+    agentsWorkspacePanel: documentRoot.getElementById("agentsWorkspacePanel"),
     chatWorkspaceButton: documentRoot.getElementById("chatWorkspaceButton"),
     automationsWorkspaceButton: documentRoot.getElementById("automationsWorkspaceButton"),
     automationsWorkspacePanel: documentRoot.getElementById("automationsWorkspacePanel"),

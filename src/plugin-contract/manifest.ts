@@ -1,5 +1,6 @@
 import type {
   ToolCatalogGroup,
+  ToolControlsRefinement,
   ToolDevelopmentRole,
   ToolEventPresentation,
   ToolNormalInvocationApproval,
@@ -39,7 +40,7 @@ export type AgentPluginCapabilityManifest = Readonly<{
   requiredPermissionMode?: import("../capabilities/tool-permission-mode.js").ToolRequiredPermissionMode;
   description: string;
   routingCapability: ToolRoutingCapability;
-  controlsRefinement?: "mechanical_when_complete";
+  controlsRefinement?: ToolControlsRefinement;
   catalogGroups?: readonly ToolCatalogGroup[];
   skills: readonly string[];
   developmentRoles?: readonly ToolDevelopmentRole[];

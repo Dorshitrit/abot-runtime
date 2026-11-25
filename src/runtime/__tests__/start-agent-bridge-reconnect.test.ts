@@ -105,6 +105,22 @@ describe("agent bridge registration backoff", () => {
     });
   });
 
+  test("registers an imported case-sensitive ID and classifies rejected registration before admission", async () => {
+    const url = await listen();
+    const registrations: string[] = [];
+    server!.on("connection", peer => peer.once("message", raw => {
+      const id = JSON.parse(raw.toString()).agentId;
+      registrations.push(id);
+      peer.send(JSON.stringify({ type: "registered", ok: true, agentId: registrations.length === 1 ? id.toLowerCase() : id }));
+    }));
+    bridge = startAgentBridge({ url, token: "fixture", runtimeId: "prod", registrationRuntimeId: "MacStudio",
+      requestHandler: { handle: vi.fn(async () => {}) }, reconnectBaseMs: 200, reconnectMaxMs: 200, reconnectJitterRatio: 0 });
+    await vi.waitFor(() => expect(bridge!.getStatus()).toMatchObject({ registered: false, connectionError: "socket_connection_rejected" }));
+    await vi.waitFor(() => expect(bridge!.getStatus().registered).toBe(true));
+    expect(bridge.getStatus().connectionError).toBeUndefined();
+    expect(registrations).toEqual(["MacStudio", "MacStudio"]);
+  });
+
   test("stopping during backoff cancels the pending connection attempt", async () => {
     const url = await listen();
     let connections = 0;

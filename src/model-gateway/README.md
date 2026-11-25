@@ -135,7 +135,7 @@ The OpenAI adapter may fall back to the provider default after an explicit
 unsupported-effort rejection, as described below. Generic controls under
 `generation.parameters` support explicit omission, inheritance and values;
 `max_output_tokens` is an optional total output cap. Missing generic controls
-preserve the legacy defaults described here. Ollama maps
+use the provider defaults described here. Ollama maps
 `temperature` and `topP` to `options`. By default, it supplies a finite
 `num_predict` from the physical context remaining after estimating the final
 projected provider input. No model step or reasoning mode adds an automatic
@@ -184,13 +184,22 @@ Known profiles that cannot disable thinking suppress `none` and zero thinking
 budgets with a warning, including request and repair overrides. Stored preferences
 are preserved. New Off controls require a profile that declares this capability;
 legacy settings without a matching profile keep their previous behavior.
-OpenAI's `max_output_tokens` counts both reasoning and visible output. The
-gateway omits this parameter unless a generic value is configured, including
-with explicit `reasoning.effort=none`. LOW (wire value `fast`), REASONING and DEEP
-select reasoning effort without adding a separate output cap. The provider enforces
-output capacity; the input context guard and configured sampling controls retain their existing
-semantics. This policy does not discover model capabilities or assume support
-for a particular effort level. If the OpenAI Responses API rejects the request
+OpenAI's `max_output_tokens` counts both reasoning and visible output. Its computed
+default is the smaller of the declared model output ceiling and the context remaining
+after the complete projected input and runner safety reserve. The adapter reuses a
+matching input-token measurement; otherwise it estimates the envelope without an
+extra provider request. Provider capability data declares ceilings by exact model ID:
+[`gpt-6-luna` supports 128,000 output tokens](https://developers.openai.com/api/docs/models/gpt-6-luna).
+A matching parameter profile's `constraints.max_output_tokens.max` can supply or
+narrow the ceiling. Explicit values, explicit omission and inherited recommendations
+retain their existing precedence and validation. A computed cap that conflicts with
+preserved controls is omitted. Models without a declared ceiling retain the existing
+omission and provider behavior. Older policies without `outputSafetyReserveTokens`
+use a zero safety reserve. LOW (wire value `fast`), REASONING and DEEP select reasoning
+effort without adding a mode-specific output cap. The input context guard and
+configured sampling controls retain their existing semantics. This policy does not
+discover model capabilities or assume support for a particular effort level.
+If the OpenAI Responses API rejects the request
 with HTTP 400, `type: invalid_request_error`, `param: reasoning.effort`, and
 `code: unsupported_value` or `unsupported_parameter`, the adapter retries once
 without the effort override. The provider selects its own default; no model names
@@ -203,6 +212,43 @@ transport and other providers retain their existing behavior.
 The `reasoning.provider_default` diagnostic records the requested effort and
 agent mode without prompt content. Fallback does not rewrite the user's saved
 preference or create an inferred model-capability cache.
+
+OpenAI API profiles can request provider reasoning summaries with an explicit
+profile option.
+
+In the Web UI, open **Models**, select the OpenAI API profile, and choose
+**Reasoning summary** under **Model defaults**: **Off**, **Auto**, **Concise**
+or **Detailed**. Click **Save**, then **Apply & restart** while the Runtime is idle.
+The same per-model choice is available in **Add model** and the initial setup
+connection form. New models start with **Off**; the setup review shows the choice
+before saving it with the model configuration.
+Off saves `null` without changing reasoning effort or unrelated model options.
+The setting remains saved when another provider is selected, but is only displayed
+and applied for OpenAI API. Setup edits that omit the field preserve its saved value.
+
+The equivalent profile configuration is:
+
+```json
+{
+  "options": { "reasoningSummary": "auto" }
+}
+```
+
+Supported option values are `auto`, `concise` and `detailed`; omission or `null`
+leaves summaries disabled. Other values fail as configuration errors. This is an
+operator declaration that the selected API model supports the requested summary
+mode, independent of `supportsThinking`, which only describes effort controls.
+An effective effort of `none` suppresses the summary without enabling reasoning.
+Without an explicit effort, the option requests a summary while preserving the
+provider's default effort. Input-token counting omits the summary option.
+
+Summary deltas use the existing `thinking` channel, separately from answer text,
+structured decisions and native function arguments. Summary completion does not
+complete the model response or authorize execution. No extra summarization call
+is made, and user-interaction messages keep their existing meaning. The option
+applies only to the `openai` API adapter; ChatGPT sign-in, Ollama and llama.cpp
+retain their existing behavior. Unsupported provider summary modes are returned
+as provider errors; effort compatibility fallback does not infer summary support.
 
 For `capability.controls`, `execution.decision` and `context.compact` requests with an object JSON
 schema, OpenAI receives one forced native function with that schema as its
@@ -295,17 +341,36 @@ analysis without embedding model prices or treating cache writes as ordinary inp
 OpenAI API profiles can opt EA decisions into stable-prefix caching with
 `options.prompt_cache_options: { "mode": "implicit" }`. Enable this only for
 models that support explicit prompt-cache breakpoints (GPT-5.6 and later).
-Without this option, message ordering and provider cache defaults are unchanged.
-For opted-in EA decisions, fixed references and chronological tool evidence
-precede activation-local state; the final provider request places an explicit
-breakpoint immediately before that state while retaining implicit cache lookup.
-The boundary is derived after admission and compaction; if its exact anchor no
-longer exists, the cache hint is omitted. This does not alter context-window
-sizes, token budgets, message roles, stored sources or checkpoints. Changing
-instructions, schemas or compacted evidence can still cause a cache miss;
+With the option disabled, EA uses ordinary message ordering and its original
+live decision schema. With it enabled, invariant instructions and the group
+registry precede history and chronological tool evidence. The runtime selects
+only the instructions applicable to this invocation and includes them as
+trusted system guidance in the suffix, alongside time, memory, selected
+capability catalogs and activation state in their respective roles.
+
+The provider schema follows the opened capability groups and the live offer
+for presentation, working directory, work plans, recall, direct answers and
+audit. A change to one of these offers can change the schema and cache prefix.
+Within an equivalent offer the schema is deterministic. Remaining execution
+counts, eligible evidence IDs and other request-local limits are checked again
+by the runtime before execution. A stable batch schema or a capability in an
+opened group does not authorize using it after the budget is exhausted.
+
+The provider request places an explicit breakpoint before the changing suffix.
+After admission, including compaction, the breakpoint requires the original
+message anchor to survive. Repair guidance follows the existing input when that
+anchor survives and retains its system role. Changes to instructions, schemas,
+model settings or compacted evidence can still cause a cache miss. Provider
 cache reuse and latency improvements are not guaranteed. See the
 [OpenAI prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
 for supported models and cache-write behavior.
+
+Runtime conversation calls carry a deterministic opaque `prompt_cache_key`
+derived from the persisted session identity. It stays stable across requests,
+steps, retries and approval restoration. Sessionless utility calls omit it;
+provider token-count payloads omit it without changing their measurement binding.
+On newer OpenAI models the key separates cache accounting; it does not repair
+an unstable rendered prefix. Other provider payloads receive no OpenAI cache key.
 
 Full provider I/O is written separately to
 `.runtime/shared/logs/model-io.jsonl`. A `provider.request` entry contains the

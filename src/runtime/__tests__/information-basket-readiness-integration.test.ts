@@ -133,8 +133,8 @@ test.each(policies)("%s handler keeps unavailable basket out of model inputs wit
   expect(JSON.stringify(actual.map(({ messages, format }) => ({ messages, format })))).not.toMatch(basketAction);
   expect(actual.some(input => input.modelStep === (policy === "execution-agent-v1" ? "execution.decision" : "worker.decision"))).toBe(true);
   if (policy === "supervisor-worker-v1") {
-    expect(actual.some(input => typeof input.format === "object" && input.format?.name === "supervisor_procedure_gate")).toBe(true);
-    expect(actual.some(input => typeof input.format === "object" && input.format?.name === "supervisor_delegation")).toBe(true);
+    expect(actual.some(input => typeof input.format === "object" && input.format?.name === "supervisor_fused_entry")).toBe(true);
+    expect(actual.some(input => typeof input.format === "object" && input.format?.name === "supervisor_fused_routing")).toBe(true);
   }
   expect(basket.isReady).toHaveBeenCalledTimes(policy === "execution-agent-v1" ? 1 : 0);
   expect(basket.search).not.toHaveBeenCalled();

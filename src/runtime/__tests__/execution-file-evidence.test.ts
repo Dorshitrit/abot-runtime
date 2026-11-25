@@ -34,6 +34,85 @@ test("range edits retain the explicitly supplied source alongside collected cano
   expect(JSON.stringify(projection.resultSourceOverrides)).not.toContain("UNREAD_FILE_CONTENT");
 });
 
+test("current selected source follows conflicting file evidence without losing other documents or changing the assignment", async () => {
+  const f = await filePayloadFixture();
+  const results: Parameters<typeof filePayloadInput>[0] = [
+    {
+      ...fileWindowResult("old-read", "Coverage: complete file\nOLD_COMPLETE_FILE"),
+      adapterResult: {
+        kind: "registered_tool_execution_result_v1", authority: "registered_plugin", status: "executed",
+        result: { ok: true, tool: "read_text", output: "Coverage: complete file\nOLD_COMPLETE_FILE", producedNewInformation: true,
+          data: { path: "selected.txt", complete: true } },
+      },
+    },
+    {
+      ...fileWindowResult("recent-edit", "BOUNDED_CHANGED_WINDOW"), capabilityId: "edit_text",
+      declaredEffect: "mutation", observedEffect: "mutation",
+      adapterResult: {
+        kind: "registered_tool_execution_result_v1", authority: "registered_plugin", status: "executed",
+        result: { ok: true, tool: "edit_text", output: "Updated selected.txt.", producedNewInformation: true,
+          data: { path: "selected.txt", mutationGrounding: "BOUNDED_CHANGED_WINDOW",
+            truncation: { groundingTruncated: false, groundingCoverage: "changed_window" } } },
+      },
+    },
+    {
+      ...fileWindowResult("related-read", "OTHER_DOCUMENT_CONNECTION"),
+      references: [{ kind: "tool_target", target: "other.md" }],
+      adapterResult: {
+        kind: "registered_tool_execution_result_v1", authority: "registered_plugin", status: "executed",
+        result: { ok: true, tool: "read_text", output: "OTHER_DOCUMENT_CONNECTION", producedNewInformation: true,
+          data: { path: "other.md", complete: true } },
+      },
+    },
+    {
+      ...fileWindowResult("skill-read", "APPLICABLE_SKILL_GUIDANCE"), capabilityId: "read_skill",
+      references: [{ kind: "tool_target", target: "technical-work" }],
+      adapterResult: {
+        kind: "registered_tool_execution_result_v1", authority: "registered_plugin", status: "executed",
+        result: { ok: true, tool: "abot_skills", output: "APPLICABLE_SKILL_GUIDANCE", producedNewInformation: true,
+          data: { skillId: "technical-work" } },
+      },
+    },
+  ];
+  const authoringObjective = "Connect this document to other.md. Then update the related document and verify the result.";
+  const input = filePayloadInput(results, { authoringObjective, preparedPayload: {
+    authoringContract: "execution_file_v1", context: { path: "selected.txt", mode: "range",
+      sourceText: "CURRENT_SELECTED_RANGE\r\n" },
+  } });
+  const originalResultBytes = results.map((result) => JSON.stringify(result));
+  const projection = buildFilePayloadInput(f.request, input);
+  const sourceMessages = projection.messages.filter(({ content }) => content.startsWith('{"kind":"execution_file_source_v1"'));
+  expect(sourceMessages).toHaveLength(1);
+  expect(projection.messages.at(-1)).toEqual(sourceMessages[0]);
+  expect(JSON.parse(sourceMessages[0]!.content)).toMatchObject({ path: "selected.txt", mode: "range",
+    sourceState: "current_at_payload_preparation", coverage: "complete_selected_range",
+    sourceText: "CURRENT_SELECTED_RANGE\r\n" });
+  expect(JSON.parse(projection.messages.at(-2)!.content)).toMatchObject({
+    kind: "execution_file_assignment_v1", objective: authoringObjective,
+  });
+  expect(filePayloadEvidence(projection.messages).settledCapabilityResults.map((result: { adapterResult: unknown }) => result.adapterResult))
+    .toEqual(results.map(({ adapterResult }) => adapterResult));
+  expect(projection.resultSourceOverrides.map(({ content }) => content)).toEqual(originalResultBytes);
+  expect(results.map((result) => JSON.stringify(result))).toEqual(originalResultBytes);
+  const text = JSON.stringify(projection.messages);
+  for (const fact of ["OLD_COMPLETE_FILE", "BOUNDED_CHANGED_WINDOW", "OTHER_DOCUMENT_CONNECTION", "APPLICABLE_SKILL_GUIDANCE"]) {
+    expect(text).toContain(fact);
+  }
+});
+
+test.each([
+  ["", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
+  ["\uFEFFשלום\r\n", "c078bd2e4fc5ba0e53ce9cfb7afff3f9584f4e00792a7b5d11972641e2e0e651"],
+])("selected-range content version preserves exact UTF-8 source bytes: %j", async (sourceText, fingerprint) => {
+  const f = await filePayloadFixture();
+  const input = filePayloadInput([], { preparedPayload: { authoringContract: "execution_file_v1",
+    context: { path: "selected.txt", mode: "range", sourceText } } });
+  const projection = buildFilePayloadInput(f.request, input);
+  const source = JSON.parse(filePayloadSource(projection.messages)!.content);
+  expect(source).toMatchObject({ sourceText, sourceState: "current_at_payload_preparation",
+    coverage: "complete_selected_range", selectedRangeContentVersion: `sha256:${fingerprint}` });
+});
+
 test.each([undefined, "UNREAD_FILE_CONTENT"])("legacy exact edit mode cannot reach authoring with source=%s", async (sourceText) => {
   const f = await filePayloadFixture();
   const input = filePayloadInput([], { preparedPayload: { authoringContract: "execution_file_v1",
@@ -60,8 +139,8 @@ test("same-call canonical evidence is projected once, with immutable original fi
   expect(JSON.stringify(projection.messages).split(f.request.prompt)).toHaveLength(2);
   expect(filePayloadSource(projection.messages)?.content).toContain("EXACT_TARGET\\r\\n");
   expect(original.referenceData).toBe("COVERED_BODY");
-  expect(buildFilePayloadInput(f.request, filePayloadInput([other])).messages)
-    .toEqual(buildFilePayloadInput(f.request, filePayloadInput()).messages);
+  expect(filePayloadEvidence(buildFilePayloadInput(f.request, filePayloadInput([other])).messages))
+    .toEqual(filePayloadEvidence(buildFilePayloadInput(f.request, filePayloadInput()).messages));
 });
 
 test("restored verified EA evidence transfers digests, never root continuation or editable-source summaries", async () => {

@@ -60,7 +60,7 @@ test("old-order checkpoint snapshots retain source identity after regeneration a
   const checkpointIndex = kindIndex(projected, "runtime_semantic_compaction_checkpoint_v2");
   expect(checkpointIndex).toBeGreaterThan(projected.findIndex(({ content }) => content === binding.prompt));
   expect(checkpointIndex).toBeLessThan(projected.findIndex(({ role }) => role === "tool"));
-  expect(kindIndex(projected, "runtime_execution_state_v1")).toBeGreaterThan(
+  expect(kindIndex(projected, "runtime_execution_state_v1")).toBeLessThan(
     projected.map(({ role }) => role).lastIndexOf("tool"),
   );
   validateModelGatewayMessages(projected);
@@ -73,7 +73,7 @@ test("old-order checkpoint snapshots retain source identity after regeneration a
   }
 });
 
-test("the real admission/compaction path keeps activation state after compacted evidence and steering last", async () => {
+test("the real admission/compaction path replaces the latest group in place and keeps steering before the clock", async () => {
   const f = await executionCompactionSteeringFixture({ modelPolicy: executionPrefixCachePolicy });
   f.steering.append({ steerId: "current-steering", text: "Report the observed value only." });
   await f.run();
@@ -85,8 +85,9 @@ test("the real admission/compaction path keeps activation state after compacted 
   expect(JSON.stringify(messages)).toContain(STEERED_FACT);
   const checkpointIndex = kindIndex(messages, "runtime_semantic_compaction_checkpoint_v2");
   expect(checkpointIndex).toBeGreaterThan(messages.findIndex(({ content }) => content === f.request.prompt));
-  expect(kindIndex(messages, "runtime_execution_state_v1")).toBeGreaterThan(checkpointIndex);
-  expect(messages.at(-1)?.content).toContain("Report the observed value only.");
+  expect(kindIndex(messages, "runtime_execution_state_v1")).toBeLessThan(checkpointIndex);
+  expect(messages.at(-2)?.content).toContain("Report the observed value only.");
+  expect(kindIndex(messages, "runtime_invocation_time_v1")).toBe(messages.length - 1);
   expect(messages.filter(({ content }) => content === f.request.prompt)).toHaveLength(1);
   const countedInputs = f.countInputTokens.mock.calls
     .filter(([input]) => input.modelStep === "execution.decision")
@@ -100,11 +101,11 @@ test("the real admission/compaction path keeps activation state after compacted 
   expect(f.invoke.mock.calls.filter(([input]) => input.modelStep !== "execution.decision")
     .every(([input]) => input.promptCacheBoundaryBeforeMessageIndex === undefined)).toBe(true);
   for (const { input, messages: counted } of countedInputs) {
-    expect(input.promptCacheBoundaryBeforeMessageIndex).toBeGreaterThan(
+    expect(input.promptCacheBoundaryBeforeMessageIndex).toBeLessThan(
       Math.max(counted.map(({ role }) => role).lastIndexOf("tool"),
         kindIndex(counted, "runtime_semantic_compaction_checkpoint_v2")),
     );
-    expect(kindIndex(counted, "runtime_execution_state_v1")).toBeGreaterThan(
+    expect(kindIndex(counted, "runtime_execution_state_v1")).toBeLessThan(
       Math.max(counted.map(({ role }) => role).lastIndexOf("tool"),
         kindIndex(counted, "runtime_semantic_compaction_checkpoint_v2")),
     );

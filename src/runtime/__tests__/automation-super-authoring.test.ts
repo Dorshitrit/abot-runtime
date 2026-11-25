@@ -6,7 +6,7 @@ import { AUTOMATION_AUTHORING_REFERENCE } from "../capabilities/automation-build
 import type { readAutomationAuthoringCatalogIndex } from "../capabilities/automations/authoring-catalog.js";
 import type { readAutomationAuthoringPreparation } from "../capabilities/automations/authoring-preparation.js";
 import { completeAuthoringPlan, createCompleteAuthoringFixture } from "./support/automation-complete-authoring-fixture.js";
-import { workerEvidenceReply } from "./support/worker-evidence-script.js";
+import { workerFusedReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createCompleteAuthoringFixture>>;
@@ -49,6 +49,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
   let workerTurns = 0;
   let prepared: Prepared | undefined;
   let created: Receipt | undefined;
+  let workerEvidence: unknown;
   let modelProfileId: string | undefined;
   const savedResult = () => `${workerResult} Automation ${created!.automationId}; revision ${created!.revision}.`;
   const decision = (value: unknown) => ({ text: JSON.stringify({ decision: value }), meta: {} });
@@ -81,22 +82,26 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
         plan: { summary: objective, items: [{ title: "Author the connected draft", objective }] },
         selectedItemIndexes: [0], workerCapabilityScope: { catalogGroupIds: ["automations"] } });
       expect(plannerTurns).toBe(2);
-      expect(capsule(messages, "runtime_child_result")).toMatchObject({
+      const child = capsule<{ summary: string }>(messages, "runtime_child_result");
+      expect(child).toMatchObject({
         callerCallId: "call-2", childCallId: "call-3", roleId: "worker",
-        delegatedObjective: objective, outcome: "completed", summary: savedResult(),
+        delegatedObjective: objective, outcome: "completed",
         workReceipt: { kind: "work_result_v1", producerCallId: "call-3" },
       });
+      const report = JSON.parse(child.summary);
+      expect(report).toMatchObject({ kind: "runtime_worker_execution_report_v1",
+        assessment: { established: savedResult(), requiresExecution: false } });
+      expect(report.evidence.requestToolResults).toEqual(workerEvidence);
       return decision({ action: "return_result", result: savedResult() });
     }
-    if (input.modelStep === "worker.evidence") {
-      const requiresExecution = workerTurns < 4;
-      if (!requiresExecution)
-        expect(exactReceipt(messages, "validate_draft")).toEqual({ issues: [] });
-      return workerEvidenceReply(input, requiresExecution);
-    }
     if (input.modelStep === "worker.decision") {
+      if (workerTurns === 4) {
+        expect(exactReceipt(messages, "validate_draft")).toEqual({ issues: [] });
+        workerEvidence = capsule(messages, "runtime_request_tool_results_v1");
+        return workerFusedReply(input, { action: "return_result" }, savedResult());
+      }
       workerTurns += 1;
-      if (workerTurns === 1) return decision({ action: "invoke_capability", capabilityId: "browse_catalog",
+      if (workerTurns === 1) return workerFusedReply(input, { action: "invoke_capability", capabilityId: "browse_catalog",
         intent: "Discover future workflow operations for the requested draft.", selectionControls: { offset: 0 } });
       if (workerTurns === 2) {
         const catalog = exactReceipt<Catalog>(messages, "browse_catalog");
@@ -108,7 +113,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
         expect(selected.every(({ granted }) => !granted)).toBe(true);
         expect(await fixture.service.list()).toEqual([]);
         modelProfileId = catalog.models.items[0]!.id;
-        return decision({ action: "invoke_capability", capabilityId: "prepare_draft",
+        return workerFusedReply(input, { action: "invoke_capability", capabilityId: "prepare_draft",
           intent: "Read only the three selected contracts and authoring reference.",
           selectionControls: { operationRefs: selected.map(({ ref }) => ref) } });
       }
@@ -118,7 +123,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
           grantsPermissions: false, executesWorkflow: false,
           authoringReference: { permissions: AUTOMATION_AUTHORING_REFERENCE.permissions } });
         expect(prepared.operations.map(({ operationId }) => operationId).sort()).toEqual([...wantedOperations].sort());
-        return decision({ action: "invoke_capability", capabilityId: "create_automation_draft",
+        return workerFusedReply(input, { action: "invoke_capability", capabilityId: "create_automation_draft",
           intent: "Save the requested connected draft.", authoringObjective: objective,
           selectionControls: { title: "Reviewed technology draft" } });
       }
@@ -126,7 +131,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
         created = exactReceipt<Receipt>(messages, "create_automation_draft");
         expect(created.revision).toBe(1);
         expect([...created.operationRefs].sort()).toEqual(prepared!.operations.map(({ ref }) => ref).sort());
-        return decision({ action: "invoke_capability", capabilityId: "validate_draft",
+        return workerFusedReply(input, { action: "invoke_capability", capabilityId: "validate_draft",
           intent: "Validate the exact saved draft.", selectionControls: { automationId: created.automationId } });
       }
       throw new Error("unexpected_worker_selection_after_validation");
@@ -148,11 +153,6 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
       expect(JSON.parse(preparation.adapterResult.result.output)).toEqual(prepared);
       expect(messages.filter(({ role, content }) => role === "user" && content === prompt)).toHaveLength(0);
       return { text: JSON.stringify(completeAuthoringPlan(modelProfileId!)), meta: {} };
-    }
-    if (input.modelStep === "worker.result") {
-      expect(created).toBeDefined();
-      expect(JSON.stringify(messages)).toContain(created!.automationId);
-      return { text: savedResult(), meta: {} };
     }
     if (input.modelStep === "reviewer.decision") {
       type Audit = { auditScope: { reviewScopeId: string }; dependencySubjects: unknown[];
@@ -181,9 +181,9 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
     toolPermissionMode: "full_access",
   });
   expect(events.at(-1), JSON.stringify({ phases, terminal: events.at(-1) })).not.toMatchObject({ type: "failed" });
-  expect(phases).toEqual(["supervisor.decision", "planner.decision", "worker.evidence", "worker.decision",
-    "worker.evidence", "worker.decision", "worker.evidence", "worker.decision", "tool_payload.raw",
-    "worker.evidence", "worker.decision", "worker.evidence", "worker.result",
+  expect(phases).toEqual(["supervisor.decision", "planner.decision", "worker.decision",
+    "worker.decision", "worker.decision", "tool_payload.raw",
+    "worker.decision", "worker.decision",
     "planner.decision", "supervisor.decision", "reviewer.decision", "supervisor.decision", "supervisor.response"]);
   expect(fixture.execute.mock.calls.map(([call]) => call.params.action)).toEqual([
     "browse_catalog", "prepare_draft", "create_automation_draft", "validate_draft",

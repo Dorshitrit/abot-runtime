@@ -1,11 +1,13 @@
+import { projectStrictControlsSchema } from "../../model/decision-schema.js";
 import { validateToolNormalInvocationInput } from "../../../capabilities/normal-invocation/validator.js";
 import type { ToolNormalInvocationInput } from "../../../capabilities/tool-types.js";
 import { homeGenerationFailure, type SparkHomePlan, type SparkHomeReadDescriptor, type SparkHomeReadSelection } from "./contracts.js";
 
 export const SPARK_HOME_READS_PER_PHASE = 4;
 function homeReadControlsFormat(input: ToolNormalInvocationInput): Record<string, unknown> {
-  return { ...input, required: Object.keys(input.properties), properties: Object.fromEntries(Object.entries(input.properties)
-    .map(([key, schema]) => [key, input.required.includes(key) ? schema : { anyOf: [schema, { type: "null" }] }])) };
+  const strict = projectStrictControlsSchema(input);
+  // Retain the serialized field order of existing flat Home tool schemas.
+  return input.anyOf ? strict : { ...input, ...strict };
 }
 function captureHomeReadControls(value: unknown, input: ToolNormalInvocationInput): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;

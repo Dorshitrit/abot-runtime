@@ -34,8 +34,14 @@ export function runtimePathRejection(
   if (!isKnownRuntimePathRejection(error)) return undefined;
   return payloadRejection(
     error.code,
-    `${PATH_REJECTION_MESSAGES[error.code]} No external execution occurred.`,
+    `${runtimePathRejectionMessage(error)} No external execution occurred.`,
   );
+}
+
+function runtimePathRejectionMessage(error: RuntimeToolPathError): string {
+  if (error.filesystemFailure === "access_denied")
+    return "The target path could not be resolved because filesystem access was denied.";
+  return PATH_REJECTION_MESSAGES[error.code];
 }
 
 function isKnownRuntimePathRejection(

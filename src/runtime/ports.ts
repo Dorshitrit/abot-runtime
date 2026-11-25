@@ -204,6 +204,8 @@ export type SessionStore = SessionMemoryRepository & {
     options?: SessionCreationOptions,
   ) => Promise<SessionRecord>;
   getAllSessions: () => Promise<SessionRecord[]>;
+  /** Managed ordinary-client projection. The owner filters Agent sessions before pagination. */
+  listOrdinary?: SessionStore["listSessions"];
   listSessions: (params?: {
     limit?: number;
     cursor?: string | null;
@@ -251,6 +253,8 @@ export type SessionStore = SessionMemoryRepository & {
   ) => Promise<SessionRecord>;
   deleteSession: (sessionId: string) => Promise<boolean>;
   deleteSessionWithStats: (sessionId: string) => Promise<SessionDeleteResult>;
+  /** File-backed stores may retain derived files after an interrupted transcript deletion. */
+  purgeDeletedSessionSidecars?: (sessionId: string) => Promise<void>;
   resetSession: (sessionId: string) => Promise<SessionRecord | null>;
   clearSessionMessages: (
     sessionId: string,
@@ -353,10 +357,12 @@ export type WorkspaceProvider = {
 };
 
 export type ModelGatewayInvokeParams = StreamCallbacks & {
+  onIssue?: import("../model-gateway/protocol/model-issue.js").ModelIssueObserver;
   structuredOutputRepair?: ModelStructuredOutputRepair;
   text?: string;
   messages?: unknown;
   promptCacheBoundaryBeforeMessageIndex?: number;
+  promptCacheScope?: string;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;
@@ -371,6 +377,8 @@ export type ModelGatewayInvokeParams = StreamCallbacks & {
 };
 
 export type ModelGatewayRawInvokeParams = {
+  promptCacheScope?: string;
+  onIssue?: import("../model-gateway/protocol/model-issue.js").ModelIssueObserver;
   prompt: string;
   agentMode: AgentMode;
   taskType?: string;

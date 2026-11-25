@@ -1,3 +1,4 @@
+import { projectCapabilityBrief } from "../../context/capability-brief.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
@@ -17,15 +18,17 @@ import { SUPER_SKILL_DELEGATION_INSTRUCTION, SUPER_SKILL_GUIDANCE_INSTRUCTION } 
 
 /**
  * Initial delegation uses one exact settled conversation turn and captured Skill
- * guidance, without the full routing history or capability catalog. Guidance
+ * guidance and passive group discovery, without the full routing history. Guidance
  * remains passive and is not copied into objectives or session checkpoints.
  */
 export function buildSupervisorDelegationInput(
   request: SupervisorDecisionInputRequest,
-  options: Parameters<typeof buildSupervisorDecisionInput>[1],
+  options: Parameters<typeof buildSupervisorDecisionInput>[1] & { fusedRouting?: boolean },
 ): ReturnType<typeof buildSupervisorDecisionInput> {
   const allowedRoleIds = [...new Set(options.allowedRoleIds ?? SUPERVISOR_DELEGATE_ROLE_IDS)]
     .filter((role) => role === "worker" || role === "planner");
+  const availableWorkerCapabilityCatalog = allowedRoleIds.includes("worker")
+    ? (options.availableWorkerCapabilityCatalog ?? []) : [];
   const allowMemoryRecall = options.allowMemoryRecall === true && options.memoryRecallMessage === undefined;
   const continuationParts = [];
   if (options.memoryRecallMessage) {
@@ -39,7 +42,7 @@ export function buildSupervisorDelegationInput(
       currentInvocationAttempt: diagnostic.invocationAttempt,
     }));
   }
-  const format = createSupervisorDelegationFormat({ allowedRoleIds, allowMemoryRecall });
+  const format = createSupervisorDelegationFormat({ allowedRoleIds, allowMemoryRecall, availableWorkerCapabilityCatalog });
   const skillMessages = buildCoreSkillReadContextMessages(options.skillReadHead, "delegate");
   const hasSkillReadContext = skillMessages.length > 0;
   const budget = resolveModelContextBudget({
@@ -51,7 +54,9 @@ export function buildSupervisorDelegationInput(
   });
   const instructions = [
     buildSupervisorDelegationInstructions({
+      hasWorkerCapabilityCatalog: availableWorkerCapabilityCatalog.length > 0,
       allowedRoleIds, allowMemoryRecall, hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
+      fusedRouting: options.fusedRouting,
     }),
     ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION, SUPER_SKILL_DELEGATION_INSTRUCTION] : []),
     ...buildSparkConversationInstructions(request.sessionKind),
@@ -80,6 +85,15 @@ export function buildSupervisorDelegationInput(
     onEvent: request.onEvent,
     deferCompactionFailure: true,
   };
+  const capabilityBrief = projectCapabilityBrief({
+    groups: availableWorkerCapabilityCatalog,
+    context: contextInput,
+    ...(options.capabilityBriefEntries === undefined
+      ? {} : { entries: options.capabilityBriefEntries }),
+    ...(options.capabilityBriefBudgetMessages === undefined
+      ? {} : { additionalBudgetMessages: options.capabilityBriefBudgetMessages }),
+  });
+  if (capabilityBrief.message) referenceMessages.push(capabilityBrief.message);
   const artifactPathsProjection = projectSupervisorArtifactPaths({
     targets: request.sessionArtifactPaths,
     context: contextInput,
@@ -110,7 +124,7 @@ export function buildSupervisorDelegationInput(
     delegationOnly: true,
     includeAcknowledgement: false, includeTitle: false, includeResponseRecommendation: false,
     allowMemoryRecall, allowSkillAuthoring: false, allowedRoleIds,
-    workerCapabilityAffordances: [], availableWorkerCapabilityCatalog: [],
+    workerCapabilityAffordances: [], availableWorkerCapabilityCatalog,
     ...(artifactPathsProjection ? { artifactPathsProjection } : {}),
   };
 }

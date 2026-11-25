@@ -1,3 +1,4 @@
+import { createManagedLlamaHandoff, type ConfigurationHandoff } from "../managed-llama/configuration-handoff.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   assertConfigMutationRequest,
@@ -9,12 +10,15 @@ import { ModelSetupError } from "./model-setup-input.js";
 import { ModelSetupService } from "./model-setup-service.js";
 
 export class ModelSetupRoutes {
-  constructor(private readonly service: ModelSetupService) {}
+  constructor(
+    private readonly service: ModelSetupService,
+    private readonly resolveSaveInput: ConfigurationHandoff = createManagedLlamaHandoff("models"),
+  ) {}
 
   private selectMutation(method: string, route: string) {
     switch (`${method} ${route}`) {
       case "POST runtime/config/models":
-        return this.service.add.bind(this.service);
+        return (body: Record<string, unknown>) => this.service.add(this.resolveSaveInput(body));
       case "DELETE runtime/config/models":
         return this.service.remove.bind(this.service);
       case "PUT runtime/config/providers":

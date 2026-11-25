@@ -1,4 +1,5 @@
 import { isToolCatalogGroupId } from "../../../../capabilities/tool-types.js";
+import { isToolControlsRefinement } from "../../../../capabilities/controls-refinement.js";
 import { isRoleCapabilityId } from "../../role-calls/index.js";
 import {
   WORKER_CAPABILITY_CONTROL_COUNT_MAX,
@@ -184,7 +185,7 @@ function hasValidDescriptorSummary(summary: unknown): summary is string {
 }
 
 function hasValidControlsRefinement(input: unknown): boolean {
-  return input === undefined || input === "mechanical_when_complete";
+  return input === undefined || isToolControlsRefinement(input);
 }
 
 function hasValidPayloadAuthoringRequirement(input: unknown): boolean {

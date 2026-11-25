@@ -1,4 +1,5 @@
 import { parseOptionalToolOutputChannels } from "../../capabilities/normal-invocation/output-channels.js";
+import { isToolControlsRefinement } from "../../capabilities/controls-refinement.js";
 import { parseRequiredToolPermissionMode } from "../../capabilities/tool-permission-mode.js";
 import { parseRequestExecutionPolicies } from "../../shared/request-execution-policy.js";
 import { parseRequestBindingRequirement } from "../../capabilities/tool-request-discovery.js";
@@ -574,12 +575,9 @@ function parseCapabilities(
           ? undefined
           : parseSkills(capability.skills, `${path}.${capabilityId}.skills`);
       const controlsRefinement = capability.controlsRefinement;
-      if (
-        controlsRefinement !== undefined &&
-        controlsRefinement !== "mechanical_when_complete"
-      ) {
+      if (controlsRefinement !== undefined && !isToolControlsRefinement(controlsRefinement)) {
         throw new Error(
-          `${path}.${capabilityId}.controlsRefinement must be mechanical_when_complete`,
+          `${path}.${capabilityId}.controlsRefinement must be mechanical_when_complete or fused_with_selection`,
         );
       }
       if (
@@ -610,7 +608,7 @@ function parseCapabilities(
           description: capability.description.trim(),
           routingCapability:
             capability.routingCapability as AgentPluginCapabilityManifest["routingCapability"],
-          ...(controlsRefinement === "mechanical_when_complete"
+          ...(controlsRefinement !== undefined
             ? { controlsRefinement }
             : {}),
           ...(catalogGroups ? { catalogGroups } : {}),

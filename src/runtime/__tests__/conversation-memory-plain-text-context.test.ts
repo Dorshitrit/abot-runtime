@@ -160,7 +160,12 @@ test("EA direct answer receives one plain reference before the single active use
 
 test.each<RecallPolicy>(["execution-agent-v1", "supervisor-worker-v1"])("%s deferred authoring retains the shared JSON representation", async policy => {
   const f = fixture(policy);
-  await runRequestRunner(f.request);
+  // Exercise deferred authoring even when SUPER could otherwise author at entry.
+  const request = deriveTestRequestExecutionScope(f.request, { runnerConfig: {
+    ...f.request.runnerConfig, steps: { ...f.request.runnerConfig.steps,
+      "supervisor.response": { ...f.request.runnerConfig.steps["supervisor.response"], timeoutMs: 20_001 } },
+  } });
+  await runRequestRunner(request);
   const authoring = f.invoke.mock.calls.filter(([input]) => input.modelStep?.endsWith(".response") && input.format);
   expect(authoring).toHaveLength(1);
   for (const [input] of authoring) {

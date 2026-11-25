@@ -7,12 +7,15 @@ import type {
   NotificationPreferences,
   WebNotification,
 } from "./contracts.js";
+import { isNotificationIssue } from "./issue-schema.js";
+import { readIssueStorage, type NotificationIssueStorage } from "./issue-receipts.js";
 
 export type NotificationStoreState = NotificationStorageMetadata & {
   version: 1;
   environmentId: string;
   items: WebNotification[];
   preferences: NotificationPreferences;
+  issues?: NotificationIssueStorage;
 };
 
 function isNotificationText(value: unknown, maximum: number): value is string {
@@ -113,6 +116,19 @@ function notificationSourceTarget(
   value: Record<string, unknown>,
   source: URLSearchParams,
 ): NotificationSourceTarget | null {
+  if (value.agentSource !== undefined) {
+    const target = value.agentSource;
+    if (value.kind !== "reply" && value.kind !== "failure" && value.kind !== "approval") return null;
+    if (value.issue !== undefined || value.severity !== undefined || value.sessionId !== undefined || value.sessionKind !== undefined ||
+        value.requestId !== undefined || value.runId !== undefined || value.automationId !== undefined) return null;
+    if (!isNotificationRecord(target) || !hasOnlyNotificationFields(target, ["agentId", "missionId", "messageId"])) return null;
+    if (!isNotificationIdentifier(target.agentId) || !isNotificationIdentifier(target.missionId) || !isNotificationIdentifier(target.messageId)) return null;
+    return { path: "/agents", parameters: { environment: value.environmentId as string, agent: target.agentId } };
+  }
+  if (value.issue !== undefined && value.sessionId === undefined) {
+    if (value.requestId !== undefined || value.sessionKind !== undefined || value.automationId !== undefined || value.runId !== undefined) return null;
+    return { path: "/notifications", parameters: { environment: value.environmentId as string } };
+  }
   if (value.kind === "automation") {
     if (!isNotificationIdentifier(value.automationId)) return null;
     if (!isNotificationIdentifier(value.runId)) return null;
@@ -186,6 +202,7 @@ export function isWebNotification(
     "runId",
     "sourceUrl",
     "delivery",
+    "severity", "channel", "issue", "agentSource",
   ];
   if (!hasOnlyNotificationFields(value, fields)) return false;
   if (!isNotificationIdentifier(value.id)) return false;
@@ -199,6 +216,15 @@ export function isWebNotification(
   if (value.readAt !== null && !isNotificationTimestamp(value.readAt))
     return false;
   if (value.environmentId !== environmentId) return false;
+  if (value.severity !== undefined && value.severity !== "error") return false;
+  if (value.channel !== undefined && value.channel !== "in-app") return false;
+  if (value.severity === "error" && value.channel !== "in-app") return false;
+  if (value.issue !== undefined) {
+    if (value.severity !== "error" || value.channel !== "in-app" || value.kind !== "failure" ||
+      !isNotificationIssue(value.issue, environmentId) || !isNotificationRecord(value.delivery) || value.delivery.status !== "disabled") return false;
+    if (value.issue.action?.kind === "step-timeout" &&
+      (value.issue.action.reference.sessionId !== value.sessionId || value.issue.action.reference.requestId !== value.requestId)) return false;
+  }
   if (!hasBoundNotificationSource(value)) return false;
   return isNotificationDelivery(value.delivery);
 }
@@ -224,6 +250,7 @@ export function decodeNotificationState(
       "tombstones",
       "readSyncInitialized",
       "sourceReads",
+      "issues",
     ])
   )
     throw new Error("Unexpected notification storage fields.");
@@ -239,5 +266,8 @@ export function decodeNotificationState(
     if (seen.has(item.id)) throw new Error("Duplicate stored notification.");
     seen.add(item.id);
   }
-  return { ...value, preferences, ...readNotificationStorageMetadata(value) } as NotificationStoreState;
+  const issues = readIssueStorage(value.issues);
+  if (value.items.some((item) => item.issue && (!issues || item.issue.lastSequence > issues.sequence)))
+    throw new Error("Invalid notification issue sequence.");
+  return { ...value, preferences, ...readNotificationStorageMetadata(value), ...(issues ? { issues } : {}) } as NotificationStoreState;
 }

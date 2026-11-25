@@ -176,6 +176,7 @@ export type SessionCommitTerminalCommand = Readonly<{
   cause?: SessionRequestTerminalCause;
   message: SessionTerminalMessage;
   error?: string;
+  sourceIssueId?: string;
 }>;
 export type SessionInterruptActivationCommand = Readonly<{
   expected: SessionActivationExpectation;

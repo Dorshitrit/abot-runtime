@@ -1,5 +1,6 @@
 import { formatToolName } from "../lib/event-presentation.js";
 import { textOf } from "../lib/text-format.js";
+import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
 import { createConversationToolEvidence } from "./conversation-tool-evidence.js";
 import { createToolApprovalRejectionInput } from "./tool-approval-rejection-input.js";
 
@@ -35,16 +36,26 @@ export function createToolApprovalCard({
     textOf(event?.summary) || "The runtime is waiting for your decision.";
   const explanation = documentRoot.createElement("details");
   explanation.className = "approval-message-explanation";
+  explanation.setAttribute("open", "");
   const explanationLabel = documentRoot.createElement("summary");
   explanationLabel.textContent = "Action details";
   explanation.append(explanationLabel, detail);
   bubble.append(header, explanation);
 
+  const activity = event?.toolActivity || projectToolActivityEvent({
+    ...event, eventName: "tool.approval.required",
+  });
   const evidence = createConversationToolEvidence(
-    { ...event?.toolActivity, executed: false },
+    { ...activity, executed: false },
     { documentRoot },
   );
   if (evidence) bubble.appendChild(evidence);
+  if (!evidence) {
+    const unavailable = documentRoot.createElement("p");
+    unavailable.className = "approval-message-detail";
+    unavailable.textContent = "Input details were not recorded for this approval.";
+    explanation.appendChild(unavailable);
+  }
 
   if (event?.recommendedToolPermissionMode === "full_plus") {
     const recommendation = documentRoot.createElement("p");

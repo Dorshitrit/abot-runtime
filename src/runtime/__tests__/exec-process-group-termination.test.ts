@@ -58,8 +58,9 @@ describe("exec process-group termination", () => {
           shellCommand,
           cwd: root,
           yieldAfterMs: 10,
-          idleTimeoutMs: reason === "idle_timeout" ? 400 : 5_000,
-          hardTimeoutMs: reason === "hard_timeout" ? 400 : 5_000,
+          // Let the readiness check finish before either termination deadline.
+          idleTimeoutMs: reason === "idle_timeout" ? 3_000 : 10_000,
+          hardTimeoutMs: reason === "hard_timeout" ? 3_000 : 10_000,
           abortSignal: controller.signal,
         });
         await expect
@@ -128,5 +129,6 @@ describe("exec process-group termination", () => {
         await rm(root, { recursive: true, force: true });
       }
     },
+    10_000,
   );
 });

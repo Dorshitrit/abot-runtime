@@ -196,16 +196,20 @@ test("honors an abort before retry without sending a second request", async () =
   const payload = payloadFor();
   const abort = new AbortController();
   const reason = new Error("request cancelled");
+  const onIssue = vi.fn();
   const send = vi.fn(async (_body: Record<string, unknown>) => ({
     response: rejectedResponse(),
     responseTrace: Promise.resolve().then(() => abort.abort(reason)),
   }));
 
   await expect(fetchWithOpenAIReasoningFallback({
-    payload, requestBody, invocation: invocation(payload.model), send, abortSignal: abort.signal,
+    payload, requestBody, invocation: invocation(payload.model), send, abortSignal: abort.signal, onIssue,
   })).rejects.toBe(reason);
 
   expect(send).toHaveBeenCalledOnce();
+  expect(onIssue).toHaveBeenCalledTimes(2);
+  expect(onIssue.mock.calls[0]![0]).toMatchObject({ outcome: "pending" });
+  expect(onIssue.mock.calls[1]![0]).toEqual({ ...onIssue.mock.calls[0]![0], outcome: "interrupted" });
 });
 
 test("does not replay an ambiguous transport failure", async () => {

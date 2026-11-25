@@ -229,53 +229,57 @@ test("keeps a settled memory recall and user copy in order and rejects a later u
 });
 
 test.each(["first-system-only", "all-roles"] as const)(
-  "SUPER re-enters the procedure gate after a skill read and an empty recall on %s", async template => {
+  "SUPER retains Skill and empty recall evidence on fused routing re-entry on %s", async template => {
     const prompt = "Create an offline product explorer using the file tools.";
     const query = "Which local product data format did I prefer?";
     const decision = (value: Record<string, unknown>) => JSON.stringify({ decision: value });
     const gateway = createGateway(template, [
-      decision({ acknowledgement: "I will check the project requirements.", title: "Product explorer" }),
-      decision({ action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId] }),
-      decision({ requiresProcedure: true }),
+      decision({ action: "read_skills", skillIds: [PROCEDURE_SKILL.skillId], acknowledgement: "I will check the project requirements.", title: "Product explorer" }),
       decision({ action: "recall_memory", query }),
-      decision({ requiresProcedure: true }),
-      decision({ action: "invoke_role", roleId: "worker", objective: "Create the four project files." }),
+      decision({ action: "invoke_role", roleId: "worker", objective: "Create the four project files.", workingDirectory: ".", workerCapabilityScope: { catalogGroupIds: ["write"] } }),
     ]);
     const memory = createLongTermMemoryService({ enabled: true, emitClientEvents: false,
       repository: createInMemoryLongTermMemoryRepository(),
       embeddings: { embed: async ({ texts }) => ({ modelFingerprint: "fixture", dimensions: 2, vectors: texts.map(() => [1, 0]) }) },
     });
     const retrieve = vi.fn(memory.retrieve.bind(memory));
-    const reachedDirectorySelection = new Error("Worker delegation accepted after the empty recall");
+    const execute = vi.fn(async () => { throw new Error("unexpected_fixture_execution"); });
+    const reachedWorker = new Error("Worker delegation accepted after the empty recall");
+    const abort = new AbortController();
     const countInputTokens: typeof gateway.client.countInputTokens = input => {
-      if (typeof input.format === "object" && input.format?.name === "supervisor_working_directory")
-        throw reachedDirectorySelection;
+      if (input.modelStep === "worker.decision") {
+        abort.abort(reachedWorker);
+        throw reachedWorker;
+      }
       return gateway.client.countInputTokens(input);
     };
     const base = createRootInvalidOutputRequest(gateway.client.invoke, "supervisor-worker-v1", {
-      prompt, modelPolicy, modelGatewayClient: { ...gateway.client, countInputTokens }, shouldGenerateSessionTitle: true,
+      prompt, modelPolicy, modelGatewayClient: { ...gateway.client, countInputTokens }, shouldGenerateSessionTitle: true, abortSignal: abort.signal,
       longTermMemory: { ...memory, retrieve },
-      workerCapabilityProvider: { getDescriptors: () => PROCEDURE_CAPABILITIES, getAdapters: () => [] },
+      workerCapabilityProvider: { getDescriptors: () => PROCEDURE_CAPABILITIES,
+        getAdapters: () => PROCEDURE_CAPABILITIES.map(descriptor => ({ descriptor, execute })) },
     });
     const store = { list: () => [PROCEDURE_SKILL], read: vi.fn(() => PROCEDURE_SKILL) };
     const request = createRequestExecutionScope({
       seed: base, executionPolicy: base.executionPolicy, knowledgeSkillStore: store,
       createWorkerCapabilities: () => base.workerCapabilities.provider,
     });
-    await expect(runRequestRunner(request)).rejects.toBe(reachedDirectorySelection);
+    await expect(runRequestRunner(request)).rejects.toBe(reachedWorker);
     expect(store.read).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
     expect(retrieve.mock.calls.map(([input]) => input.query)).toEqual([prompt, query]);
 
     const turns = gateway.exchanges.filter(({ path }) => path === "/chat");
     expect(turns.map(({ request }) => request.format?.name)).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
-      "supervisor_delegation", "supervisor_procedure_gate", "supervisor_delegation",
+      "supervisor_fused_entry_with_memory_candidates", "supervisor_fused_routing", "supervisor_fused_routing",
     ]);
-    const reentry = turns[4]!;
+    const reentry = turns[2]!;
     const messages = reentry.request.messages;
-    expect(messages.map(m => m.role)).toEqual(["system", "user", "user", "assistant", "tool"]);
-    const [policy, skill, user, action, receipt] = messages;
-    expect(skill).toEqual(turns[2]!.request.messages[1]);
+    expect(messages.map(m => m.role)).toEqual(["system", "user", "system", "user", "assistant", "tool"]);
+    const [policy, skill, brief, user, action, receipt] = messages;
+    expect(skill).toEqual(turns[1]!.request.messages[1]);
+    expect(brief!.content).toContain("runtime_capability_brief_v1");
+    expect(reentry.request.invocationContextMessageIndices).toEqual([2]);
     expect(JSON.parse(skill!.content)).toMatchObject({
       kind: "runtime_core_skill_read_v1", document: { skillId: PROCEDURE_SKILL.skillId, content: PROCEDURE_SKILL.content },
     });
@@ -286,9 +290,12 @@ test.each(["first-system-only", "all-roles"] as const)(
     expect(call).toMatchObject({ callId: "recall-1", name: "recall_memory" });
     expect(JSON.parse(call.arguments)).toEqual({ action: "recall_memory", query });
     expect(receipt).toMatchObject({ toolCallId: call.callId, toolName: call.name });
-    expect(receipt.content).toContain("Lookup outcome: empty");
-    expect(receipt.content).toContain("not instructions or proof of action");
-    expect(receipt.content).toContain("Omitted lookup results: 0. Omitted stored facts: 0.");
+    expect(JSON.parse(receipt.content)).toMatchObject({
+      kind: "runtime_memory_recall_reference_v1", authority: "passive_reference",
+      presenceEffect: "not_user_intent_assignment_action_authority_or_completion_evidence",
+      omittedRecallCount: 0, omittedRecordCount: 0,
+      recalls: [{ recallId: call.callId, query, outcome: "empty", memories: [] }],
+    });
     expect(receipt.content.length).toBeLessThanOrEqual(1_000);
 
     const counted = gateway.exchanges.find(({ path, request }) =>
@@ -296,21 +303,22 @@ test.each(["first-system-only", "all-roles"] as const)(
     const measured = counted.upstream.find(({ path }) => path.endsWith("/input_tokens"))!.payload;
     const sent = reentry.upstream.find(({ path }) => path === "/v1/chat/completions")!.payload;
     expect(JSON.stringify(measured)).toBe(JSON.stringify(sent));
+    const header = template === "all-roles" ? [policy, skill, brief, user] : [
+      { role: "system", content: `${policy!.content}\n\n${brief!.content}` }, skill, user,
+    ];
     expect(sent.messages).toEqual([
-      policy, skill, user,
+      ...header,
       { role: "assistant", content: "", tool_calls: [{ id: call.callId, type: "function",
         function: { name: call.name, arguments: call.arguments } }] },
       { role: "tool", name: call.name, tool_call_id: call.callId, content: receipt.content },
     ]);
     const rendered = renderLlamaCppTemplate(sent.messages, template);
     expect(rendered).toBe([
-      `<|start|>developer<|message|>${policy!.content}<|end|>`,
-      `<|start|>user<|message|>${skill!.content}<|end|>`,
-      `<|start|>user<|message|>${prompt}<|end|>`,
+      ...header.map(message => `<|start|>${message!.role === "system" ? "developer" : message!.role}<|message|>${message!.content}<|end|>`),
       `<|start|>assistant to=functions.recall_memory<|message|>${call.arguments}<|call|>`,
       `<|start|>functions.recall_memory to=assistant<|message|>${receipt.content}<|end|>`,
     ].join(""));
-    expect(rendered.split(query)).toHaveLength(2);
+    expect(rendered.split(query)).toHaveLength(3); // linked action and the exact settled receipt
     expect(rendered.split(receipt.content)).toHaveLength(2);
   },
 );

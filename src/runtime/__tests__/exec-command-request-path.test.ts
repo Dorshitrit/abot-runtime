@@ -135,7 +135,7 @@ test.each(policies)(
     const continuation = inputs
       .filter(
         ({ modelStep }) =>
-          modelStep === "execution.decision" || modelStep === "worker.evidence",
+          modelStep === "execution.decision" || modelStep === "worker.decision",
       )
       .at(-1)!;
     expect(JSON.stringify(continuation.messages)).toContain("project-content");
@@ -170,7 +170,7 @@ test.each(policies)(
       .map(([input]) => input)
       .filter(
         ({ modelStep }) =>
-          modelStep === "execution.decision" || modelStep === "worker.evidence",
+          modelStep === "execution.decision" || modelStep === "worker.decision",
       )
       .at(-1)!;
     expect(JSON.stringify(continuation.messages)).toContain("external-content");
@@ -200,7 +200,7 @@ test.each(policies)(
     const consumers =
       policy === "execution-agent-v1"
         ? ["execution.decision", "execution.response"]
-        : ["worker.evidence", "worker.result"];
+        : ["worker.decision", "supervisor.response"];
     for (const consumer of consumers) {
       const input = result.model.invoke.mock.calls
         .map(([input]) => input)
@@ -211,5 +211,6 @@ test.each(policies)(
     }
     expect(result.session?.messages.at(-1)?.content).toBe(EXEC_REQUEST_FINAL);
     expect(result.model.invokeRaw).not.toHaveBeenCalled();
+    expect(result.model.invoke.mock.calls.some(([input]) => input.modelStep === "worker.result")).toBe(false);
   },
 );

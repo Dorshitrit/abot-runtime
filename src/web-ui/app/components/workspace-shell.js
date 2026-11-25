@@ -103,6 +103,13 @@ export function createWorkspaceShell({
     }
     dom.app.classList.toggle("schedules-workspace", schedulesWorkspace);
     dom.app.classList.toggle("automations-workspace", automationsWorkspace);
+    if (dom.agentsWorkspacePanel) {
+      const agentsActive = shellState.workspace === "agents";
+      dom.agentsWorkspacePanel.hidden = !agentsActive;
+      dom.agentsWorkspacePanel.inert = !agentsActive;
+      dom.agentsWorkspacePanel.setAttribute("aria-hidden", String(!agentsActive));
+      setCurrentPage(dom.agentsWorkspaceButton, agentsActive);
+    }
     dom.app.classList.toggle("sessions-open", sessions.drawerOpen);
     dom.app.classList.toggle("sessions-docked", sessions.docked);
 

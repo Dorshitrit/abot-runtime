@@ -196,8 +196,7 @@ test("a root compaction read failure permits fresh classification but blocks his
   expect(result).toMatchObject({ disposition: "blocked" });
   expect(result.output).toContain("Cannot finish this request.");
   expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation",
-    "supervisor_procedure_gate",
+    "supervisor_fused_entry",
     "degraded.finalization",
   ]);
   expect(JSON.stringify(invoke.mock.calls[0]![0].messages)).not.toContain("PRIVATE_PREVIOUS_HISTORY");

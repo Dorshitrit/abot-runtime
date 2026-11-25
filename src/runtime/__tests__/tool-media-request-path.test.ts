@@ -55,9 +55,10 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("%s delivers 
   expect(result.events.filter(({ type }) => type === "failed")).toEqual([]);
   expect(result.events).toContainEqual(expect.objectContaining({ type: "completed", output: MEDIA_FINAL }));
   const calls = result.model.invoke.mock.calls.map(([input]) => input);
-  const expected = policy === "execution-agent-v1" ? ["execution.decision", "execution.response"] : ["worker.evidence", "worker.result"];
+  const expected = policy === "execution-agent-v1" ? ["execution.decision", "execution.response"] : ["worker.decision"];
   const imageCalls = calls.filter((input) => (input.messages as ChatMessage[]).some((message) => message.attachments?.some((attachment) => attachment.toolEvidence)));
   expect(imageCalls.map(({ modelStep }) => modelStep)).toEqual(expected);
+  expect(calls.some(({ modelStep }) => modelStep === "worker.result")).toBe(false);
   for (const input of imageCalls) {
     const messages = input.messages as ChatMessage[];
     expect(messages.flatMap(({ attachments }) => attachments ?? []).filter(({ toolEvidence }) => toolEvidence)).toEqual([

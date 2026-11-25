@@ -2,6 +2,7 @@ import type {
   ModelProviderInputTokenCountParams,
   ModelProviderInputTokenCountResult,
 } from "../contracts.js";
+import { observeParameterOmissions } from "../parameter-issues.js";
 import { createProviderEnvelopeFingerprint } from "../envelope-budget.js";
 import { buildOpenAIInputTokenCountPayload } from "./payload.js";
 import { resolveOpenAIProviderSettings } from "./settings.js";
@@ -34,11 +35,15 @@ export async function countOpenAIInputTokens(
     };
   }
 
-  const { result: { response }, payload } = await fetchWithOpenAIReasoningFallback({
-    payload: buildOpenAIInputTokenCountPayload(params.requestBody),
+  const originalPayload = buildOpenAIInputTokenCountPayload(params.requestBody);
+  observeParameterOmissions({ ...params, operation: "input_tokens" });
+  const { result: { response }, payload, issue } = await fetchWithOpenAIReasoningFallback({
+    payload: originalPayload,
     requestBody: params.requestBody,
     invocation: params.invocation,
     abortSignal: params.abortSignal,
+    onIssue: params.onIssue,
+    operation: "input_tokens",
     send: async (attemptPayload) => ({
       response: await params.fetchImpl(`${settings.baseUrl}/responses/input_tokens`, {
         method: "POST",
@@ -52,6 +57,7 @@ export async function countOpenAIInputTokens(
     }),
   }).catch((error) => { throw toolMediaSafeError(error, params.requestBody); });
   if (!response.ok) {
+    issue?.finish(params.abortSignal?.aborted ? "interrupted" : "failed");
     const message = await response.text().catch(() => "");
     return {
       kind: "error",
@@ -63,12 +69,14 @@ export async function countOpenAIInputTokens(
   const body = await response.json().catch(() => undefined);
   const inputTokens = readInputTokenCount(body);
   if (inputTokens === undefined) {
+    issue?.finish(params.abortSignal?.aborted ? "interrupted" : "failed");
     return {
       kind: "error",
       statusCode: 502,
       message: "openai input token count response invalid",
     };
   }
+  issue?.finish(params.abortSignal?.aborted ? "interrupted" : "recovered");
   return {
     kind: "counted",
     inputTokens,

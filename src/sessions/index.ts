@@ -1,3 +1,4 @@
+import { getDefaultSessionsDir } from "../runtime/config/layout.js";
 import type { AgentMode } from "../shared/types.js";
 import { buildContextBuckets, buildContextWindow } from "./context-window.js";
 import { SessionService } from "./session-service.js";
@@ -15,7 +16,8 @@ import type {
 
 export type { SessionArtifactPath, SessionArtifactPathInput } from "./types.js";
 
-const sessionService = new SessionService();
+export const defaultSessionsDir = getDefaultSessionsDir(process.cwd());
+const sessionService = new SessionService({ sessionsDir: defaultSessionsDir });
 
 export { buildContextBuckets, buildContextWindow };
 

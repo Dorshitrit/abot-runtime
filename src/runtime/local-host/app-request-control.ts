@@ -179,6 +179,11 @@ export class LocalRequestControls {
     return result;
   }
 
+  hasActivePeer(peer: LocalRuntimePeer): boolean {
+    for (const control of this.active.values()) if (control.peer === peer) return true;
+    return false;
+  }
+
   activeSessionId(requestId: unknown): string | undefined {
     return typeof requestId === "string"
       ? this.active.get(requestId)?.sessionId

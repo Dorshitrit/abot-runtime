@@ -1,5 +1,6 @@
 import { escapeHtml } from "../../lib/text-format.js";
 import { formatContextWindowTokens } from "../runtime-setup/context-window.js";
+import { renderSetupReasoningSummaryReview } from "../runtime-setup/reasoning-summary-fields.js";
 import {
   renderConnectionField,
   renderConnectionFields,
@@ -60,7 +61,7 @@ export function renderModelFields(state) {
 
 export function renderModelReview(state) {
   const provider = selectedModelProvider(state);
-  return `<div class="runtime-setup-result"><dl><div><dt>Connection</dt><dd>${escapeHtml(provider?.id || state.newProviderId)}</dd></div><div><dt>Model</dt><dd>${escapeHtml(state.model)}</dd></div><div><dt>Context window</dt><dd>${escapeHtml(formatContextWindowTokens(state.contextWindowTokens))}</dd></div><div><dt>Profile</dt><dd>${escapeHtml(state.profileId)}</dd></div></dl><p>${state.applied ? "Your model is applied. Refresh the model list to continue." : state.saved ? "Your model is saved. Apply it when your agent is idle." : "Save this model and apply the configuration. This does not send a model request."}</p></div>`;
+  return `<div class="runtime-setup-result"><dl><div><dt>Connection</dt><dd>${escapeHtml(provider?.id || state.newProviderId)}</dd></div><div><dt>Model</dt><dd>${escapeHtml(state.model)}</dd></div><div><dt>Context window</dt><dd>${escapeHtml(formatContextWindowTokens(state.contextWindowTokens))}</dd></div>${renderSetupReasoningSummaryReview(modelProviderType(state), state.reasoningSummary)}<div><dt>Profile</dt><dd>${escapeHtml(state.profileId)}</dd></div></dl><p>${state.applied ? "Your model is applied. Refresh the model list to continue." : state.saved ? "Your model is saved. Apply it when your agent is idle." : "Save this model and apply the configuration. This does not send a model request."}</p></div>`;
 }
 
 export function modelSetupFooter(state) {

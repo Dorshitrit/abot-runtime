@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
+import { channel } from "node:diagnostics_channel";
 
 import { afterEach, describe, expect, test } from "vitest";
 
 import createMemoryPlugin from "../../../plugins/memory/source/index.js";
+import { MEMORY_STORAGE_FAILURE_CHANNEL } from "../../../plugins/memory/source/storage-diagnostics.js";
 import type { RuntimePluginEntrypointFactory } from "../../plugin-contract/entrypoint.js";
 import { loadBundledPluginEntrypoint } from "./public-plugin-test-support.js";
 import { createPortablePluginFixture, removePortablePluginFixtures } from "./windows-portable-plugins-fixture.js";
@@ -51,10 +53,19 @@ describe.each(factories)("portable memory $name", ({ create }) => {
 
   test("independent instances serialize concurrent writes without lost entries", async () => {
     const context = await createPortablePluginFixture("memory");
-    const results = await Promise.all(Array.from({ length: 8 }, (_, index) =>
-      create(context).handlers.memory_add!({ content: `Concurrent memory ${index}` }),
-    ));
-    expect(results.filter((result) => !result.ok)).toEqual([]);
+    const diagnostics: unknown[] = [];
+    const failures = channel(MEMORY_STORAGE_FAILURE_CHANNEL);
+    const collect = (event: unknown) => { diagnostics.push(event); };
+    failures.subscribe(collect);
+    let results;
+    try {
+      results = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+        create(context).handlers.memory_add!({ content: `Concurrent memory ${index}` }),
+      ));
+    } finally {
+      failures.unsubscribe(collect);
+    }
+    expect(results.filter((result) => !result.ok), JSON.stringify({ storageFailures: diagnostics })).toEqual([]);
     const saved = JSON.parse(await readFile(join(context.stateDir, "memory.json"), "utf8")) as {
       entries: { id: string; content: string }[];
       nextSequence: number;
